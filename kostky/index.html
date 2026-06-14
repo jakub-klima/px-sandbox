@@ -57,142 +57,321 @@
 
   <script>
   (function () {
+    'use strict';
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
     const scoreEl = document.getElementById('score');
 
     // --- Konfigurace ---
-    const GRAVITY = 2200;          // px/s^2
-    const REST = 0.12;             // odraz
-    const FRICTION = 0.78;         // tlumení vodorovné rychlosti při kontaktu
+    const GRAVITY = 1500;          // px/s^2
+    const STEP = 1 / 120;          // pevný krok simulace
+    const VEL_ITER = 12;           // iterace řešiče rychlostí
     const BLOCK_W = 64;
     const BLOCK_H = 40;
     const COLORS = ['#e74c3c','#f39c12','#f1c40f','#2ecc71','#1abc9c','#3498db','#9b59b6','#e84393'];
 
     let W, H, DPR;
-    let blocks = [];
+    let bodies = [];   // všechna tělesa (dynamická i statická)
+    let statics = [];  // podlaha + stěny
 
-    function resize() {
-      DPR = Math.min(window.devicePixelRatio || 1, 2);
-      W = window.innerWidth;
-      H = window.innerHeight;
-      canvas.width = W * DPR;
-      canvas.height = H * DPR;
-      canvas.style.width = W + 'px';
-      canvas.style.height = H + 'px';
-      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    // ---------- Vektorová matematika ----------
+    function rot(x, y, a) {
+      const c = Math.cos(a), s = Math.sin(a);
+      return { x: x * c - y * s, y: x * s + y * c };
     }
-    window.addEventListener('resize', resize);
-    resize();
 
+    // ---------- Tuhé těleso (konvexní mnohoúhelník / krabice) ----------
+    function makeBox(x, y, hw, hh, opts) {
+      opts = opts || {};
+      const verts = [
+        { x: -hw, y: -hh }, { x: hw, y: -hh },
+        { x: hw, y: hh },  { x: -hw, y: hh }
+      ];
+      // normály hran (CCW v souřadnicích plátna s osou y dolů)
+      const normals = [];
+      for (let i = 0; i < verts.length; i++) {
+        const a = verts[i], b = verts[(i + 1) % verts.length];
+        const ex = b.x - a.x, ey = b.y - a.y;
+        const len = Math.hypot(ex, ey);
+        normals.push({ x: ey / len, y: -ex / len });
+      }
+      const isStatic = !!opts.isStatic;
+      const w = hw * 2, h = hh * 2;
+      const density = 0.0012;
+      const mass = isStatic ? 0 : density * w * h;
+      const inertia = isStatic ? 0 : mass * (w * w + h * h) / 12;
+      return {
+        pos: { x: x, y: y }, angle: opts.angle || 0,
+        v: { x: 0, y: 0 }, w: 0,
+        verts: verts, normals: normals, count: verts.length,
+        invMass: mass ? 1 / mass : 0,
+        invI: inertia ? 1 / inertia : 0,
+        e: 0.04, sf: 0.6, df: 0.45,
+        color: opts.color || '#888',
+        isStatic: isStatic
+      };
+    }
+
+    function worldVertex(b, i) {
+      const r = rot(b.verts[i].x, b.verts[i].y, b.angle);
+      return { x: b.pos.x + r.x, y: b.pos.y + r.y };
+    }
+    function worldNormal(b, i) {
+      return rot(b.normals[i].x, b.normals[i].y, b.angle);
+    }
+    function getSupport(b, dx, dy) {
+      // podpora v lokálních souřadnicích tělesa
+      let best = -Infinity, bestV = b.verts[0];
+      for (let i = 0; i < b.count; i++) {
+        const proj = b.verts[i].x * dx + b.verts[i].y * dy;
+        if (proj > best) { best = proj; bestV = b.verts[i]; }
+      }
+      return bestV;
+    }
+
+    // ---------- Detekce kolizí (SAT pro mnohoúhelníky) ----------
+    function findLeastPenetration(A, B) {
+      let bestDist = -Infinity, bestIndex = 0;
+      for (let i = 0; i < A.count; i++) {
+        const nw = worldNormal(A, i);
+        const nb = rot(nw.x, nw.y, -B.angle);      // do lokálu B
+        const s = getSupport(B, -nb.x, -nb.y);
+        const vw = worldVertex(A, i);
+        const rel = rot(vw.x - B.pos.x, vw.y - B.pos.y, -B.angle); // vrchol A do lokálu B
+        const d = nb.x * (s.x - rel.x) + nb.y * (s.y - rel.y);
+        if (d > bestDist) { bestDist = d; bestIndex = i; }
+      }
+      return { dist: bestDist, index: bestIndex };
+    }
+
+    function incidentFace(ref, inc, refIndex) {
+      const rn = worldNormal(ref, refIndex);
+      const rnl = rot(rn.x, rn.y, -inc.angle);
+      let minDot = Infinity, face = 0;
+      for (let i = 0; i < inc.count; i++) {
+        const d = rnl.x * inc.normals[i].x + rnl.y * inc.normals[i].y;
+        if (d < minDot) { minDot = d; face = i; }
+      }
+      return [worldVertex(inc, face), worldVertex(inc, (face + 1) % inc.count)];
+    }
+
+    function clip(nx, ny, c, face) {
+      let sp = 0;
+      const out = [face[0], face[1]];
+      const d1 = nx * face[0].x + ny * face[0].y - c;
+      const d2 = nx * face[1].x + ny * face[1].y - c;
+      if (d1 <= 0) out[sp++] = face[0];
+      if (d2 <= 0) out[sp++] = face[1];
+      if (d1 * d2 < 0) {
+        const alpha = d1 / (d1 - d2);
+        out[sp++] = {
+          x: face[0].x + alpha * (face[1].x - face[0].x),
+          y: face[0].y + alpha * (face[1].y - face[0].y)
+        };
+      }
+      face[0] = out[0]; face[1] = out[1];
+      return sp;
+    }
+
+    function collide(A, B) {
+      const a = findLeastPenetration(A, B);
+      if (a.dist >= 0) return null;
+      const b = findLeastPenetration(B, A);
+      if (b.dist >= 0) return null;
+
+      let RefPoly, IncPoly, refIndex, flip;
+      if (a.dist >= b.dist * 0.95 + a.dist * 0.01) {
+        RefPoly = A; IncPoly = B; refIndex = a.index; flip = false;
+      } else {
+        RefPoly = B; IncPoly = A; refIndex = b.index; flip = true;
+      }
+
+      const inc = incidentFace(RefPoly, IncPoly, refIndex);
+      const v1 = worldVertex(RefPoly, refIndex);
+      const v2 = worldVertex(RefPoly, (refIndex + 1) % RefPoly.count);
+      let sx = v2.x - v1.x, sy = v2.y - v1.y;
+      const sl = Math.hypot(sx, sy); sx /= sl; sy /= sl;
+      const rfnx = sy, rfny = -sx;                 // normála referenční hrany
+      const refC = rfnx * v1.x + rfny * v1.y;
+      const negSide = -(sx * v1.x + sy * v1.y);
+      const posSide = sx * v2.x + sy * v2.y;
+
+      if (clip(-sx, -sy, negSide, inc) < 2) return null;
+      if (clip(sx, sy, posSide, inc) < 2) return null;
+
+      const nx = flip ? -rfnx : rfnx;
+      const ny = flip ? -rfny : rfny;
+
+      const contacts = [];
+      let penetration = 0;
+      for (let i = 0; i < 2; i++) {
+        const sep = rfnx * inc[i].x + rfny * inc[i].y - refC;
+        if (sep <= 0) { contacts.push(inc[i]); penetration += -sep; }
+      }
+      if (!contacts.length) return null;
+      penetration /= contacts.length;
+      return { A: A, B: B, nx: nx, ny: ny, contacts: contacts, penetration: penetration };
+    }
+
+    // ---------- Řešič ----------
+    function applyImpulse(b, ix, iy, rx, ry) {
+      if (b.isStatic) return;
+      b.v.x += b.invMass * ix;
+      b.v.y += b.invMass * iy;
+      b.w += b.invI * (rx * iy - ry * ix);
+    }
+
+    function solve(m) {
+      const A = m.A, B = m.B, nx = m.nx, ny = m.ny;
+      const e = Math.min(A.e, B.e);
+      const cs = m.contacts;
+      for (let k = 0; k < cs.length; k++) {
+        const cx = cs[k].x, cy = cs[k].y;
+        const rax = cx - A.pos.x, ray = cy - A.pos.y;
+        const rbx = cx - B.pos.x, rby = cy - B.pos.y;
+
+        // relativní rychlost v bodě kontaktu
+        let rvx = B.v.x - B.w * rby - (A.v.x - A.w * ray);
+        let rvy = B.v.y + B.w * rbx - (A.v.y + A.w * rax);
+        const contactVel = rvx * nx + rvy * ny;
+        if (contactVel > 0) continue;
+
+        const raCn = rax * ny - ray * nx;
+        const rbCn = rbx * ny - rby * nx;
+        const invSum = A.invMass + B.invMass +
+          raCn * raCn * A.invI + rbCn * rbCn * B.invI;
+
+        let j = -(1 + e) * contactVel / invSum / cs.length;
+        const ix = nx * j, iy = ny * j;
+        applyImpulse(A, -ix, -iy, rax, ray);
+        applyImpulse(B, ix, iy, rbx, rby);
+
+        // tření
+        rvx = B.v.x - B.w * rby - (A.v.x - A.w * ray);
+        rvy = B.v.y + B.w * rbx - (A.v.y + A.w * rax);
+        let tx = rvx - (rvx * nx + rvy * ny) * nx;
+        let ty = rvy - (rvx * nx + rvy * ny) * ny;
+        const tl = Math.hypot(tx, ty);
+        if (tl > 1e-6) {
+          tx /= tl; ty /= tl;
+          const raCt = rax * ty - ray * tx;
+          const rbCt = rbx * ty - rby * tx;
+          const invSumT = A.invMass + B.invMass +
+            raCt * raCt * A.invI + rbCt * rbCt * B.invI;
+          let jt = -(rvx * tx + rvy * ty) / invSumT / cs.length;
+          const sf = Math.sqrt(A.sf * B.sf);
+          let fx, fy;
+          if (Math.abs(jt) < j * sf) {
+            fx = tx * jt; fy = ty * jt;
+          } else {
+            const df = Math.sqrt(A.df * B.df);
+            fx = -tx * j * df; fy = -ty * j * df;
+          }
+          applyImpulse(A, -fx, -fy, rax, ray);
+          applyImpulse(B, fx, fy, rbx, rby);
+        }
+      }
+    }
+
+    function positionalCorrection(m) {
+      const slop = 0.05, percent = 0.35;
+      const corr = Math.max(m.penetration - slop, 0) /
+        (m.A.invMass + m.B.invMass) * percent;
+      m.A.pos.x -= m.A.invMass * corr * m.nx;
+      m.A.pos.y -= m.A.invMass * corr * m.ny;
+      m.B.pos.x += m.B.invMass * corr * m.nx;
+      m.B.pos.y += m.B.invMass * corr * m.ny;
+    }
+
+    function step(dt) {
+      // integrace sil
+      for (const b of bodies) {
+        if (b.isStatic) continue;
+        b.v.y += GRAVITY * dt;
+      }
+      // detekce kolizí
+      const manifolds = [];
+      for (let i = 0; i < bodies.length; i++) {
+        for (let j = i + 1; j < bodies.length; j++) {
+          const A = bodies[i], B = bodies[j];
+          if (A.isStatic && B.isStatic) continue;
+          const m = collide(A, B);
+          if (m) manifolds.push(m);
+        }
+      }
+      // řešení rychlostí
+      for (let it = 0; it < VEL_ITER; it++) {
+        for (const m of manifolds) solve(m);
+      }
+      // integrace pozic
+      for (const b of bodies) {
+        if (b.isStatic) continue;
+        b.pos.x += b.v.x * dt;
+        b.pos.y += b.v.y * dt;
+        b.angle += b.w * dt;
+      }
+      // korekce prolínání
+      for (const m of manifolds) positionalCorrection(m);
+    }
+
+    // ---------- Svět ----------
     function floorY() { return H - 20; }
+
+    function rebuildStatics() {
+      statics = [
+        makeBox(W / 2, floorY() + 400, W, 400, { isStatic: true }),       // podlaha
+        makeBox(-200, H / 2, 200, H * 2, { isStatic: true }),             // levá stěna
+        makeBox(W + 200, H / 2, 200, H * 2, { isStatic: true })           // pravá stěna
+      ];
+      bodies = statics.concat(bodies.filter(b => !b.isStatic));
+    }
 
     function addBlock(x) {
       const half = BLOCK_W / 2;
-      x = Math.max(half, Math.min(W - half, x));
-      blocks.push({
-        x: x,
-        y: -BLOCK_H,                          // spadne shora
-        vx: 0,
-        vy: 0,
-        w: BLOCK_W,
-        h: BLOCK_H,
-        color: COLORS[blocks.length % COLORS.length],
-        resting: false
+      x = Math.max(half + 2, Math.min(W - half - 2, x));
+      const b = makeBox(x, -BLOCK_H, BLOCK_W / 2, BLOCK_H / 2, {
+        color: COLORS[bodies.filter(o => !o.isStatic).length % COLORS.length]
       });
+      bodies.push(b);
       updateScore();
     }
 
     function updateScore() {
-      const top = blocks.reduce((m, b) => Math.min(m, b.y - b.h / 2), floorY());
+      let top = floorY(), count = 0;
+      for (const b of bodies) {
+        if (b.isStatic) continue;
+        count++;
+        for (let i = 0; i < b.count; i++) {
+          const v = worldVertex(b, i);
+          if (v.y < top) top = v.y;
+        }
+      }
       const height = Math.max(0, Math.round((floorY() - top) / BLOCK_H));
-      scoreEl.innerHTML = 'Kostky: ' + blocks.length + ' &middot; Výška: ' + height;
+      scoreEl.innerHTML = 'Kostky: ' + count + ' &middot; Výška: ' + height;
     }
 
-    function overlap(a, b) {
-      return Math.abs(a.x - b.x) < (a.w + b.w) / 2 &&
-             Math.abs(a.y - b.y) < (a.h + b.h) / 2;
-    }
-
-    function physics(dt) {
-      // integrace
-      for (const b of blocks) {
-        b.vy += GRAVITY * dt;
-        b.x += b.vx * dt;
-        b.y += b.vy * dt;
-      }
-
-      // několik iterací řešení kolizí pro stabilní stoh
-      for (let it = 0; it < 6; it++) {
-        // podlaha a stěny
-        for (const b of blocks) {
-          const half = b.w / 2;
-          if (b.x - half < 0) { b.x = half; b.vx = -b.vx * REST; }
-          if (b.x + half > W) { b.x = W - half; b.vx = -b.vx * REST; }
-          const bottom = b.y + b.h / 2;
-          if (bottom > floorY()) {
-            b.y = floorY() - b.h / 2;
-            if (b.vy > 0) b.vy = -b.vy * REST;
-            b.vx *= FRICTION;
-            if (Math.abs(b.vy) < 12) b.vy = 0;
-          }
-        }
-        // kostka vs kostka
-        for (let i = 0; i < blocks.length; i++) {
-          for (let j = i + 1; j < blocks.length; j++) {
-            const a = blocks[i], b = blocks[j];
-            if (!overlap(a, b)) continue;
-            const dx = (a.w + b.w) / 2 - Math.abs(a.x - b.x);
-            const dy = (a.h + b.h) / 2 - Math.abs(a.y - b.y);
-            if (dx < dy) {
-              // rozsuň vodorovně
-              const s = a.x < b.x ? -1 : 1;
-              a.x += s * dx / 2;
-              b.x -= s * dx / 2;
-              const avx = a.vx; a.vx = b.vx * REST; b.vx = avx * REST;
-            } else {
-              // rozsuň svisle (stohování)
-              const s = a.y < b.y ? -1 : 1;
-              a.y += s * dy / 2;
-              b.y -= s * dy / 2;
-              // spodní kostka tlačí horní -> přenos rychlosti
-              if (s < 0) { // a je nahoře
-                if (a.vy > 0) a.vy *= -REST;
-                if (b.vy < 0) b.vy *= -REST;
-              } else {
-                if (b.vy > 0) b.vy *= -REST;
-                if (a.vy < 0) a.vy *= -REST;
-              }
-              a.vx *= FRICTION;
-              b.vx *= FRICTION;
-            }
-          }
-        }
-      }
-    }
-
+    // ---------- Render ----------
     function draw() {
       ctx.clearRect(0, 0, W, H);
-
-      // podlaha
       ctx.fillStyle = 'rgba(255,255,255,0.08)';
       ctx.fillRect(0, floorY(), W, H - floorY());
 
-      for (const b of blocks) {
-        const x = b.x - b.w / 2, y = b.y - b.h / 2;
-        // tělo
+      for (const b of bodies) {
+        if (b.isStatic) continue;
+        ctx.save();
+        ctx.translate(b.pos.x, b.pos.y);
+        ctx.rotate(b.angle);
+        const w = (b.verts[1].x - b.verts[0].x);
+        const h = (b.verts[2].y - b.verts[1].y);
+        const x = -w / 2, y = -h / 2;
         ctx.fillStyle = b.color;
-        roundRect(x, y, b.w, b.h, 6);
-        ctx.fill();
-        // horní odlesk
+        roundRect(x, y, w, h, 6); ctx.fill();
         ctx.fillStyle = 'rgba(255,255,255,0.18)';
-        roundRect(x + 4, y + 4, b.w - 8, 8, 4);
-        ctx.fill();
-        // obrys
-        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+        roundRect(x + 4, y + 4, w - 8, 8, 4); ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.28)';
         ctx.lineWidth = 1;
-        roundRect(x, y, b.w, b.h, 6);
-        ctx.stroke();
+        roundRect(x, y, w, h, 6); ctx.stroke();
+        ctx.restore();
       }
     }
 
@@ -206,33 +385,47 @@
       ctx.closePath();
     }
 
+    // ---------- Smyčka s pevným krokem ----------
     let last = performance.now();
+    let acc = 0;
     function loop(now) {
-      let dt = (now - last) / 1000;
+      let frame = (now - last) / 1000;
       last = now;
-      if (dt > 0.033) dt = 0.033; // strop kvůli stabilitě
-      physics(dt);
+      if (frame > 0.1) frame = 0.1;
+      acc += frame;
+      let steps = 0;
+      while (acc >= STEP && steps < 8) { step(STEP); acc -= STEP; steps++; }
       draw();
+      updateScore();
       requestAnimationFrame(loop);
     }
-    requestAnimationFrame(loop);
 
-    // --- Vstup ---
-    function pointerX(e) {
-      const rect = canvas.getBoundingClientRect();
-      const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-      return cx;
+    // ---------- Vstup ----------
+    function resize() {
+      DPR = Math.min(window.devicePixelRatio || 1, 2);
+      W = window.innerWidth;
+      H = window.innerHeight;
+      canvas.width = W * DPR;
+      canvas.height = H * DPR;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      rebuildStatics();
     }
-    canvas.addEventListener('pointerdown', function (e) {
-      addBlock(pointerX(e));
-    });
+    window.addEventListener('resize', resize);
 
+    canvas.addEventListener('pointerdown', function (e) {
+      const rect = canvas.getBoundingClientRect();
+      addBlock(e.clientX - rect.left);
+    });
     document.getElementById('reset').addEventListener('click', function () {
-      blocks = [];
+      bodies = statics.slice();
       updateScore();
     });
 
+    resize();
     updateScore();
+    requestAnimationFrame(loop);
   })();
   </script>
 </body>

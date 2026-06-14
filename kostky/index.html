@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Stavba věže – skládání kostek</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: linear-gradient(#1b2735 0%, #090a0f 100%);
+      font-family: system-ui, -apple-system, sans-serif;
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: none;
+    }
+    #game { display: block; width: 100vw; height: 100vh; }
+    #hud {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      text-align: center;
+      pointer-events: none;
+      text-shadow: 0 1px 4px rgba(0,0,0,.6);
+    }
+    #hud h1 { font-size: 18px; font-weight: 600; letter-spacing: .5px; }
+    #hud p { font-size: 13px; opacity: .75; margin-top: 4px; }
+    #score { font-size: 15px; margin-top: 6px; opacity: .9; }
+    #reset {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 22px;
+      border: none;
+      border-radius: 22px;
+      background: rgba(255,255,255,.12);
+      color: #fff;
+      font-size: 14px;
+      backdrop-filter: blur(6px);
+      cursor: pointer;
+    }
+    #reset:active { background: rgba(255,255,255,.25); }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="hud">
+    <h1>🧱 Postav věž</h1>
+    <p>Klepni nebo klikni a umísti kostku</p>
+    <div id="score">Kostky: 0 &middot; Výška: 0</div>
+  </div>
+  <button id="reset">Vyčistit</button>
+
+  <script>
+  (function () {
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+
+    // --- Konfigurace ---
+    const GRAVITY = 2200;          // px/s^2
+    const REST = 0.12;             // odraz
+    const FRICTION = 0.78;         // tlumení vodorovné rychlosti při kontaktu
+    const BLOCK_W = 64;
+    const BLOCK_H = 40;
+    const COLORS = ['#e74c3c','#f39c12','#f1c40f','#2ecc71','#1abc9c','#3498db','#9b59b6','#e84393'];
+
+    let W, H, DPR;
+    let blocks = [];
+
+    function resize() {
+      DPR = Math.min(window.devicePixelRatio || 1, 2);
+      W = window.innerWidth;
+      H = window.innerHeight;
+      canvas.width = W * DPR;
+      canvas.height = H * DPR;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function floorY() { return H - 20; }
+
+    function addBlock(x) {
+      const half = BLOCK_W / 2;
+      x = Math.max(half, Math.min(W - half, x));
+      blocks.push({
+        x: x,
+        y: -BLOCK_H,                          // spadne shora
+        vx: 0,
+        vy: 0,
+        w: BLOCK_W,
+        h: BLOCK_H,
+        color: COLORS[blocks.length % COLORS.length],
+        resting: false
+      });
+      updateScore();
+    }
+
+    function updateScore() {
+      const top = blocks.reduce((m, b) => Math.min(m, b.y - b.h / 2), floorY());
+      const height = Math.max(0, Math.round((floorY() - top) / BLOCK_H));
+      scoreEl.innerHTML = 'Kostky: ' + blocks.length + ' &middot; Výška: ' + height;
+    }
+
+    function overlap(a, b) {
+      return Math.abs(a.x - b.x) < (a.w + b.w) / 2 &&
+             Math.abs(a.y - b.y) < (a.h + b.h) / 2;
+    }
+
+    function physics(dt) {
+      // integrace
+      for (const b of blocks) {
+        b.vy += GRAVITY * dt;
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+      }
+
+      // několik iterací řešení kolizí pro stabilní stoh
+      for (let it = 0; it < 6; it++) {
+        // podlaha a stěny
+        for (const b of blocks) {
+          const half = b.w / 2;
+          if (b.x - half < 0) { b.x = half; b.vx = -b.vx * REST; }
+          if (b.x + half > W) { b.x = W - half; b.vx = -b.vx * REST; }
+          const bottom = b.y + b.h / 2;
+          if (bottom > floorY()) {
+            b.y = floorY() - b.h / 2;
+            if (b.vy > 0) b.vy = -b.vy * REST;
+            b.vx *= FRICTION;
+            if (Math.abs(b.vy) < 12) b.vy = 0;
+          }
+        }
+        // kostka vs kostka
+        for (let i = 0; i < blocks.length; i++) {
+          for (let j = i + 1; j < blocks.length; j++) {
+            const a = blocks[i], b = blocks[j];
+            if (!overlap(a, b)) continue;
+            const dx = (a.w + b.w) / 2 - Math.abs(a.x - b.x);
+            const dy = (a.h + b.h) / 2 - Math.abs(a.y - b.y);
+            if (dx < dy) {
+              // rozsuň vodorovně
+              const s = a.x < b.x ? -1 : 1;
+              a.x += s * dx / 2;
+              b.x -= s * dx / 2;
+              const avx = a.vx; a.vx = b.vx * REST; b.vx = avx * REST;
+            } else {
+              // rozsuň svisle (stohování)
+              const s = a.y < b.y ? -1 : 1;
+              a.y += s * dy / 2;
+              b.y -= s * dy / 2;
+              // spodní kostka tlačí horní -> přenos rychlosti
+              if (s < 0) { // a je nahoře
+                if (a.vy > 0) a.vy *= -REST;
+                if (b.vy < 0) b.vy *= -REST;
+              } else {
+                if (b.vy > 0) b.vy *= -REST;
+                if (a.vy < 0) a.vy *= -REST;
+              }
+              a.vx *= FRICTION;
+              b.vx *= FRICTION;
+            }
+          }
+        }
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // podlaha
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(0, floorY(), W, H - floorY());
+
+      for (const b of blocks) {
+        const x = b.x - b.w / 2, y = b.y - b.h / 2;
+        // tělo
+        ctx.fillStyle = b.color;
+        roundRect(x, y, b.w, b.h, 6);
+        ctx.fill();
+        // horní odlesk
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        roundRect(x + 4, y + 4, b.w - 8, 8, 4);
+        ctx.fill();
+        // obrys
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+        ctx.lineWidth = 1;
+        roundRect(x, y, b.w, b.h, 6);
+        ctx.stroke();
+      }
+    }
+
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    let last = performance.now();
+    function loop(now) {
+      let dt = (now - last) / 1000;
+      last = now;
+      if (dt > 0.033) dt = 0.033; // strop kvůli stabilitě
+      physics(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    // --- Vstup ---
+    function pointerX(e) {
+      const rect = canvas.getBoundingClientRect();
+      const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+      return cx;
+    }
+    canvas.addEventListener('pointerdown', function (e) {
+      addBlock(pointerX(e));
+    });
+
+    document.getElementById('reset').addEventListener('click', function () {
+      blocks = [];
+      updateScore();
+    });
+
+    updateScore();
+  })();
+  </script>
+</body>
+</html>

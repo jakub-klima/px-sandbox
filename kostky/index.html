@@ -15,7 +15,8 @@
       user-select: none;
       touch-action: none;
     }
-    #game { display: block; width: 100vw; height: 100vh; }
+    body { display: flex; flex-direction: column; }
+    #game { flex: 1 1 auto; width: 100%; min-height: 0; display: block; }
     #hud {
       position: fixed;
       top: 12px;
@@ -30,12 +31,14 @@
     #hud p { font-size: 13px; opacity: .75; margin-top: 4px; }
     #score { font-size: 15px; margin-top: 6px; opacity: .9; }
     #controls {
-      position: fixed;
-      bottom: 16px;
-      left: 50%;
-      transform: translateX(-50%);
+      flex: 0 0 auto;
       display: flex;
+      justify-content: center;
       gap: 10px;
+      padding: 12px;
+      background: rgba(9,10,15,.85);
+      border-top: 1px solid rgba(255,255,255,.12);
+      box-shadow: 0 -6px 18px rgba(0,0,0,.35);
     }
     #controls button {
       padding: 10px 20px;
@@ -488,12 +491,10 @@
     // ---------- Vstup ----------
     function resize() {
       DPR = Math.min(window.devicePixelRatio || 1, 2);
-      W = window.innerWidth;
-      H = window.innerHeight;
+      W = canvas.clientWidth;
+      H = canvas.clientHeight;
       canvas.width = W * DPR;
       canvas.height = H * DPR;
-      canvas.style.width = W + 'px';
-      canvas.style.height = H + 'px';
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       rebuildStatics();
     }

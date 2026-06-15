@@ -29,12 +29,16 @@
     #hud h1 { font-size: 18px; font-weight: 600; letter-spacing: .5px; }
     #hud p { font-size: 13px; opacity: .75; margin-top: 4px; }
     #score { font-size: 15px; margin-top: 6px; opacity: .9; }
-    #reset {
+    #controls {
       position: fixed;
       bottom: 16px;
       left: 50%;
       transform: translateX(-50%);
-      padding: 10px 22px;
+      display: flex;
+      gap: 10px;
+    }
+    #controls button {
+      padding: 10px 20px;
       border: none;
       border-radius: 22px;
       background: rgba(255,255,255,.12);
@@ -43,17 +47,24 @@
       backdrop-filter: blur(6px);
       cursor: pointer;
     }
-    #reset:active { background: rgba(255,255,255,.25); }
+    #controls button:active { background: rgba(255,255,255,.25); }
+    #mode.destroy {
+      background: rgba(231,76,60,.85);
+      box-shadow: 0 0 16px rgba(231,76,60,.6);
+    }
   </style>
 </head>
 <body>
   <canvas id="game"></canvas>
   <div id="hud">
     <h1>🧱 Postav věž</h1>
-    <p>Klepni nebo klikni a umísti kostku</p>
+    <p id="hint">Klepni nebo klikni a umísti kostku</p>
     <div id="score">Kostky: 0 &middot; Výška: 0</div>
   </div>
-  <button id="reset">Vyčistit</button>
+  <div id="controls">
+    <button id="mode">🧱 Stavět</button>
+    <button id="reset">Vyčistit</button>
+  </div>
 
   <script>
   (function () {
@@ -350,6 +361,55 @@
       updateScore();
     }
 
+    // ---------- Ničení kostek ----------
+    function blockAt(px, py) {
+      // projdi od vrchu (poslední přidané) – vrať dynamickou kostku pod bodem
+      for (let i = bodies.length - 1; i >= 0; i--) {
+        const b = bodies[i];
+        if (b.isStatic) continue;
+        const local = rot(px - b.pos.x, py - b.pos.y, -b.angle);
+        const hw = b.verts[1].x, hh = b.verts[2].y;
+        if (Math.abs(local.x) <= hw && Math.abs(local.y) <= hh) return b;
+      }
+      return null;
+    }
+
+    function destroyBlock(b) {
+      const idx = bodies.indexOf(b);
+      if (idx === -1) return;
+      bodies.splice(idx, 1);
+      // zruš uložené impulzy, kterých se kostka účastnila
+      for (const key of Array.from(cache.keys())) {
+        const parts = key.split('_');
+        if (parts[0] == b.id || parts[1] == b.id) cache.delete(key);
+      }
+      spawnPop(b.pos.x, b.pos.y, b.color);
+      updateScore();
+    }
+
+    // efekt "rozprsknutí" při zničení
+    const pops = [];
+    function spawnPop(x, y, color) {
+      for (let i = 0; i < 14; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 80 + Math.random() * 220;
+        pops.push({
+          x: x, y: y,
+          vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60,
+          life: 1, color: color, r: 2 + Math.random() * 4
+        });
+      }
+    }
+    function updatePops(dt) {
+      for (let i = pops.length - 1; i >= 0; i--) {
+        const p = pops[i];
+        p.vy += GRAVITY * 0.6 * dt;
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        p.life -= dt * 1.6;
+        if (p.life <= 0) pops.splice(i, 1);
+      }
+    }
+
     function updateScore() {
       let top = floorY(), count = 0;
       for (const b of bodies) {
@@ -387,6 +447,16 @@
         roundRect(x, y, w, h, 6); ctx.stroke();
         ctx.restore();
       }
+
+      // částice z ničení
+      for (const p of pops) {
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
     }
 
     function roundRect(x, y, w, h, r) {
@@ -409,6 +479,7 @@
       acc += frame;
       let steps = 0;
       while (acc >= STEP && steps < 8) { step(STEP); acc -= STEP; steps++; }
+      updatePops(Math.min(frame, 0.05));
       draw();
       updateScore();
       requestAnimationFrame(loop);
@@ -428,13 +499,37 @@
     }
     window.addEventListener('resize', resize);
 
+    let destroyMode = false;
+    const modeBtn = document.getElementById('mode');
+    const hint = document.getElementById('hint');
+    function setMode(destroy) {
+      destroyMode = destroy;
+      modeBtn.classList.toggle('destroy', destroy);
+      modeBtn.textContent = destroy ? '💥 Ničit' : '🧱 Stavět';
+      hint.textContent = destroy
+        ? 'Klepni na kostku a znič ji (pravé tlačítko ničí vždy)'
+        : 'Klepni nebo klikni a umísti kostku';
+    }
+    modeBtn.addEventListener('click', function () { setMode(!destroyMode); });
+
     canvas.addEventListener('pointerdown', function (e) {
       const rect = canvas.getBoundingClientRect();
-      addBlock(e.clientX - rect.left);
+      const px = e.clientX - rect.left, py = e.clientY - rect.top;
+      // pravé tlačítko (nebo režim ničení) maže kostku pod kurzorem
+      if (destroyMode || e.button === 2) {
+        const b = blockAt(px, py);
+        if (b) destroyBlock(b);
+      } else {
+        addBlock(px);
+      }
     });
+    // pravé tlačítko nemá vyvolávat kontextové menu
+    canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
     document.getElementById('reset').addEventListener('click', function () {
       bodies = statics.slice();
       cache.clear();
+      pops.length = 0;
       updateScore();
     });
 

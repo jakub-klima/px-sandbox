@@ -822,7 +822,7 @@ function clearLog() { document.getElementById('log').innerHTML = ''; }
 
 function pct(cur, max) { return Math.max(0, Math.min(100, (cur / max) * 100)).toFixed(1) + '%'; }
 function rand(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
-function show(id) { document.getElementById(id).style.display = ''; }
+function show(id) { document.getElementById(id).style.display = 'block'; }
 function hide(id) { document.getElementById(id).style.display = 'none'; }
 
 function die() {

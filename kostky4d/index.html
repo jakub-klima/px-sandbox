@@ -64,7 +64,7 @@
   <canvas id="game"></canvas>
   <div id="hud">
     <h1>🧊 Postav věž 4D</h1>
-    <p id="hint">Klepni nebo klikni na sloupec a umísti tesserakt</p>
+    <p id="hint">Klepni nebo klikni a pusť tesserakt – spadne a naskládá se</p>
     <div id="score">Tesserakty: 0 &middot; Výška: 0</div>
   </div>
   <div id="controls">
@@ -82,18 +82,21 @@
     const scoreEl = document.getElementById('score');
 
     // ---------- Konfigurace ----------
-    const COL_W = 108;        // šířka sloupce (px)
-    const CELL_H = 86;        // výška jedné buňky věže (px)
-    const SIZE = 30;          // velikost tesseraktu (px)
+    const SIZE = 27;          // velikost tesseraktu pro projekci (px)
+    const HALF = 40;          // poloviční rozměr kolizní krabice (px)
     const DIST4 = 2.6;        // vzdálenost projekce 4D -> 3D
     const DIST3 = 4.2;        // vzdálenost projekce 3D -> 2D
+    const GRAVITY = 2000;     // px/s^2
+    const STEP = 1 / 120;     // pevný krok simulace
+    const ITER = 12;          // iterace kolizního řešiče (vyšší = stabilnější věž)
+    const VMAX = 1400;        // mezní rychlost
     const COLORS = ['#e74c3c','#f39c12','#f1c40f','#2ecc71','#1abc9c','#3498db','#9b59b6','#e84393'];
 
     let W, H, DPR;
-    let columns = [];         // pole sloupců, každý je pole tesseraktů (zdola nahoru)
-    let colCount = 0;
+    let bodies = [];          // padající / naskládané tesserakty
     let uid = 0;
     let spin = true;          // probíhá 4D rotace?
+    let pendingImpact = 0;    // nejsilnější náraz v rámci snímku (pro zvuk)
 
     // ---------- Zvuky (syntetizované přes Web Audio, bez externích souborů) ----------
     const Sound = (function () {
@@ -136,6 +139,11 @@
         // jemně "zazvonivý" tón – tesserakt se objeví ze 4. rozměru
         place: function () { tone(520, 0.10, 'triangle', 0.10, 760); },
         destroy: function () { noise(0.3, 0.22); tone(150, 0.28, 'sawtooth', 0.10, 40); },
+        impact: function (speed) {
+          const gain = Math.min(0.16, speed / 1400 * 0.16);
+          if (gain < 0.012) return;
+          tone(120 + Math.random() * 40, 0.06, 'triangle', gain, 70);
+        },
         toggle: function () { enabled = !enabled; if (enabled) ensure(); return enabled; },
         isOn: function () { return enabled; },
         wake: function () { ensure(); }
@@ -190,50 +198,103 @@
       };
     }
 
-    // ---------- Stav věže ----------
-    function rebuildColumns() {
-      const next = Math.max(1, Math.floor(W / COL_W));
-      const old = columns;
-      columns = [];
-      for (let i = 0; i < next; i++) columns.push(old[i] || []);
-      colCount = next;
-    }
-
-    function colCenterX(col) {
-      const total = colCount * COL_W;
-      const left = (W - total) / 2;
-      return left + col * COL_W + COL_W / 2;
-    }
+    // ---------- Svět ----------
     function floorY() { return H - 24; }
 
-    function addTesseract(col) {
-      if (col < 0 || col >= colCount) return;
-      columns[col].push({
+    function addTesseract(x) {
+      x = Math.max(HALF, Math.min(W - HALF, x));
+      bodies.push({
         id: uid++,
+        x: x, y: -HALF,            // start nad plátnem – tesserakt spadne dolů
+        vx: 0, vy: 0,
         color: COLORS[uid % COLORS.length],
-        phase: Math.random() * Math.PI * 2,   // odlišný počátek rotace
-        born: performance.now()
+        phase: Math.random() * Math.PI * 2,
+        rest: false                // leží v klidu na podložce/jiném tesseraktu?
       });
       Sound.place();
       updateScore();
     }
 
-    function destroyTop(col) {
-      if (col < 0 || col >= colCount) return;
-      const stack = columns[col];
-      if (!stack.length) return;
-      const t = stack.pop();
-      const lvl = stack.length;
-      spawnPop(colCenterX(col), floorY() - (lvl + 0.5) * CELL_H, t.color);
+    function bodyAt(px, py) {
+      // od vrchu (poslední přidané) – vrať tesserakt pod kurzorem
+      for (let i = bodies.length - 1; i >= 0; i--) {
+        const b = bodies[i];
+        if (Math.abs(px - b.x) <= HALF && Math.abs(py - b.y) <= HALF) return b;
+      }
+      return null;
+    }
+
+    function destroyBody(b) {
+      const idx = bodies.indexOf(b);
+      if (idx === -1) return;
+      bodies.splice(idx, 1);
+      spawnPop(b.x, b.y, b.color);
       Sound.destroy();
       updateScore();
     }
 
-    function columnAt(px) {
-      const total = colCount * COL_W;
-      const left = (W - total) / 2;
-      const col = Math.floor((px - left) / COL_W);
-      return (col >= 0 && col < colCount) ? col : -1;
+    // ---------- Krok fyziky (gravitace + kolize krabic) ----------
+    function step(dt) {
+      // integrace gravitace + mezní rychlost
+      for (const b of bodies) {
+        b.vy += GRAVITY * dt;
+        if (b.vy > VMAX) b.vy = VMAX; else if (b.vy < -VMAX) b.vy = -VMAX;
+        if (b.vx > VMAX) b.vx = VMAX; else if (b.vx < -VMAX) b.vx = -VMAX;
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        b.rest = false;
+      }
+
+      // iterativní řešení kolizí (relaxace pozic + nepružné tlumení rychlostí)
+      for (let it = 0; it < ITER; it++) {
+        // podlaha a stěny
+        for (const b of bodies) {
+          if (b.y + HALF > floorY()) {
+            b.y = floorY() - HALF;
+            if (b.vy > 0) { if (b.vy > pendingImpact) pendingImpact = b.vy; b.vy = 0; }
+            b.vx *= 0.86;                 // tření o zem
+            b.rest = true;
+          }
+          if (b.x - HALF < 0) { b.x = HALF; if (b.vx < 0) b.vx = 0; }
+          if (b.x + HALF > W) { b.x = W - HALF; if (b.vx > 0) b.vx = 0; }
+        }
+        // dvojice tesseraktů – kolize os-zarovnaných krabic
+        for (let i = 0; i < bodies.length; i++) {
+          for (let j = i + 1; j < bodies.length; j++) {
+            const A = bodies[i], B = bodies[j];
+            const dx = B.x - A.x, dy = B.y - A.y;
+            const ox = 2 * HALF - Math.abs(dx);
+            const oy = 2 * HALF - Math.abs(dy);
+            if (ox <= 0 || oy <= 0) continue;          // nepřekrývají se
+            if (ox < oy) {
+              // rozsuň podél X (menší průnik)
+              const push = (dx < 0 ? -ox : ox) / 2;
+              A.x -= push; B.x += push;
+              const m = (A.vx + B.vx) / 2;             // nepružné po ose X
+              A.vx = m; B.vx = m;
+            } else {
+              // rozsuň podél Y
+              const push = (dy < 0 ? -oy : oy) / 2;
+              A.y -= push; B.y += push;
+              const rel = Math.abs(B.vy - A.vy);
+              if (rel > pendingImpact) pendingImpact = rel;
+              const m = (A.vy + B.vy) / 2;             // nepružné po ose Y
+              A.vy = m; B.vy = m;
+              // jemné tření v místě dotyku
+              const fm = (A.vx + B.vx) / 2;
+              A.vx += (fm - A.vx) * 0.25;
+              B.vx += (fm - B.vx) * 0.25;
+              if (dy > 0) A.rest = true; else B.rest = true;
+            }
+          }
+        }
+      }
+
+      // utlumení drobného chvění u ležících těles (ať věž "usne")
+      for (const b of bodies) {
+        if (b.rest && Math.abs(b.vy) < 6) b.vy = 0;
+        if (b.rest) b.vx *= 0.9;
+      }
     }
 
     // ---------- Efekt rozprsknutí při zničení ----------
@@ -261,43 +322,43 @@
 
     // ---------- Skóre ----------
     function updateScore() {
-      let count = 0, tallest = 0;
-      for (const stack of columns) {
-        count += stack.length;
-        if (stack.length > tallest) tallest = stack.length;
+      let tallest = 0;
+      for (const b of bodies) {
+        const top = floorY() - (b.y - HALF);
+        if (top > tallest) tallest = top;
       }
-      scoreEl.innerHTML = 'Tesserakty: ' + count + ' &middot; Výška: ' + tallest;
+      const height = Math.max(0, Math.round(tallest / (2 * HALF)));
+      scoreEl.innerHTML = 'Tesserakty: ' + bodies.length + ' &middot; Výška: ' + height;
     }
 
     // ---------- Render ----------
-    function drawTesseract(t, cx, cy, time) {
+    function drawTesseract(b, time) {
       const spinT = spin ? time : 0;
-      const axw = spinT * 0.55 + t.phase;
-      const ayw = spinT * 0.32 + t.phase * 0.7;
+      const axw = spinT * 0.55 + b.phase;
+      const ayw = spinT * 0.32 + b.phase * 0.7;
       const azw = spinT * 0.18;
-      const ry = spinT * 0.25 + t.phase * 0.3;
+      const ry = spinT * 0.25 + b.phase * 0.3;
 
       const pts = new Array(16);
       for (let i = 0; i < 16; i++) {
-        pts[i] = project(VERTS[i], axw, ayw, azw, ry, SIZE, cx, cy);
+        pts[i] = project(VERTS[i], axw, ayw, azw, ry, SIZE, b.x, b.y);
       }
 
       // hrany se stínováním podle hloubky (vzdálenější jsou tlumenější)
       ctx.lineCap = 'round';
       for (const e of EDGES) {
-        const a = pts[e[0]], b = pts[e[1]];
-        const depth = (a.depth + b.depth) / 2;            // -1..+1 přibližně
+        const a = pts[e[0]], c = pts[e[1]];
+        const depth = (a.depth + c.depth) / 2;
         const shade = Math.max(0.25, Math.min(1, 0.65 + depth * 0.45));
         ctx.globalAlpha = shade;
-        ctx.strokeStyle = t.color;
+        ctx.strokeStyle = b.color;
         ctx.lineWidth = 1 + Math.max(0, depth) * 1.6;
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
+        ctx.lineTo(c.x, c.y);
         ctx.stroke();
       }
       // vrcholy jako světélkující body
-      ctx.globalAlpha = 1;
       for (let i = 0; i < 16; i++) {
         const p = pts[i];
         ctx.fillStyle = '#fff';
@@ -316,27 +377,8 @@
       ctx.fillStyle = 'rgba(255,255,255,0.06)';
       ctx.fillRect(0, floorY(), W, H - floorY());
 
-      // naznačené sloupce (vodicí linky)
-      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-      ctx.lineWidth = 1;
-      for (let c = 0; c <= colCount; c++) {
-        const total = colCount * COL_W;
-        const x = (W - total) / 2 + c * COL_W;
-        ctx.beginPath();
-        ctx.moveTo(x, 40);
-        ctx.lineTo(x, floorY());
-        ctx.stroke();
-      }
-
-      // tesserakty zdola nahoru v každém sloupci
-      for (let c = 0; c < colCount; c++) {
-        const cx = colCenterX(c);
-        const stack = columns[c];
-        for (let lvl = 0; lvl < stack.length; lvl++) {
-          const cy = floorY() - (lvl + 0.5) * CELL_H;
-          drawTesseract(stack[lvl], cx, cy, time);
-        }
-      }
+      // tesserakty
+      for (const b of bodies) drawTesseract(b, time);
 
       // částice z ničení
       for (const p of pops) {
@@ -349,14 +391,21 @@
       ctx.globalAlpha = 1;
     }
 
-    // ---------- Smyčka ----------
+    // ---------- Smyčka s pevným krokem ----------
     let last = performance.now();
+    let acc = 0;
     function loop(now) {
       let frame = (now - last) / 1000;
       last = now;
       if (frame > 0.1) frame = 0.1;
-      updatePops(frame);
+      acc += frame;
+      let steps = 0;
+      pendingImpact = 0;
+      while (acc >= STEP && steps < 8) { step(STEP); acc -= STEP; steps++; }
+      if (pendingImpact > 200) Sound.impact(pendingImpact);
+      updatePops(Math.min(frame, 0.05));
       draw(now / 1000);
+      updateScore();
       requestAnimationFrame(loop);
     }
 
@@ -368,7 +417,6 @@
       canvas.width = W * DPR;
       canvas.height = H * DPR;
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      rebuildColumns();
       updateScore();
     }
     window.addEventListener('resize', resize);
@@ -381,8 +429,8 @@
       modeBtn.classList.toggle('destroy', destroy);
       modeBtn.textContent = destroy ? '💥 Ničit' : '🧊 Stavět';
       hint.textContent = destroy
-        ? 'Klepni na sloupec a sundej horní tesserakt (pravé tlačítko ničí vždy)'
-        : 'Klepni nebo klikni na sloupec a umísti tesserakt';
+        ? 'Klepni na tesserakt a znič ho (pravé tlačítko ničí vždy)'
+        : 'Klepni nebo klikni a pusť tesserakt – spadne a naskládá se';
     }
     modeBtn.addEventListener('click', function () { setMode(!destroyMode); });
 
@@ -402,16 +450,18 @@
     canvas.addEventListener('pointerdown', function (e) {
       Sound.wake();
       const rect = canvas.getBoundingClientRect();
-      const px = e.clientX - rect.left;
-      const col = columnAt(px);
-      if (col === -1) return;
-      if (destroyMode || e.button === 2) destroyTop(col);
-      else addTesseract(col);
+      const px = e.clientX - rect.left, py = e.clientY - rect.top;
+      if (destroyMode || e.button === 2) {
+        const b = bodyAt(px, py);
+        if (b) destroyBody(b);
+      } else {
+        addTesseract(px);
+      }
     });
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
     document.getElementById('reset').addEventListener('click', function () {
-      for (let c = 0; c < colCount; c++) columns[c] = [];
+      bodies = [];
       pops.length = 0;
       updateScore();
     });

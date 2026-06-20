@@ -4,4 +4,3 @@
 
 - Změny, o které požádám, pushuj rovnou do větve `main`.
 - Nevytvářej pull requesty.
-

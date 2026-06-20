@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sudoku pro děti – 4×4</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      min-height: 100%;
+      background: linear-gradient(160deg, #fceabb 0%, #f8b500 100%);
+      font-family: system-ui, -apple-system, sans-serif;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+      min-height: 100vh;
+    }
+    h1 {
+      color: #5a3e00;
+      font-size: 26px;
+      margin-bottom: 4px;
+      text-shadow: 0 1px 0 rgba(255,255,255,.5);
+    }
+    p.hint {
+      color: #7a5800;
+      font-size: 14px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    #board {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      background: #5a3e00;
+      padding: 6px;
+      border-radius: 14px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.25);
+      width: min(90vw, 360px);
+      aspect-ratio: 1 / 1;
+    }
+    .cell {
+      background: #fffdf5;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(28px, 11vw, 48px);
+      font-weight: 700;
+      color: #5a3e00;
+      cursor: pointer;
+      transition: transform .08s, background .15s;
+    }
+    /* zvýraznění 2×2 bloků barevným pozadím */
+    .cell.block-a { background: #fffdf5; }
+    .cell.block-b { background: #fdf0d5; }
+    .cell.fixed {
+      color: #b07400;
+      cursor: default;
+      background: #f3e2bd;
+    }
+    .cell.selected {
+      outline: 3px solid #e8590c;
+      transform: scale(1.04);
+    }
+    .cell.wrong {
+      background: #ffd0d0 !important;
+      color: #c0392b;
+    }
+    #picker {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    #picker button {
+      width: 56px;
+      height: 56px;
+      border: none;
+      border-radius: 14px;
+      background: #fff;
+      color: #5a3e00;
+      font-size: 26px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,.15);
+    }
+    #picker button:active { transform: scale(.92); }
+    #picker button.erase { font-size: 22px; background: #ffe0e0; }
+    #controls {
+      margin-top: 18px;
+      display: flex;
+      gap: 10px;
+    }
+    #controls button {
+      padding: 12px 22px;
+      border: none;
+      border-radius: 22px;
+      background: #5a3e00;
+      color: #fff;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    #controls button:active { opacity: .85; }
+    #message {
+      margin-top: 18px;
+      font-size: 20px;
+      font-weight: 700;
+      color: #2e7d32;
+      min-height: 26px;
+      text-align: center;
+    }
+    #message.win { animation: pop .4s ease; }
+    @keyframes pop {
+      0% { transform: scale(.6); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <h1>🦉 Sudoku pro děti</h1>
+  <p class="hint">Doplň čísla 1–4 tak, aby v každém řádku, sloupci<br>i malém čtverci 2×2 byla všechna čísla právě jednou.</p>
+
+  <div id="board"></div>
+
+  <div id="picker">
+    <button data-num="1">1</button>
+    <button data-num="2">2</button>
+    <button data-num="3">3</button>
+    <button data-num="4">4</button>
+    <button class="erase" data-num="0">⌫</button>
+  </div>
+
+  <div id="controls">
+    <button id="check">Zkontrolovat</button>
+    <button id="new">Nová hra</button>
+  </div>
+
+  <div id="message"></div>
+
+  <script>
+    const boardEl = document.getElementById('board');
+    const messageEl = document.getElementById('message');
+    const N = 4;
+
+    let solution = [];   // kompletní vyřešená mřížka
+    let puzzle = [];      // aktuální stav (0 = prázdné)
+    let fixed = [];       // true = pevné zadané číslo
+    let selected = null;  // index vybrané buňky
+
+    // --- generování řešení ---
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function isValid(grid, idx, val) {
+      const row = Math.floor(idx / N), col = idx % N;
+      for (let c = 0; c < N; c++) if (grid[row * N + c] === val) return false;
+      for (let r = 0; r < N; r++) if (grid[r * N + col] === val) return false;
+      const br = Math.floor(row / 2) * 2, bc = Math.floor(col / 2) * 2;
+      for (let r = br; r < br + 2; r++)
+        for (let c = bc; c < bc + 2; c++)
+          if (grid[r * N + c] === val) return false;
+      return true;
+    }
+
+    function solve(grid, idx = 0) {
+      if (idx === N * N) return true;
+      if (grid[idx] !== 0) return solve(grid, idx + 1);
+      for (const val of shuffle([1, 2, 3, 4])) {
+        if (isValid(grid, idx, val)) {
+          grid[idx] = val;
+          if (solve(grid, idx + 1)) return true;
+          grid[idx] = 0;
+        }
+      }
+      return false;
+    }
+
+    function newGame() {
+      solution = new Array(N * N).fill(0);
+      solve(solution);
+
+      // počet odkrytých polí – pro děti necháme dost nápověd (8–9 z 16)
+      const clues = 8 + Math.floor(Math.random() * 2);
+      const positions = shuffle([...Array(N * N).keys()]);
+      const reveal = new Set(positions.slice(0, clues));
+
+      puzzle = solution.map((v, i) => (reveal.has(i) ? v : 0));
+      fixed = puzzle.map(v => v !== 0);
+      selected = null;
+      messageEl.textContent = '';
+      messageEl.className = '';
+      render();
+    }
+
+    function blockClass(idx) {
+      const row = Math.floor(idx / N), col = idx % N;
+      const block = Math.floor(row / 2) + Math.floor(col / 2);
+      return block % 2 === 0 ? 'block-a' : 'block-b';
+    }
+
+    function render() {
+      boardEl.innerHTML = '';
+      puzzle.forEach((val, idx) => {
+        const cell = document.createElement('div');
+        cell.className = 'cell ' + blockClass(idx);
+        if (fixed[idx]) cell.classList.add('fixed');
+        if (selected === idx) cell.classList.add('selected');
+        cell.textContent = val === 0 ? '' : val;
+        if (!fixed[idx]) {
+          cell.addEventListener('click', () => {
+            selected = idx;
+            messageEl.textContent = '';
+            messageEl.className = '';
+            render();
+          });
+        }
+        boardEl.appendChild(cell);
+      });
+    }
+
+    function placeNumber(num) {
+      if (selected === null || fixed[selected]) return;
+      puzzle[selected] = num;
+      messageEl.textContent = '';
+      messageEl.className = '';
+      render();
+    }
+
+    document.querySelectorAll('#picker button').forEach(btn => {
+      btn.addEventListener('click', () => placeNumber(parseInt(btn.dataset.num, 10)));
+    });
+
+    document.getElementById('new').addEventListener('click', newGame);
+
+    document.getElementById('check').addEventListener('click', () => {
+      const filled = puzzle.every(v => v !== 0);
+      if (!filled) {
+        messageEl.textContent = 'Ještě nejsou vyplněná všechna políčka 🙂';
+        messageEl.className = '';
+        return;
+      }
+      const cells = boardEl.children;
+      let allCorrect = true;
+      puzzle.forEach((v, i) => {
+        if (v !== solution[i]) {
+          allCorrect = false;
+          if (!fixed[i]) cells[i].classList.add('wrong');
+        }
+      });
+      if (allCorrect) {
+        messageEl.textContent = '🎉 Výborně! Máš to správně!';
+        messageEl.className = 'win';
+      } else {
+        messageEl.textContent = 'Některá čísla nejsou správně, zkus to znovu 💪';
+        messageEl.className = '';
+      }
+    });
+
+    newGame();
+  </script>
+</body>
+</html>

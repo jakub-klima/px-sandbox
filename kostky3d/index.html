@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Stavba věže 3D – skládání kostek</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: linear-gradient(#1b2735 0%, #090a0f 100%);
+      font-family: system-ui, -apple-system, sans-serif;
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: none;
+    }
+    body { display: flex; flex-direction: column; }
+    #game { flex: 1 1 auto; width: 100%; min-height: 0; display: block; }
+    #hud {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      text-align: center;
+      pointer-events: none;
+      text-shadow: 0 1px 4px rgba(0,0,0,.6);
+    }
+    #hud h1 { font-size: 18px; font-weight: 600; letter-spacing: .5px; }
+    #hud p { font-size: 13px; opacity: .75; margin-top: 4px; }
+    #score { font-size: 15px; margin-top: 6px; opacity: .9; }
+    #controls {
+      flex: 0 0 auto;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      padding: 12px;
+      background: rgba(9,10,15,.85);
+      border-top: 1px solid rgba(255,255,255,.12);
+      box-shadow: 0 -6px 18px rgba(0,0,0,.35);
+      flex-wrap: wrap;
+    }
+    #controls button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 22px;
+      background: rgba(255,255,255,.12);
+      color: #fff;
+      font-size: 14px;
+      backdrop-filter: blur(6px);
+      cursor: pointer;
+    }
+    #controls button:active { background: rgba(255,255,255,.25); }
+    #mode.destroy {
+      background: rgba(231,76,60,.85);
+      box-shadow: 0 0 16px rgba(231,76,60,.6);
+    }
+    #sound.off { opacity: .55; }
+    #orbit.on { background: rgba(52,152,219,.8); }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="hud">
+    <h1>🧱 Postav věž 3D</h1>
+    <p id="hint">Klepni nebo klikni na plochu a umísti kostku</p>
+    <div id="score">Kostky: 0 &middot; Výška: 0</div>
+  </div>
+  <div id="controls">
+    <button id="mode">🧱 Stavět</button>
+    <button id="orbit">🔄 Otáčet</button>
+    <button id="sound">🔊 Zvuk</button>
+    <button id="reset">Vyčistit</button>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+      "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+    }
+  }
+  </script>
+
+  <script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+  import * as CANNON from 'cannon-es';
+
+  'use strict';
+
+  // ---------- Konfigurace ----------
+  const BLOCK = 1.2;                 // hrana kostky (svět. jednotky)
+  const HALF = BLOCK / 2;
+  const GROUND = 9;                  // poloměr herní plochy
+  const COLORS = [0xe74c3c, 0xf39c12, 0xf1c40f, 0x2ecc71, 0x1abc9c, 0x3498db, 0x9b59b6, 0xe84393];
+
+  const scoreEl = document.getElementById('score');
+  const canvas = document.getElementById('game');
+
+  // ---------- Zvuky (syntetizované přes Web Audio, bez externích souborů) ----------
+  const Sound = (function () {
+    let actx = null, enabled = true;
+    function ensure() {
+      if (!actx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) actx = new AC();
+      }
+      if (actx && actx.state === 'suspended') actx.resume();
+      return actx;
+    }
+    function tone(freq, dur, type, gain, slideTo) {
+      if (!enabled || !ensure()) return;
+      const t = actx.currentTime;
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, t);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(gain, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(actx.destination);
+      o.start(t); o.stop(t + dur + 0.02);
+    }
+    function noise(dur, gain) {
+      if (!enabled || !ensure()) return;
+      const t = actx.currentTime;
+      const n = Math.floor(actx.sampleRate * dur);
+      const buf = actx.createBuffer(1, n, actx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
+      const src = actx.createBufferSource(); src.buffer = buf;
+      const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1400;
+      const g = actx.createGain(); g.gain.value = gain;
+      src.connect(f).connect(g).connect(actx.destination);
+      src.start(t);
+    }
+    return {
+      place: function () { tone(420, 0.08, 'square', 0.10, 580); },
+      destroy: function () { noise(0.3, 0.22); tone(150, 0.28, 'sawtooth', 0.10, 40); },
+      impact: function (speed) {
+        const gain = Math.min(0.16, speed / 14 * 0.16);
+        if (gain < 0.012) return;
+        tone(110 + Math.random() * 40, 0.06, 'triangle', gain, 65);
+      },
+      toggle: function () { enabled = !enabled; if (enabled) ensure(); return enabled; },
+      isOn: function () { return enabled; },
+      wake: function () { ensure(); }
+    };
+  })();
+
+  // ---------- Three.js scéna ----------
+  const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d1320);
+  scene.fog = new THREE.Fog(0x0d1320, 22, 48);
+
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200);
+  camera.position.set(12, 11, 14);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 2.5, 0);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.1;
+  controls.minDistance = 6;
+  controls.maxDistance = 40;
+  controls.maxPolarAngle = Math.PI / 2 - 0.04;
+  controls.enabled = false;          // ve výchozím stavu kamera nereaguje – klik staví
+  controls.update();
+
+  // světla
+  scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x202830, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+  sun.position.set(10, 18, 8);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 60;
+  const sc = sun.shadow.camera;
+  sc.left = -16; sc.right = 16; sc.top = 16; sc.bottom = -16;
+  scene.add(sun);
+
+  // podlaha (vizuál)
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x223047, roughness: 0.95, metalness: 0.0 });
+  const groundMesh = new THREE.Mesh(new THREE.CircleGeometry(GROUND, 64), groundMat);
+  groundMesh.rotation.x = -Math.PI / 2;
+  groundMesh.receiveShadow = true;
+  scene.add(groundMesh);
+
+  const grid = new THREE.GridHelper(GROUND * 2, 30, 0x3a4a63, 0x2a3850);
+  grid.material.transparent = true;
+  grid.material.opacity = 0.4;
+  grid.position.y = 0.001;
+  scene.add(grid);
+
+  // zvýrazněný kruh – ukazatel místa dopadu
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(HALF * 0.9, HALF * 1.15, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.02;
+  scene.add(ring);
+
+  // ---------- Cannon-es svět (fyzika) ----------
+  const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -22, 0) });
+  world.broadphase = new CANNON.SAPBroadphase(world);
+  world.allowSleep = true;
+  world.solver.iterations = 18;
+
+  const defaultMat = new CANNON.Material('box');
+  const contactMat = new CANNON.ContactMaterial(defaultMat, defaultMat, { friction: 0.45, restitution: 0.05 });
+  world.addContactMaterial(contactMat);
+  world.defaultContactMaterial = contactMat;
+
+  // statická podlaha + neviditelné stěny po obvodu (aby kostky nepadaly mimo)
+  const groundBody = new CANNON.Body({ mass: 0, material: defaultMat, shape: new CANNON.Plane() });
+  groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+  world.addBody(groundBody);
+
+  const boxShape = new CANNON.Box(new CANNON.Vec3(HALF, HALF, HALF));
+  const boxGeo = new THREE.BoxGeometry(BLOCK, BLOCK, BLOCK);
+
+  // sdílené geometrie pro lehké zvýraznění hran
+  const edgeGeo = new THREE.EdgesGeometry(boxGeo);
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 });
+
+  let blocks = [];   // { body, mesh, prevSpeed }
+  let uidColor = 0;
+
+  function addBlock(x, z) {
+    const r = Math.hypot(x, z);
+    if (r > GROUND - HALF) { const k = (GROUND - HALF) / r; x *= k; z *= k; }
+
+    const body = new CANNON.Body({ mass: 1, material: defaultMat });
+    body.addShape(boxShape);
+    body.position.set(x, GROUND + BLOCK, z);
+    body.quaternion.setFromEuler(
+      (Math.random() - 0.5) * 0.05, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.05
+    );
+    body.angularDamping = 0.25;
+    body.linearDamping = 0.01;
+    body.sleepSpeedLimit = 0.25;
+    body.sleepTimeLimit = 0.6;
+    world.addBody(body);
+
+    const color = COLORS[uidColor++ % COLORS.length];
+    const mat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.5, metalness: 0.1 });
+    const mesh = new THREE.Mesh(boxGeo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+    mesh.add(edges);
+    scene.add(mesh);
+
+    blocks.push({ body: body, mesh: mesh, prevSpeed: 0 });
+    Sound.place();
+    updateScore();
+  }
+
+  function destroyBlock(item) {
+    const idx = blocks.indexOf(item);
+    if (idx === -1) return;
+    blocks.splice(idx, 1);
+    world.removeBody(item.body);
+    scene.remove(item.mesh);
+    item.mesh.material.dispose();
+    spawnPop(item.mesh.position, item.mesh.material.color);
+    Sound.destroy();
+    updateScore();
+  }
+
+  function clearAll() {
+    for (const it of blocks) {
+      world.removeBody(it.body);
+      scene.remove(it.mesh);
+      it.mesh.material.dispose();
+    }
+    blocks = [];
+    pops.length = 0;
+    updateScore();
+  }
+
+  // ---------- Efekt rozprsknutí při zničení ----------
+  const pops = [];
+  const popGeo = new THREE.SphereGeometry(0.08, 6, 6);
+  function spawnPop(pos, color) {
+    for (let i = 0; i < 16; i++) {
+      const mat = new THREE.MeshBasicMaterial({ color: color });
+      const m = new THREE.Mesh(popGeo, mat);
+      m.position.copy(pos);
+      const a = Math.random() * Math.PI * 2, b = Math.random() * Math.PI;
+      const sp = 2 + Math.random() * 5;
+      scene.add(m);
+      pops.push({
+        mesh: m,
+        v: new THREE.Vector3(
+          Math.cos(a) * Math.sin(b) * sp,
+          Math.abs(Math.cos(b)) * sp + 1.5,
+          Math.sin(a) * Math.sin(b) * sp
+        ),
+        life: 1
+      });
+    }
+  }
+  function updatePops(dt) {
+    for (let i = pops.length - 1; i >= 0; i--) {
+      const p = pops[i];
+      p.v.y -= 14 * dt;
+      p.mesh.position.addScaledVector(p.v, dt);
+      p.life -= dt * 1.6;
+      p.mesh.material.opacity = Math.max(0, p.life);
+      p.mesh.material.transparent = true;
+      const s = Math.max(0.01, p.life);
+      p.mesh.scale.setScalar(s);
+      if (p.life <= 0) {
+        scene.remove(p.mesh);
+        p.mesh.material.dispose();
+        pops.splice(i, 1);
+      }
+    }
+  }
+
+  // ---------- Skóre ----------
+  function updateScore() {
+    let top = 0;
+    for (const it of blocks) {
+      const y = it.body.position.y + HALF;
+      if (y > top) top = y;
+    }
+    const height = Math.max(0, Math.round(top / BLOCK));
+    scoreEl.innerHTML = 'Kostky: ' + blocks.length + ' &middot; Výška: ' + height;
+  }
+
+  // ---------- Vstup: raycast na podlahu ----------
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+
+  function setPointer(e) {
+    const rect = canvas.getBoundingClientRect();
+    pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  }
+
+  function pickGround() {
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObject(groundMesh, false);
+    return hit.length ? hit[0].point : null;
+  }
+
+  function pickBlock() {
+    raycaster.setFromCamera(pointer, camera);
+    const meshes = blocks.map(function (b) { return b.mesh; });
+    const hit = raycaster.intersectObjects(meshes, false);
+    if (!hit.length) return null;
+    const m = hit[0].object;
+    return blocks.find(function (b) { return b.mesh === m; }) || null;
+  }
+
+  let destroyMode = false;
+  const modeBtn = document.getElementById('mode');
+  const orbitBtn = document.getElementById('orbit');
+  const hint = document.getElementById('hint');
+
+  function setMode(destroy) {
+    destroyMode = destroy;
+    modeBtn.classList.toggle('destroy', destroy);
+    modeBtn.textContent = destroy ? '💥 Ničit' : '🧱 Stavět';
+    hint.textContent = destroy
+      ? 'Klepni na kostku a znič ji (pravé tlačítko ničí vždy)'
+      : 'Klepni na plochu a umísti kostku';
+  }
+  modeBtn.addEventListener('click', function () { setMode(!destroyMode); });
+
+  orbitBtn.addEventListener('click', function () {
+    controls.enabled = !controls.enabled;
+    orbitBtn.classList.toggle('on', controls.enabled);
+    hint.textContent = controls.enabled
+      ? 'Režim kamery: táhni pro otáčení, kolečko pro přiblížení'
+      : (destroyMode ? 'Klepni na kostku a znič ji' : 'Klepni na plochu a umísti kostku');
+  });
+
+  const soundBtn = document.getElementById('sound');
+  soundBtn.addEventListener('click', function () {
+    const on = Sound.toggle();
+    soundBtn.textContent = on ? '🔊 Zvuk' : '🔇 Ticho';
+    soundBtn.classList.toggle('off', !on);
+  });
+
+  document.getElementById('reset').addEventListener('click', clearAll);
+
+  // sledování tažení – ať otáčení kamerou nevyvolá umístění kostky
+  let downPos = null;
+  canvas.addEventListener('pointerdown', function (e) {
+    Sound.wake();
+    downPos = { x: e.clientX, y: e.clientY, button: e.button };
+  });
+  canvas.addEventListener('pointerup', function (e) {
+    if (!downPos) return;
+    const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
+    const wasRight = downPos.button === 2;
+    downPos = null;
+    if (moved > 6) return;           // bylo to tažení (kamera), neumísťuj
+    setPointer(e);
+
+    if (destroyMode || wasRight) {
+      const b = pickBlock();
+      if (b) destroyBlock(b);
+    } else if (!controls.enabled) {
+      const p = pickGround();
+      if (p) addBlock(p.x, p.z);
+    }
+  });
+  canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  // ukazatel místa dopadu sleduje kurzor
+  canvas.addEventListener('pointermove', function (e) {
+    setPointer(e);
+    const p = pickGround();
+    if (p && !destroyMode) {
+      ring.visible = true;
+      const r = Math.hypot(p.x, p.z);
+      let x = p.x, z = p.z;
+      if (r > GROUND - HALF) { const k = (GROUND - HALF) / r; x *= k; z *= k; }
+      ring.position.set(x, 0.02, z);
+    } else {
+      ring.visible = false;
+    }
+  });
+  canvas.addEventListener('pointerleave', function () { ring.visible = false; });
+
+  // ---------- Smyčka s pevným krokem ----------
+  const STEP = 1 / 120;
+  let last = performance.now();
+  let acc = 0;
+
+  function syncMeshes() {
+    for (const it of blocks) {
+      it.mesh.position.copy(it.body.position);
+      it.mesh.quaternion.copy(it.body.quaternion);
+    }
+  }
+
+  function detectImpacts() {
+    let loudest = 0;
+    for (const it of blocks) {
+      const speed = it.body.velocity.length();
+      const drop = it.prevSpeed - speed;   // prudké zpomalení = náraz
+      if (drop > loudest && it.prevSpeed > 3) loudest = drop;
+      it.prevSpeed = speed;
+    }
+    if (loudest > 2.5) Sound.impact(loudest);
+  }
+
+  function loop(now) {
+    let frame = (now - last) / 1000;
+    last = now;
+    if (frame > 0.1) frame = 0.1;
+    acc += frame;
+    let steps = 0;
+    while (acc >= STEP && steps < 10) { world.step(STEP); acc -= STEP; steps++; }
+
+    detectImpacts();
+    syncMeshes();
+    updatePops(Math.min(frame, 0.05));
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- Resize ----------
+  function resize() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    renderer.setPixelRatio(dpr);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize);
+
+  resize();
+  updateScore();
+  requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

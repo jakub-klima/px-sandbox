@@ -341,8 +341,9 @@
     if (idx === -1) return;
     enemies.splice(idx, 1);
     const base = e.boss ? 100 : 4 + Math.floor(e.maxhp / 20);
-    // mírný bonus za zrychlenou hru: 2× → ×1.5, 4× → ×2.5
-    money += Math.round(base * (1 + (speed - 1) * 0.5));
+    // mírný bonus za zrychlenou hru: 2× → ×1.5 mincí, 4× → ×2 mincí
+    const coinMul = speed === 4 ? 2 : speed === 2 ? 1.5 : 1;
+    money += Math.round(base * coinMul);
     score += e.boss ? 1000 : 10 + Math.floor(e.maxhp / 5);
     for (let i = 0; i < 12; i++) flash(e.x, e.y, '#ff6b6b');
     updateHud();

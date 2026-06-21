@@ -462,7 +462,15 @@
     e.target.textContent = '⏩ Rychlost ' + speed + '×';
   });
 
-  window.addEventListener('resize', () => { layout(); reset(); });
+  // přepočítáme plochu jen při změně šířky (otočení), ne při schování/zobrazení
+  // adresní lišty prohlížeče (ta mění jen výšku a způsobovala blikání)
+  let lastW = window.innerWidth;
+  window.addEventListener('resize', () => {
+    if (Math.abs(window.innerWidth - lastW) < 2) return;
+    lastW = window.innerWidth;
+    layout();
+    reset();
+  });
 
   // init
   layout();

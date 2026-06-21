@@ -210,8 +210,6 @@
       rate: Math.max(0.18, 0.55 - level * 0.05), // s mezi výstřely
     };
   }
-  function upgradeCost(level) { return 40 + level * 35; }
-
   function cellOf(px, py) {
     const cx = Math.floor(px / CELL), cy = Math.floor(py / CELL);
     if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return null;
@@ -223,15 +221,9 @@
     const c = cellOf(px, py);
     if (!c) return;
     const key = c.cx + ',' + c.cy;
-    // existující věž -> upgrade
-    const t = towers.find(t => t.cx === c.cx && t.cy === c.cy);
-    if (t) {
-      const cost = upgradeCost(t.level);
-      if (money >= cost && t.level < 6) { money -= cost; t.level++; flash(t.x, t.y, '#ffd166'); }
-      updateHud();
-      return;
-    }
-    if (pathSet.has(key)) return; // na cestu stavět nelze
+    // na obsazené políčko ani na cestu stavět nelze
+    if (towers.some(t => t.cx === c.cx && t.cy === c.cy)) return;
+    if (pathSet.has(key)) return;
     if (money >= 50) {
       money -= 50;
       towers.push({ cx: c.cx, cy: c.cy, x: c.cx*CELL+CELL/2, y: c.cy*CELL+CELL/2, level: 1, cool: 0, angle: 0 });
@@ -398,10 +390,6 @@
       ctx.strokeStyle = '#bcd2ff'; ctx.lineWidth = CELL*0.12; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(t.x, t.y);
       ctx.lineTo(t.x + Math.cos(t.angle)*CELL*0.3, t.y + Math.sin(t.angle)*CELL*0.3); ctx.stroke();
-      // úroveň
-      ctx.fillStyle = '#ffd166'; ctx.font = 'bold '+(CELL*0.28)+'px system-ui';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(t.level, t.x, t.y - CELL*0.02);
     }
 
     // nepřátelé

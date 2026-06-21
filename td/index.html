@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Obrana věží – 1 kolo na score</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      min-height: 100%;
+      background: radial-gradient(circle at 50% 0%, #1b2a4a 0%, #0a1224 70%);
+      font-family: system-ui, -apple-system, sans-serif;
+      color: #e8eefc;
+      -webkit-user-select: none;
+      user-select: none;
+      overflow-x: hidden;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 10px;
+      min-height: 100vh;
+    }
+    h1 {
+      font-size: 22px;
+      margin-bottom: 2px;
+      color: #ffd166;
+      text-shadow: 0 2px 6px rgba(0,0,0,.5);
+    }
+    .sub { font-size: 12px; color: #9fb3d9; margin-bottom: 8px; text-align: center; }
+
+    #hud {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      max-width: 440px;
+      margin-bottom: 8px;
+    }
+    .stat {
+      flex: 1;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 10px;
+      padding: 6px 4px;
+      text-align: center;
+    }
+    .stat .lbl { font-size: 10px; color: #9fb3d9; text-transform: uppercase; letter-spacing: .5px; }
+    .stat .val { font-size: 18px; font-weight: 700; }
+    #money .val { color: #ffd166; }
+    #lives .val { color: #ff6b6b; }
+    #score .val { color: #7ee787; }
+
+    #wrap { position: relative; }
+    canvas {
+      background: #0d1730;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.45);
+      display: block;
+      touch-action: none;
+    }
+
+    #controls {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      max-width: 440px;
+      margin-top: 10px;
+    }
+    button {
+      flex: 1;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 12px 8px;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #3b82f6, #2563eb);
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 4px 0 #1e40af;
+      transition: transform .05s;
+    }
+    button:active { transform: translateY(2px); box-shadow: 0 2px 0 #1e40af; }
+    button.go { background: linear-gradient(180deg, #34d399, #10b981); box-shadow: 0 4px 0 #047857; }
+    button:disabled { opacity: .45; box-shadow: none; }
+
+    .help { font-size: 12px; color: #9fb3d9; margin-top: 10px; max-width: 440px; text-align: center; line-height: 1.5; }
+
+    #overlay {
+      position: absolute; inset: 0;
+      background: rgba(6,12,28,.92);
+      border-radius: 14px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; padding: 20px; gap: 10px;
+    }
+    #overlay.hidden { display: none; }
+    #overlay h2 { font-size: 28px; color: #ffd166; }
+    #overlay .big { font-size: 46px; font-weight: 800; color: #7ee787; line-height: 1; }
+    #overlay .rec { font-size: 14px; color: #9fb3d9; }
+    #overlay .newrec { color: #ffd166; font-weight: 700; animation: pulse 1s infinite; }
+    @keyframes pulse { 50% { opacity: .4; } }
+    #overlay button { max-width: 220px; }
+    a { color: #9fb3d9; font-size: 12px; margin-top: 14px; }
+  </style>
+</head>
+<body>
+  <h1>🏰 Obrana věží</h1>
+  <div class="sub">Jedno kolo · uhraj co nejvíc bodů · předhánějte se!</div>
+
+  <div id="hud">
+    <div class="stat" id="money"><div class="lbl">Mince</div><div class="val">0</div></div>
+    <div class="stat" id="lives"><div class="lbl">Životy</div><div class="val">0</div></div>
+    <div class="stat" id="wave"><div class="lbl">Vlna</div><div class="val">0/0</div></div>
+    <div class="stat" id="score"><div class="lbl">Skóre</div><div class="val">0</div></div>
+  </div>
+
+  <div id="wrap">
+    <canvas id="game"></canvas>
+    <div id="overlay">
+      <h2 id="ovTitle">Obrana věží</h2>
+      <div id="ovBody"></div>
+      <button id="startBtn" class="go">▶ Start</button>
+    </div>
+  </div>
+
+  <div id="controls">
+    <button id="speedBtn">⏩ Rychlost 1×</button>
+  </div>
+
+  <div class="help">
+    Klepni na <b>volné políčko</b> a postav věž (50). Klepni na <b>věž</b> a vylepši ji.
+    Věže střílejí samy. Nepusť nepřátele dolů!
+  </div>
+
+  <a href="../index.html">← zpět na rozcestník</a>
+
+<script>
+(() => {
+  const COLS = 7, ROWS = 12;
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // --- mapa: rohové body cesty v souřadnicích mřížky ---
+  const waypoints = [
+    [0,0],[5,0],[5,2],[1,2],[1,4],[5,4],[5,6],[1,6],[1,8],[5,8],[5,10],[3,10],[3,11]
+  ];
+
+  // množina políček cesty (nestavitelná)
+  const pathSet = new Set();
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    let [ax,ay] = waypoints[i], [bx,by] = waypoints[i+1];
+    const dx = Math.sign(bx-ax), dy = Math.sign(by-ay);
+    let x = ax, y = ay;
+    pathSet.add(x+','+y);
+    while (x !== bx || y !== by) { x += dx; y += dy; pathSet.add(x+','+y); }
+  }
+
+  let CELL = 0, OX = 0, OY = 0, path = [];
+  function layout() {
+    const w = Math.min(window.innerWidth - 20, 440);
+    CELL = Math.floor(w / COLS);
+    canvas.width = CELL * COLS;
+    canvas.height = CELL * ROWS;
+    canvas.style.width = canvas.width + 'px';
+    canvas.style.height = canvas.height + 'px';
+    // pixelová cesta (středy rohových políček) pro pohyb nepřátel
+    path = waypoints.map(([cx,cy]) => ({ x: cx*CELL + CELL/2, y: cy*CELL + CELL/2 }));
+  }
+
+  // --- stav hry ---
+  const TOTAL_WAVES = 12;
+  let towers, enemies, bullets, particles;
+  let money, lives, score, waveNum, running, gameOver;
+  let spawnQueue, spawnTimer, betweenTimer, speed = 1;
+  let raf = null, last = 0;
+
+  const HIGH_KEY = 'td_highscore';
+  let high = parseInt(localStorage.getItem(HIGH_KEY) || '0', 10);
+
+  function reset() {
+    towers = []; enemies = []; bullets = []; particles = [];
+    money = 150; lives = 20; score = 0; waveNum = 0;
+    running = false; gameOver = false;
+    spawnQueue = []; spawnTimer = 0; betweenTimer = 1.0;
+    updateHud();
+  }
+
+  function buildWave(n) {
+    // n = 1..TOTAL_WAVES ; obtížnost roste
+    const count = 6 + n * 2;
+    const q = [];
+    for (let i = 0; i < count; i++) {
+      const boss = (n === TOTAL_WAVES && i === count - 1);
+      const hp = boss ? 600 + n*40 : Math.round((14 + n * 8) * (1 + i * 0.04));
+      const spd = boss ? 28 : 34 + n * 1.5;
+      q.push({ hp, spd, boss });
+    }
+    return q;
+  }
+
+  function updateHud() {
+    document.querySelector('#money .val').textContent = money;
+    document.querySelector('#lives .val').textContent = lives;
+    document.querySelector('#wave .val').textContent = waveNum + '/' + TOTAL_WAVES;
+    document.querySelector('#score .val').textContent = score;
+  }
+
+  // --- věže ---
+  function towerStats(level) {
+    return {
+      range: (1.4 + level * 0.15) * CELL,
+      dmg: 6 + level * 5,
+      rate: Math.max(0.18, 0.55 - level * 0.05), // s mezi výstřely
+    };
+  }
+  function upgradeCost(level) { return 40 + level * 35; }
+
+  function cellOf(px, py) {
+    const cx = Math.floor(px / CELL), cy = Math.floor(py / CELL);
+    if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return null;
+    return { cx, cy };
+  }
+
+  function handleTap(px, py) {
+    if (gameOver) return;
+    const c = cellOf(px, py);
+    if (!c) return;
+    const key = c.cx + ',' + c.cy;
+    // existující věž -> upgrade
+    const t = towers.find(t => t.cx === c.cx && t.cy === c.cy);
+    if (t) {
+      const cost = upgradeCost(t.level);
+      if (money >= cost && t.level < 6) { money -= cost; t.level++; flash(t.x, t.y, '#ffd166'); }
+      updateHud();
+      return;
+    }
+    if (pathSet.has(key)) return; // na cestu stavět nelze
+    if (money >= 50) {
+      money -= 50;
+      towers.push({ cx: c.cx, cy: c.cy, x: c.cx*CELL+CELL/2, y: c.cy*CELL+CELL/2, level: 1, cool: 0, angle: 0 });
+      flash(c.cx*CELL+CELL/2, c.cy*CELL+CELL/2, '#3b82f6');
+      updateHud();
+    }
+  }
+
+  function flash(x, y, color) {
+    for (let i = 0; i < 8; i++) {
+      const a = Math.random() * Math.PI * 2, s = 40 + Math.random()*60;
+      particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: 0.4, color });
+    }
+  }
+
+  // --- herní smyčka ---
+  function spawnEnemy(def) {
+    enemies.push({ x: path[0].x, y: path[0].y, seg: 0, t: 0, hp: def.hp, maxhp: def.hp, spd: def.spd, boss: def.boss });
+  }
+
+  function tick(dt) {
+    // spawn
+    if (running && !gameOver) {
+      if (spawnQueue.length > 0) {
+        spawnTimer -= dt;
+        if (spawnTimer <= 0) { spawnEnemy(spawnQueue.shift()); spawnTimer = 0.55; }
+      } else if (enemies.length === 0) {
+        // další vlna nebo konec
+        if (waveNum < TOTAL_WAVES) {
+          betweenTimer -= dt;
+          if (betweenTimer <= 0) {
+            waveNum++; spawnQueue = buildWave(waveNum); spawnTimer = 0; betweenTimer = 2.5;
+            updateHud();
+          }
+        } else {
+          endGame(true);
+        }
+      }
+    }
+
+    // nepřátelé po cestě
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const e = enemies[i];
+      const a = path[e.seg], b = path[e.seg + 1];
+      if (!b) { reachEnd(e, i); continue; }
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.hypot(dx, dy);
+      e.t += (e.spd * dt) / len;
+      while (e.t >= 1) {
+        e.t -= 1; e.seg++;
+        if (e.seg >= path.length - 1) { reachEnd(e, i); break; }
+      }
+      if (enemies[i] !== e) continue;
+      const a2 = path[e.seg], b2 = path[e.seg + 1];
+      if (b2) { e.x = a2.x + (b2.x - a2.x) * e.t; e.y = a2.y + (b2.y - a2.y) * e.t; }
+    }
+
+    // věže střílí
+    for (const t of towers) {
+      t.cool -= dt;
+      const st = towerStats(t.level);
+      // cíl: nepřítel nejdál po cestě v dosahu
+      let best = null, bestProg = -1;
+      for (const e of enemies) {
+        const d = Math.hypot(e.x - t.x, e.y - t.y);
+        if (d <= st.range) {
+          const prog = e.seg + e.t;
+          if (prog > bestProg) { bestProg = prog; best = e; }
+        }
+      }
+      if (best) {
+        t.angle = Math.atan2(best.y - t.y, best.x - t.x);
+        if (t.cool <= 0) {
+          t.cool = st.rate;
+          bullets.push({ x: t.x, y: t.y, target: best, dmg: st.dmg, spd: 460 });
+        }
+      }
+    }
+
+    // střely
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const bl = bullets[i];
+      const e = bl.target;
+      if (!e || e.hp <= 0 || enemies.indexOf(e) === -1) { bullets.splice(i,1); continue; }
+      const dx = e.x - bl.x, dy = e.y - bl.y, d = Math.hypot(dx, dy);
+      const step = bl.spd * dt;
+      if (d <= step) {
+        e.hp -= bl.dmg;
+        flash(e.x, e.y, '#ffd166');
+        if (e.hp <= 0) killEnemy(e);
+        bullets.splice(i, 1);
+      } else {
+        bl.x += dx / d * step; bl.y += dy / d * step;
+      }
+    }
+
+    // částice
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  function killEnemy(e) {
+    const idx = enemies.indexOf(e);
+    if (idx === -1) return;
+    enemies.splice(idx, 1);
+    money += e.boss ? 100 : 4 + Math.floor(e.maxhp / 20);
+    score += e.boss ? 1000 : 10 + Math.floor(e.maxhp / 5);
+    for (let i = 0; i < 12; i++) flash(e.x, e.y, '#ff6b6b');
+    updateHud();
+  }
+
+  function reachEnd(e, i) {
+    enemies.splice(i, 1);
+    lives -= e.boss ? 10 : 1;
+    if (lives <= 0) { lives = 0; updateHud(); endGame(false); }
+    else updateHud();
+  }
+
+  function endGame(survived) {
+    if (gameOver) return;
+    gameOver = true; running = false;
+    if (survived) score += lives * 50 + money; // bonus za přežití
+    updateHud();
+    const isNew = score > high;
+    if (isNew) { high = score; localStorage.setItem(HIGH_KEY, String(high)); }
+    document.getElementById('ovTitle').textContent = survived ? '🎉 Ubránil jsi to!' : '💀 Prolomili obranu';
+    document.getElementById('ovBody').innerHTML =
+      '<div class="big">' + score + '</div><div class="rec">bodů</div>' +
+      (isNew ? '<div class="newrec">🏆 Nový osobní rekord!</div>'
+             : '<div class="rec">Tvůj rekord: ' + high + '</div>');
+    document.getElementById('startBtn').textContent = '↻ Hrát znovu';
+    overlay.classList.remove('hidden');
+  }
+
+  // --- vykreslení ---
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // mřížka + stavitelná políčka
+    for (let cy = 0; cy < ROWS; cy++) for (let cx = 0; cx < COLS; cx++) {
+      const isPath = pathSet.has(cx+','+cy);
+      ctx.fillStyle = isPath ? '#243b6b' : '#13203f';
+      ctx.fillRect(cx*CELL+1, cy*CELL+1, CELL-2, CELL-2);
+    }
+    // start/cíl značky
+    ctx.fillStyle = '#34d399';
+    ctx.fillRect(path[0].x-CELL/2+2, path[0].y-CELL/2+2, CELL-4, CELL-4);
+    const last = path[path.length-1];
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(last.x-CELL/2+2, last.y-CELL/2+2, CELL-4, CELL-4);
+
+    // věže
+    for (const t of towers) {
+      const st = towerStats(t.level);
+      ctx.fillStyle = '#3b82f6';
+      ctx.beginPath(); ctx.arc(t.x, t.y, CELL*0.32, 0, Math.PI*2); ctx.fill();
+      // hlaveň
+      ctx.strokeStyle = '#bcd2ff'; ctx.lineWidth = CELL*0.12; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(t.x, t.y);
+      ctx.lineTo(t.x + Math.cos(t.angle)*CELL*0.3, t.y + Math.sin(t.angle)*CELL*0.3); ctx.stroke();
+      // úroveň
+      ctx.fillStyle = '#ffd166'; ctx.font = 'bold '+(CELL*0.28)+'px system-ui';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(t.level, t.x, t.y - CELL*0.02);
+    }
+
+    // nepřátelé
+    for (const e of enemies) {
+      const r = e.boss ? CELL*0.4 : CELL*0.26;
+      ctx.fillStyle = e.boss ? '#a855f7' : '#ff6b6b';
+      ctx.beginPath(); ctx.arc(e.x, e.y, r, 0, Math.PI*2); ctx.fill();
+      // healthbar
+      const w = r*2, p = e.hp/e.maxhp;
+      ctx.fillStyle = '#000'; ctx.fillRect(e.x-w/2, e.y-r-6, w, 3);
+      ctx.fillStyle = '#7ee787'; ctx.fillRect(e.x-w/2, e.y-r-6, w*Math.max(0,p), 3);
+    }
+
+    // střely
+    ctx.fillStyle = '#ffd166';
+    for (const bl of bullets) { ctx.beginPath(); ctx.arc(bl.x, bl.y, CELL*0.07, 0, Math.PI*2); ctx.fill(); }
+
+    // částice
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life / 0.4);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x-2, p.y-2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function loop(ts) {
+    if (!last) last = ts;
+    let dt = (ts - last) / 1000; last = ts;
+    if (dt > 0.1) dt = 0.1;
+    if (running && !gameOver) tick(dt * speed);
+    draw();
+    raf = requestAnimationFrame(loop);
+  }
+
+  // --- vstup ---
+  function canvasPos(ev) {
+    const r = canvas.getBoundingClientRect();
+    const cx = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left;
+    const cy = (ev.touches ? ev.touches[0].clientY : ev.clientY) - r.top;
+    return { x: cx * (canvas.width / r.width), y: cy * (canvas.height / r.height) };
+  }
+  canvas.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    const p = canvasPos(ev);
+    handleTap(p.x, p.y);
+  });
+
+  const overlay = document.getElementById('overlay');
+  const startBtn = document.getElementById('startBtn');
+  startBtn.addEventListener('click', () => {
+    reset();
+    overlay.classList.add('hidden');
+    running = true;
+    waveNum = 1; spawnQueue = buildWave(1); spawnTimer = 0; betweenTimer = 2.5;
+    updateHud();
+  });
+
+  document.getElementById('speedBtn').addEventListener('click', (e) => {
+    speed = speed === 1 ? 2 : 1;
+    e.target.textContent = '⏩ Rychlost ' + speed + '×';
+  });
+
+  window.addEventListener('resize', () => { layout(); reset(); });
+
+  // init
+  layout();
+  reset();
+  document.getElementById('ovBody').innerHTML =
+    '<div class="rec">Postav věže, ubraň ' + TOTAL_WAVES + ' vln a nahraj rekord.</div>' +
+    '<div class="rec" style="margin-top:6px">🏆 Tvůj rekord: ' + high + '</div>';
+  raf = requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

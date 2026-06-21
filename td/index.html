@@ -154,7 +154,9 @@
   let CELL = 0, OX = 0, OY = 0, path = [];
   function layout() {
     const w = Math.min(window.innerWidth - 20, 440);
-    CELL = Math.floor(w / COLS);
+    // necháme místo na nadpis, HUD, ovládání a odkaz, ať se vejde na výšku bez scrollu
+    const h = window.innerHeight - 200;
+    CELL = Math.max(28, Math.min(Math.floor(w / COLS), Math.floor(h / ROWS)));
     canvas.width = CELL * COLS;
     canvas.height = CELL * ROWS;
     canvas.style.width = canvas.width + 'px';

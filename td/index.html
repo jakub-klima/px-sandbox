@@ -188,7 +188,7 @@
     const q = [];
     for (let i = 0; i < count; i++) {
       const boss = (n === TOTAL_WAVES && i === count - 1);
-      const hp = boss ? 600 + n*40 : Math.round((14 + n * 8) * (1 + i * 0.04));
+      const hp = boss ? 680 + n*45 : Math.round((16 + n * 9) * (1 + i * 0.04));
       const spd = boss ? 32 : 40 + n * 1.8;
       q.push({ hp, spd, boss });
     }

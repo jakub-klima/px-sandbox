@@ -340,7 +340,7 @@
     const idx = enemies.indexOf(e);
     if (idx === -1) return;
     enemies.splice(idx, 1);
-    const base = e.boss ? 100 : 4 + Math.floor(e.maxhp / 20);
+    const base = e.boss ? 80 : 3 + Math.floor(e.maxhp / 25);
     // mírný bonus za zrychlenou hru: 2× → ×1.5 mincí, 4× → ×2 mincí
     const coinMul = speed === 4 ? 2 : speed === 2 ? 1.5 : 1;
     money += Math.round(base * coinMul);

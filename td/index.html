@@ -352,7 +352,7 @@
 
   function reachEnd(e, i) {
     enemies.splice(i, 1);
-    lives -= e.boss ? 3 : 1;
+    lives -= e.boss ? 5 : 1;
     if (lives <= 0) { lives = 0; updateHud(); endGame(false); }
     else updateHud();
   }

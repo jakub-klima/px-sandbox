@@ -126,6 +126,7 @@
 
   <div id="controls">
     <button id="speedBtn">⏩ Rychlost 1×</button>
+    <button id="soundBtn">🔇 Zvuk vyp</button>
   </div>
 
 
@@ -173,6 +174,49 @@
 
   const HIGH_KEY = 'td_highscore';
   let high = parseInt(localStorage.getItem(HIGH_KEY) || '0', 10);
+
+  // --- zvuky (Web Audio, bez externích souborů); defaultně vypnuté ---
+  let soundOn = false, audioCtx = null;
+  function initAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  // jednoduchý tón s obálkou
+  function tone(freq, dur, type, vol) {
+    if (!soundOn || !audioCtx) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = type || 'square';
+    osc.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol || 0.15, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g); g.connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + dur);
+  }
+  let lastShot = 0;
+  function sfx(kind) {
+    if (!soundOn || !audioCtx) return;
+    switch (kind) {
+      case 'shoot': {
+        // omezíme hustotu výstřelů, ať to neřve
+        const now = audioCtx.currentTime;
+        if (now - lastShot < 0.05) return;
+        lastShot = now;
+        tone(880, 0.05, 'square', 0.05);
+        break;
+      }
+      case 'kill': tone(440, 0.1, 'triangle', 0.14); break;
+      case 'bosskill': tone(180, 0.35, 'sawtooth', 0.2); break;
+      case 'build': tone(330, 0.12, 'sine', 0.18); break;
+      case 'leak': tone(140, 0.25, 'sawtooth', 0.18); break;
+      case 'win': [523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,0.18,'square',0.16), i*120)); break;
+      case 'lose': [330,247,165].forEach((f,i)=>setTimeout(()=>tone(f,0.25,'sawtooth',0.18), i*140)); break;
+    }
+  }
 
   function reset() {
     towers = []; enemies = []; bullets = []; particles = [];
@@ -228,6 +272,7 @@
       money -= 50;
       towers.push({ cx: c.cx, cy: c.cy, x: c.cx*CELL+CELL/2, y: c.cy*CELL+CELL/2, level: 1, cool: 0, angle: 0 });
       flash(c.cx*CELL+CELL/2, c.cy*CELL+CELL/2, '#3b82f6');
+      sfx('build');
       updateHud();
     }
   }
@@ -299,6 +344,7 @@
         if (t.cool <= 0) {
           t.cool = st.rate;
           bullets.push({ x: t.x, y: t.y, target: best, dmg: st.dmg, spd: 460 });
+          sfx('shoot');
         }
       }
     }
@@ -338,6 +384,7 @@
     money += Math.round(base * mul);
     const scoreBase = e.boss ? 1000 : 10 + Math.floor(e.maxhp / 5);
     score += Math.round(scoreBase * mul);
+    sfx(e.boss ? 'bosskill' : 'kill');
     for (let i = 0; i < 12; i++) flash(e.x, e.y, '#ff6b6b');
     updateHud();
   }
@@ -345,6 +392,7 @@
   function reachEnd(e, i) {
     enemies.splice(i, 1);
     lives -= e.boss ? 5 : 1;
+    sfx('leak');
     if (lives <= 0) { lives = 0; updateHud(); endGame(false); }
     else updateHud();
   }
@@ -356,6 +404,7 @@
     updateHud();
     const isNew = score > high;
     if (isNew) { high = score; localStorage.setItem(HIGH_KEY, String(high)); }
+    sfx(survived ? 'win' : 'lose');
     document.getElementById('ovTitle').textContent = survived ? '🎉 Ubránil jsi to!' : '💀 Prolomili obranu';
     document.getElementById('ovBody').innerHTML =
       '<div class="big">' + score + '</div><div class="rec">bodů</div>' +
@@ -451,6 +500,12 @@
   document.getElementById('speedBtn').addEventListener('click', (e) => {
     speed = speed === 1 ? 2 : speed === 2 ? 4 : 1;
     e.target.textContent = '⏩ Rychlost ' + speed + '×';
+  });
+
+  document.getElementById('soundBtn').addEventListener('click', (e) => {
+    soundOn = !soundOn;
+    if (soundOn) { initAudio(); tone(660, 0.1, 'sine', 0.15); }
+    e.target.textContent = soundOn ? '🔊 Zvuk zap' : '🔇 Zvuk vyp';
   });
 
   // přepočítáme plochu jen při změně šířky (otočení), ne při schování/zobrazení

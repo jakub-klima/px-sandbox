@@ -175,8 +175,11 @@
   const HIGH_KEY = 'td_highscore';
   let high = parseInt(localStorage.getItem(HIGH_KEY) || '0', 10);
 
-  // --- zvuky (Web Audio, bez externích souborů); defaultně vypnuté ---
-  let soundOn = false, audioCtx = null;
+  // --- zvuky (Web Audio, bez externích souborů); defaultně zapnuté,
+  // volba se pamatuje v localStorage ---
+  const SOUND_KEY = 'td_sound';
+  let soundOn = localStorage.getItem(SOUND_KEY) !== '0'; // default zapnuto
+  let audioCtx = null;
   function initAudio() {
     if (!audioCtx) {
       try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
@@ -565,6 +568,7 @@
   }
   canvas.addEventListener('pointerdown', (ev) => {
     ev.preventDefault();
+    if (soundOn) initAudio();
     const p = canvasPos(ev);
     handleTap(p.x, p.y);
   });
@@ -572,6 +576,7 @@
   const overlay = document.getElementById('overlay');
   const startBtn = document.getElementById('startBtn');
   startBtn.addEventListener('click', () => {
+    if (soundOn) initAudio();
     reset();
     overlay.classList.add('hidden');
     running = true;
@@ -584,8 +589,11 @@
     e.target.textContent = '⏩ Rychlost ' + speed + '×';
   });
 
-  document.getElementById('soundBtn').addEventListener('click', (e) => {
+  const soundBtn = document.getElementById('soundBtn');
+  soundBtn.textContent = soundOn ? '🔊 Zvuk zap' : '🔇 Zvuk vyp';
+  soundBtn.addEventListener('click', (e) => {
     soundOn = !soundOn;
+    localStorage.setItem(SOUND_KEY, soundOn ? '1' : '0');
     if (soundOn) { initAudio(); tone(660, 0.1, 'sine', 0.15); }
     e.target.textContent = soundOn ? '🔊 Zvuk zap' : '🔇 Zvuk vyp';
   });

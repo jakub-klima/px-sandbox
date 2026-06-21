@@ -415,52 +415,134 @@
   }
 
   // --- vykreslení ---
+  function rrect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
+  }
+
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // mřížka + stavitelná políčka
+
+    // pozadí (jemný přechod)
+    const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    bg.addColorStop(0, '#0e1b38'); bg.addColorStop(1, '#0a1224');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // travnatá stavitelná políčka
     for (let cy = 0; cy < ROWS; cy++) for (let cx = 0; cx < COLS; cx++) {
-      const isPath = pathSet.has(cx+','+cy);
-      ctx.fillStyle = isPath ? '#243b6b' : '#13203f';
-      ctx.fillRect(cx*CELL+1, cy*CELL+1, CELL-2, CELL-2);
+      if (pathSet.has(cx+','+cy)) continue;
+      const x = cx*CELL, y = cy*CELL;
+      const g = ctx.createLinearGradient(x, y, x, y+CELL);
+      g.addColorStop(0, '#1c3a2c'); g.addColorStop(1, '#152c22');
+      ctx.fillStyle = g;
+      rrect(x+1.5, y+1.5, CELL-3, CELL-3, CELL*0.18); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1;
+      rrect(x+1.5, y+1.5, CELL-3, CELL-3, CELL*0.18); ctx.stroke();
     }
-    // start/cíl značky
+
+    // silnice (hladký pruh skrz body cesty)
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = '#3a2f23'; ctx.lineWidth = CELL*0.82;
+    ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y);
+    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+    ctx.stroke();
+    ctx.strokeStyle = '#6b5a44'; ctx.lineWidth = CELL*0.62;
+    ctx.stroke();
+    // přerušovaná středová čára
+    ctx.strokeStyle = 'rgba(255,225,160,.35)';
+    ctx.lineWidth = Math.max(2, CELL*0.06);
+    ctx.setLineDash([CELL*0.25, CELL*0.25]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // start (zelený) a cíl (červený) marker se září
+    const start = path[0], goal = path[path.length-1];
+    ctx.save();
+    ctx.shadowColor = '#34d399'; ctx.shadowBlur = 14;
     ctx.fillStyle = '#34d399';
-    ctx.fillRect(path[0].x-CELL/2+2, path[0].y-CELL/2+2, CELL-4, CELL-4);
-    const last = path[path.length-1];
-    ctx.fillStyle = '#ef4444';
-    ctx.fillRect(last.x-CELL/2+2, last.y-CELL/2+2, CELL-4, CELL-4);
+    rrect(start.x-CELL*0.32, start.y-CELL*0.32, CELL*0.64, CELL*0.64, CELL*0.18); ctx.fill();
+    ctx.shadowColor = '#ef4444'; ctx.fillStyle = '#ef4444';
+    rrect(goal.x-CELL*0.32, goal.y-CELL*0.32, CELL*0.64, CELL*0.64, CELL*0.18); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    ctx.font = 'bold '+(CELL*0.3)+'px system-ui';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('▶', start.x, start.y);
+    ctx.fillText('🏠', goal.x, goal.y);
 
     // věže
     for (const t of towers) {
-      const st = towerStats(t.level);
-      ctx.fillStyle = '#3b82f6';
-      ctx.beginPath(); ctx.arc(t.x, t.y, CELL*0.32, 0, Math.PI*2); ctx.fill();
+      // podstavec se stínem
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 3;
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath(); ctx.arc(t.x, t.y, CELL*0.36, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+      // tělo s přechodem
+      const g = ctx.createRadialGradient(t.x-CELL*0.1, t.y-CELL*0.1, CELL*0.05, t.x, t.y, CELL*0.34);
+      g.addColorStop(0, '#7db1ff'); g.addColorStop(1, '#2563eb');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(t.x, t.y, CELL*0.3, 0, Math.PI*2); ctx.fill();
       // hlaveň
-      ctx.strokeStyle = '#bcd2ff'; ctx.lineWidth = CELL*0.12; ctx.lineCap = 'round';
+      ctx.strokeStyle = '#dce8ff'; ctx.lineWidth = CELL*0.13; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(t.x, t.y);
-      ctx.lineTo(t.x + Math.cos(t.angle)*CELL*0.3, t.y + Math.sin(t.angle)*CELL*0.3); ctx.stroke();
+      ctx.lineTo(t.x + Math.cos(t.angle)*CELL*0.34, t.y + Math.sin(t.angle)*CELL*0.34); ctx.stroke();
+      // odlesk
+      ctx.fillStyle = 'rgba(255,255,255,.5)';
+      ctx.beginPath(); ctx.arc(t.x-CELL*0.1, t.y-CELL*0.1, CELL*0.06, 0, Math.PI*2); ctx.fill();
     }
 
     // nepřátelé
     for (const e of enemies) {
       const r = e.boss ? CELL*0.4 : CELL*0.26;
-      ctx.fillStyle = e.boss ? '#a855f7' : '#ff6b6b';
+      ctx.save();
+      ctx.shadowColor = e.boss ? '#a855f7' : 'rgba(0,0,0,.4)';
+      ctx.shadowBlur = e.boss ? 16 : 5; ctx.shadowOffsetY = e.boss ? 0 : 2;
+      const g = ctx.createRadialGradient(e.x-r*0.3, e.y-r*0.3, r*0.2, e.x, e.y, r);
+      if (e.boss) { g.addColorStop(0, '#d8b4fe'); g.addColorStop(1, '#7e22ce'); }
+      else { g.addColorStop(0, '#ff9d9d'); g.addColorStop(1, '#dc2626'); }
+      ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(e.x, e.y, r, 0, Math.PI*2); ctx.fill();
-      // healthbar
-      const w = r*2, p = e.hp/e.maxhp;
-      ctx.fillStyle = '#000'; ctx.fillRect(e.x-w/2, e.y-r-6, w, 3);
-      ctx.fillStyle = '#7ee787'; ctx.fillRect(e.x-w/2, e.y-r-6, w*Math.max(0,p), 3);
+      ctx.restore();
+      // očka
+      ctx.fillStyle = 'rgba(255,255,255,.9)';
+      ctx.beginPath(); ctx.arc(e.x-r*0.3, e.y-r*0.1, r*0.16, 0, Math.PI*2);
+      ctx.arc(e.x+r*0.3, e.y-r*0.1, r*0.16, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath(); ctx.arc(e.x-r*0.3, e.y-r*0.1, r*0.07, 0, Math.PI*2);
+      ctx.arc(e.x+r*0.3, e.y-r*0.1, r*0.07, 0, Math.PI*2); ctx.fill();
+      if (e.boss) { // korunka
+        ctx.fillStyle = '#ffd166';
+        ctx.font = 'bold '+(CELL*0.34)+'px system-ui';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('👑', e.x, e.y - r - CELL*0.18);
+      }
+      // healthbar (zaoblený, barva podle stavu)
+      const w = r*2.1, p = Math.max(0, e.hp/e.maxhp), by = e.y - r - (e.boss ? CELL*0.36 : 8);
+      ctx.fillStyle = 'rgba(0,0,0,.5)';
+      rrect(e.x-w/2, by, w, 4, 2); ctx.fill();
+      ctx.fillStyle = p > 0.5 ? '#7ee787' : p > 0.25 ? '#ffd166' : '#ff6b6b';
+      rrect(e.x-w/2, by, w*p, 4, 2); ctx.fill();
     }
 
-    // střely
-    ctx.fillStyle = '#ffd166';
-    for (const bl of bullets) { ctx.beginPath(); ctx.arc(bl.x, bl.y, CELL*0.07, 0, Math.PI*2); ctx.fill(); }
+    // střely se září
+    ctx.save();
+    ctx.shadowColor = '#ffd166'; ctx.shadowBlur = 8;
+    ctx.fillStyle = '#fff3c4';
+    for (const bl of bullets) { ctx.beginPath(); ctx.arc(bl.x, bl.y, CELL*0.08, 0, Math.PI*2); ctx.fill(); }
+    ctx.restore();
 
     // částice
     for (const p of particles) {
       ctx.globalAlpha = Math.max(0, p.life / 0.4);
       ctx.fillStyle = p.color;
-      ctx.fillRect(p.x-2, p.y-2, 4, 4);
+      ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI*2); ctx.fill();
     }
     ctx.globalAlpha = 1;
   }

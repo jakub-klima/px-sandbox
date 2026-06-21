@@ -378,7 +378,7 @@
     const idx = enemies.indexOf(e);
     if (idx === -1) return;
     enemies.splice(idx, 1);
-    const base = e.boss ? 65 : 2 + Math.floor(e.maxhp / 32);
+    const base = e.boss ? 55 : 2 + Math.floor(e.maxhp / 40);
     // mírný bonus za zrychlenou hru (mince i skóre): 2× → ×1.25, 4× → ×1.5
     const mul = speed === 4 ? 1.5 : speed === 2 ? 1.25 : 1;
     money += Math.round(base * mul);

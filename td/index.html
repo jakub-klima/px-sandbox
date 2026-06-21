@@ -458,7 +458,7 @@
   });
 
   document.getElementById('speedBtn').addEventListener('click', (e) => {
-    speed = speed === 1 ? 2 : 1;
+    speed = speed === 1 ? 2 : speed === 2 ? 4 : 1;
     e.target.textContent = '⏩ Rychlost ' + speed + '×';
   });
 

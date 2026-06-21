@@ -169,7 +169,7 @@
   const TOTAL_WAVES = 12;
   let towers, enemies, bullets, particles;
   let money, lives, score, waveNum, running, gameOver;
-  let spawnQueue, spawnTimer, betweenTimer, speed = 1;
+  let spawnQueue, spawnTimer, betweenTimer, speed = 1, countdown = 0;
   let raf = null, last = 0;
 
   const HIGH_KEY = 'td_highscore';
@@ -225,7 +225,7 @@
     towers = []; enemies = []; bullets = []; particles = [];
     money = 150; lives = 5; score = 0; waveNum = 0;
     running = false; gameOver = false;
-    spawnQueue = []; spawnTimer = 0; betweenTimer = 1.0;
+    spawnQueue = []; spawnTimer = 0; betweenTimer = 1.0; countdown = 0;
     updateHud();
   }
 
@@ -293,8 +293,8 @@
   }
 
   function tick(dt) {
-    // spawn
-    if (running && !gameOver) {
+    // spawn (až po úvodním odpočtu – během něj jde jen stavět)
+    if (running && !gameOver && countdown <= 0) {
       if (spawnQueue.length > 0) {
         spawnTimer -= dt;
         if (spawnTimer <= 0) { spawnEnemy(spawnQueue.shift()); spawnTimer = 0.55; }
@@ -548,12 +548,29 @@
       ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI*2); ctx.fill();
     }
     ctx.globalAlpha = 1;
+
+    // úvodní odpočet 3..2..1 (během něj jde stavět)
+    if (running && !gameOver && countdown > 0) {
+      const n = Math.ceil(countdown);
+      const frac = countdown - Math.floor(countdown); // pro animaci „nádechu“
+      ctx.save();
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(255,255,255,.85)';
+      ctx.font = 'bold '+(CELL*0.5)+'px system-ui';
+      ctx.fillText('Stav věže! 🏗️', canvas.width/2, canvas.height*0.4);
+      ctx.shadowColor = '#ffd166'; ctx.shadowBlur = 20;
+      ctx.fillStyle = '#ffd166';
+      ctx.font = 'bold '+(CELL*1.6*(1.1 - frac*0.25))+'px system-ui';
+      ctx.fillText(n, canvas.width/2, canvas.height*0.55);
+      ctx.restore();
+    }
   }
 
   function loop(ts) {
     if (!last) last = ts;
     let dt = (ts - last) / 1000; last = ts;
     if (dt > 0.1) dt = 0.1;
+    if (running && !gameOver && countdown > 0) countdown -= dt; // odpočet reálným časem
     if (running && !gameOver) tick(dt * speed);
     draw();
     raf = requestAnimationFrame(loop);
@@ -580,6 +597,7 @@
     reset();
     overlay.classList.add('hidden');
     running = true;
+    countdown = 3; // 3..2..1, během odpočtu už jde stavět
     waveNum = 1; spawnQueue = buildWave(1); spawnTimer = 0; betweenTimer = 2.5;
     updateHud();
   });

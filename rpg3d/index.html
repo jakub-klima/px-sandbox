@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Hrdina meče 3D – jednoduché RPG</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: #0d1320;
+      font-family: system-ui, -apple-system, sans-serif;
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: none;
+    }
+    body { display: flex; flex-direction: column; }
+    #game { flex: 1 1 auto; width: 100%; min-height: 0; display: block; }
+
+    #hud {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      color: #fff;
+      pointer-events: none;
+      text-shadow: 0 1px 4px rgba(0,0,0,.7);
+    }
+    #hud .row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    #hud .label { font-size: 13px; width: 56px; opacity: .85; }
+    .bar { width: 180px; height: 14px; border-radius: 7px; background: rgba(255,255,255,.15); overflow: hidden; }
+    .bar > span { display: block; height: 100%; width: 100%; transition: width .15s ease; }
+    #hpBar > span { background: linear-gradient(90deg, #ff5b5b, #ff8a3d); }
+    #score {
+      position: fixed; top: 12px; right: 14px;
+      color: #fff; font-size: 16px; font-weight: 600;
+      text-shadow: 0 1px 4px rgba(0,0,0,.7); pointer-events: none;
+    }
+
+    #hint {
+      position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+      color: #cfe0ff; font-size: 13px; text-align: center;
+      text-shadow: 0 1px 4px rgba(0,0,0,.7); pointer-events: none;
+      line-height: 1.5;
+    }
+
+    /* Mobilní ovládání */
+    #touch { position: fixed; inset: 0; pointer-events: none; }
+    #stick {
+      position: absolute; left: 22px; bottom: 22px;
+      width: 130px; height: 130px; border-radius: 50%;
+      background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.18);
+      pointer-events: auto; touch-action: none;
+    }
+    #knob {
+      position: absolute; left: 50%; top: 50%; width: 56px; height: 56px;
+      margin: -28px 0 0 -28px; border-radius: 50%;
+      background: rgba(255,255,255,.35); border: 2px solid rgba(255,255,255,.5);
+    }
+    #attackBtn {
+      position: absolute; right: 26px; bottom: 40px;
+      width: 92px; height: 92px; border-radius: 50%;
+      background: rgba(255,120,80,.35); border: 2px solid rgba(255,160,120,.6);
+      color: #fff; font-size: 30px; display: flex; align-items: center; justify-content: center;
+      pointer-events: auto; touch-action: none;
+    }
+    #attackBtn:active { background: rgba(255,120,80,.6); }
+    @media (hover: hover) and (pointer: fine) { #touch { display: none; } }
+
+    #overlay {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: rgba(8,12,22,.82); color: #fff; text-align: center; z-index: 10;
+    }
+    #overlay.hidden { display: none; }
+    #overlay .panel { max-width: 360px; padding: 24px; }
+    #overlay h1 { font-size: 26px; margin-bottom: 10px; }
+    #overlay p { opacity: .85; font-size: 14px; line-height: 1.6; margin-bottom: 18px; }
+    #overlay button {
+      font-size: 16px; padding: 12px 26px; border: none; border-radius: 10px;
+      background: linear-gradient(90deg, #ff7a3d, #ff5b8a); color: #fff; cursor: pointer;
+      font-weight: 600;
+    }
+    #overlay button:active { transform: scale(.97); }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="row">
+      <span class="label">❤️ Život</span>
+      <div class="bar" id="hpBar"><span></span></div>
+    </div>
+  </div>
+  <div id="score">⚔️ Skóre: 0</div>
+  <div id="hint">WASD / šipky = chůze · myš = rozhlížení · mezerník nebo klik = útok mečem</div>
+
+  <div id="touch">
+    <div id="stick"><div id="knob"></div></div>
+    <div id="attackBtn">⚔️</div>
+  </div>
+
+  <div id="overlay" class="hidden">
+    <div class="panel">
+      <h1 id="ovTitle">Hrdina meče</h1>
+      <p id="ovText">Poraz co nejvíce příšer!</p>
+      <button id="ovBtn">Hrát</button>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+  import * as THREE from 'three';
+
+  // ---------- Základní nastavení scény ----------
+  const canvas = document.getElementById('game');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x121a2b);
+  scene.fog = new THREE.Fog(0x121a2b, 28, 64);
+
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 200);
+
+  // Světla
+  scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a3142, 0.85));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+  sun.position.set(18, 30, 12);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 90;
+  const s = 45;
+  sun.shadow.camera.left = -s; sun.shadow.camera.right = s;
+  sun.shadow.camera.top = s; sun.shadow.camera.bottom = -s;
+  scene.add(sun);
+
+  // ---------- Aréna ----------
+  const ARENA = 38; // poloměr herní plochy (čtverec)
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x2f3b29, roughness: 1 });
+  const ground = new THREE.Mesh(new THREE.BoxGeometry(ARENA * 2, 1, ARENA * 2), groundMat);
+  ground.position.y = -0.5;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // Mřížka pro pocit pohybu
+  const grid = new THREE.GridHelper(ARENA * 2, 38, 0x3c4a32, 0x33402b);
+  grid.position.y = 0.01;
+  scene.add(grid);
+
+  // Hradby kolem arény (hranaté kvádry)
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x4a4f5c, roughness: 0.9 });
+  function addWall(x, z, w, d) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, 3, d), wallMat);
+    wall.position.set(x, 1.5, z);
+    wall.castShadow = true; wall.receiveShadow = true;
+    scene.add(wall);
+  }
+  addWall(0, -ARENA, ARENA * 2, 1.2);
+  addWall(0, ARENA, ARENA * 2, 1.2);
+  addWall(-ARENA, 0, 1.2, ARENA * 2);
+  addWall(ARENA, 0, 1.2, ARENA * 2);
+
+  // Pár dekoračních kostek (stromy/skály)
+  const decoMat = new THREE.MeshStandardMaterial({ color: 0x394d2e, roughness: 1 });
+  for (let i = 0; i < 14; i++) {
+    const h = 1 + Math.random() * 3;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(1.4, h, 1.4), decoMat);
+    let x, z;
+    do { x = (Math.random() - 0.5) * ARENA * 1.7; z = (Math.random() - 0.5) * ARENA * 1.7; }
+    while (Math.hypot(x, z) < 6);
+    b.position.set(x, h / 2, z);
+    b.castShadow = true; b.receiveShadow = true;
+    scene.add(b);
+  }
+
+  // ---------- Hrdina ----------
+  const hero = new THREE.Group();
+  scene.add(hero);
+
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xe9b48a, roughness: 0.8 });
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3667c9, roughness: 0.8 });
+  const legMat = new THREE.MeshStandardMaterial({ color: 0x2b3a55, roughness: 0.9 });
+
+  function box(w, h, d, mat) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.castShadow = true; m.receiveShadow = true;
+    return m;
+  }
+
+  const torso = box(0.8, 0.9, 0.45, bodyMat); torso.position.y = 1.15; hero.add(torso);
+  const head = box(0.55, 0.55, 0.55, skinMat); head.position.y = 1.9; hero.add(head);
+
+  const legL = box(0.3, 0.8, 0.3, legMat); legL.position.set(-0.22, 0.4, 0); hero.add(legL);
+  const legR = box(0.3, 0.8, 0.3, legMat); legR.position.set(0.22, 0.4, 0); hero.add(legR);
+
+  const armL = box(0.25, 0.75, 0.25, bodyMat); armL.position.set(-0.55, 1.2, 0); hero.add(armL);
+
+  // Pravá paže + meč (pivot pro animaci úderu)
+  const armPivot = new THREE.Group();
+  armPivot.position.set(0.55, 1.55, 0);
+  hero.add(armPivot);
+  const armR = box(0.25, 0.75, 0.25, skinMat); armR.position.y = -0.35; armPivot.add(armR);
+
+  const swordMat = new THREE.MeshStandardMaterial({ color: 0xd8dde6, roughness: 0.35, metalness: 0.5 });
+  const guardMat = new THREE.MeshStandardMaterial({ color: 0x8a6b2e, roughness: 0.7, metalness: 0.3 });
+  const sword = new THREE.Group();
+  const blade = box(0.14, 1.5, 0.14, swordMat); blade.position.y = -1.0; sword.add(blade);
+  const guard = box(0.5, 0.14, 0.14, guardMat); guard.position.y = -0.2; sword.add(guard);
+  const grip = box(0.12, 0.4, 0.12, guardMat); grip.position.y = 0; sword.add(grip);
+  sword.position.set(0, -0.7, 0.05);
+  armPivot.add(sword);
+
+  hero.position.set(0, 0, 0);
+  let heroAngle = 0;         // směr, kam hrdina kouká (yaw)
+  const heroRadius = 0.55;
+  const HERO_MAX_HP = 100;
+  let heroHP = HERO_MAX_HP;
+
+  // ---------- Příšery ----------
+  const enemies = [];
+  const enemyBodyMat = new THREE.MeshStandardMaterial({ color: 0x7a2f3a, roughness: 0.85 });
+  const enemyEyeMat = new THREE.MeshStandardMaterial({ color: 0xffd23d, emissive: 0x553a00 });
+
+  function spawnEnemy() {
+    const g = new THREE.Group();
+    const body = box(0.9, 0.9, 0.9, enemyBodyMat); body.position.y = 0.7; g.add(body);
+    const head = box(0.6, 0.5, 0.6, enemyBodyMat); head.position.y = 1.45; g.add(head);
+    const eyeL = box(0.12, 0.12, 0.05, enemyEyeMat); eyeL.position.set(-0.15, 1.5, 0.31); g.add(eyeL);
+    const eyeR = box(0.12, 0.12, 0.05, enemyEyeMat); eyeR.position.set(0.15, 1.5, 0.31); g.add(eyeR);
+    const legL = box(0.25, 0.5, 0.25, enemyBodyMat); legL.position.set(-0.25, 0.25, 0); g.add(legL);
+    const legR = box(0.25, 0.5, 0.25, enemyBodyMat); legR.position.set(0.25, 0.25, 0); g.add(legR);
+
+    // Spawn na okraji arény, daleko od hrdiny
+    let x, z;
+    do {
+      const a = Math.random() * Math.PI * 2;
+      const r = ARENA * (0.5 + Math.random() * 0.4);
+      x = Math.cos(a) * r; z = Math.sin(a) * r;
+    } while (Math.hypot(x - hero.position.x, z - hero.position.z) < 12);
+    g.position.set(x, 0, z);
+    scene.add(g);
+
+    enemies.push({
+      group: g, hp: 3, radius: 0.6, speed: 2 + Math.random() * 1.2,
+      hitCooldown: 0, flash: 0, walk: Math.random() * 10
+    });
+  }
+
+  // ---------- Ovládání ----------
+  const keys = {};
+  window.addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+    if (e.code === 'Space') { e.preventDefault(); attack(); }
+  });
+  window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+  // Myš – otáčení kamery a útok
+  let camYaw = 0, camPitch = 0.35;
+  let pointerLocked = false;
+  canvas.addEventListener('click', () => {
+    if (!running) return;
+    if (!pointerLocked) canvas.requestPointerLock();
+    else attack();
+  });
+  document.addEventListener('pointerlockchange', () => {
+    pointerLocked = (document.pointerLockElement === canvas);
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!pointerLocked) return;
+    camYaw -= e.movementX * 0.0028;
+    camPitch -= e.movementY * 0.0022;
+    camPitch = Math.max(0.05, Math.min(0.95, camPitch));
+  });
+
+  // Mobilní joystick
+  const stick = document.getElementById('stick');
+  const knob = document.getElementById('knob');
+  let moveVec = { x: 0, y: 0 };
+  let stickId = null;
+  function stickStart(e) {
+    const t = e.changedTouches ? e.changedTouches[0] : e;
+    stickId = e.changedTouches ? t.identifier : 'mouse';
+    stickMove(e);
+  }
+  function stickMove(e) {
+    const touches = e.changedTouches || [e];
+    let t = null;
+    for (const tt of touches) { if ((tt.identifier ?? 'mouse') === stickId) t = tt; }
+    if (!t) return;
+    const r = stick.getBoundingClientRect();
+    let dx = t.clientX - (r.left + r.width / 2);
+    let dy = t.clientY - (r.top + r.height / 2);
+    const max = r.width / 2;
+    const len = Math.hypot(dx, dy);
+    if (len > max) { dx = dx / len * max; dy = dy / len * max; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    moveVec.x = dx / max; moveVec.y = dy / max;
+  }
+  function stickEnd() {
+    stickId = null; moveVec.x = 0; moveVec.y = 0;
+    knob.style.transform = 'translate(0,0)';
+  }
+  stick.addEventListener('touchstart', (e) => { e.preventDefault(); stickStart(e); }, { passive: false });
+  stick.addEventListener('touchmove', (e) => { e.preventDefault(); stickMove(e); }, { passive: false });
+  stick.addEventListener('touchend', (e) => { e.preventDefault(); stickEnd(); }, { passive: false });
+  document.getElementById('attackBtn').addEventListener('touchstart', (e) => { e.preventDefault(); attack(); }, { passive: false });
+
+  // Otáčení kamery dotykem mimo joystick
+  let lookId = null, lookX = 0, lookY = 0;
+  window.addEventListener('touchstart', (e) => {
+    for (const t of e.changedTouches) {
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      if (el && (el.id === 'stick' || el.id === 'knob' || el.id === 'attackBtn')) continue;
+      if (lookId === null) { lookId = t.identifier; lookX = t.clientX; lookY = t.clientY; }
+    }
+  }, { passive: true });
+  window.addEventListener('touchmove', (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === lookId) {
+        camYaw -= (t.clientX - lookX) * 0.005;
+        camPitch -= (t.clientY - lookY) * 0.004;
+        camPitch = Math.max(0.05, Math.min(0.95, camPitch));
+        lookX = t.clientX; lookY = t.clientY;
+      }
+    }
+  }, { passive: true });
+  window.addEventListener('touchend', (e) => {
+    for (const t of e.changedTouches) { if (t.identifier === lookId) lookId = null; }
+  }, { passive: true });
+
+  // ---------- Útok ----------
+  let attackTimer = 0;       // doba trvání animace úderu
+  let attackCooldown = 0;    // než lze znovu seknout
+  let didHit = false;        // zda už zásah v aktuálním úderu proběhl
+  function attack() {
+    if (!running || attackCooldown > 0) return;
+    attackTimer = 0.32;
+    attackCooldown = 0.42;
+    didHit = false;
+  }
+
+  // ---------- Stav hry ----------
+  let running = false;
+  let score = 0;
+  let spawnTimer = 0;
+  let spawnInterval = 2.4;
+  const hpFill = document.querySelector('#hpBar > span');
+  const scoreEl = document.getElementById('score');
+  const overlay = document.getElementById('overlay');
+  const ovTitle = document.getElementById('ovTitle');
+  const ovText = document.getElementById('ovText');
+  const ovBtn = document.getElementById('ovBtn');
+
+  function showOverlay(title, text, btn) {
+    ovTitle.textContent = title; ovText.textContent = text; ovBtn.textContent = btn;
+    overlay.classList.remove('hidden');
+  }
+  function startGame() {
+    // vyčistit příšery
+    for (const e of enemies) scene.remove(e.group);
+    enemies.length = 0;
+    heroHP = HERO_MAX_HP; score = 0; spawnTimer = 0; spawnInterval = 2.4;
+    hero.position.set(0, 0, 0); heroAngle = 0; camYaw = 0; camPitch = 0.35;
+    scoreEl.textContent = '⚔️ Skóre: 0';
+    hpFill.style.width = '100%';
+    overlay.classList.add('hidden');
+    running = true;
+    for (let i = 0; i < 3; i++) spawnEnemy();
+  }
+  function gameOver() {
+    running = false;
+    if (document.pointerLockElement) document.exitPointerLock();
+    showOverlay('Padl jsi 💀', `Skóre: ${score} poražených příšer.`, 'Hrát znovu');
+  }
+  ovBtn.addEventListener('click', startGame);
+  showOverlay('Hrdina meče ⚔️', 'Chod po aréně, sekej mečem a poraz co nejvíce příšer. WASD = pohyb, myš = rozhlížení, mezerník / klik = útok.', 'Hrát');
+
+  // ---------- Pomocné vektory ----------
+  const tmp = new THREE.Vector3();
+
+  // ---------- Smyčka ----------
+  let last = performance.now();
+  function animate(now) {
+    requestAnimationFrame(animate);
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+
+    if (running) update(dt);
+    renderer.render(scene, camera);
+  }
+
+  function update(dt) {
+    // --- Vstup pohybu ---
+    let ix = 0, iz = 0;
+    if (keys['KeyW'] || keys['ArrowUp']) iz -= 1;
+    if (keys['KeyS'] || keys['ArrowDown']) iz += 1;
+    if (keys['KeyA'] || keys['ArrowLeft']) ix -= 1;
+    if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
+    if (moveVec.x || moveVec.y) { ix += moveVec.x; iz += moveVec.y; }
+
+    // Směr relativně ke kameře
+    const cos = Math.cos(camYaw), sin = Math.sin(camYaw);
+    let dx = ix * cos - iz * sin;
+    let dz = ix * sin + iz * cos;
+    const len = Math.hypot(dx, dz);
+    const moving = len > 0.01;
+    if (moving) {
+      dx /= len; dz /= len;
+      const speed = 6.5;
+      hero.position.x += dx * speed * dt;
+      hero.position.z += dz * speed * dt;
+      heroAngle = Math.atan2(dx, dz);
+    }
+
+    // Hranice arény
+    const lim = ARENA - 1.5;
+    hero.position.x = Math.max(-lim, Math.min(lim, hero.position.x));
+    hero.position.z = Math.max(-lim, Math.min(lim, hero.position.z));
+
+    // Otáčení hrdiny k požadovanému směru
+    let da = heroAngle - hero.rotation.y;
+    while (da > Math.PI) da -= Math.PI * 2;
+    while (da < -Math.PI) da += Math.PI * 2;
+    hero.rotation.y += da * Math.min(1, dt * 12);
+
+    // Animace nohou při chůzi
+    const t = performance.now() / 1000;
+    if (moving) {
+      const sw = Math.sin(t * 10) * 0.5;
+      legL.rotation.x = sw; legR.rotation.x = -sw;
+    } else {
+      legL.rotation.x *= 0.8; legR.rotation.x *= 0.8;
+    }
+
+    // --- Útok / animace meče ---
+    if (attackCooldown > 0) attackCooldown -= dt;
+    if (attackTimer > 0) {
+      attackTimer -= dt;
+      const p = 1 - Math.max(0, attackTimer) / 0.32; // 0..1
+      // švih shora dolů a dopředu
+      armPivot.rotation.x = -2.2 + Math.sin(p * Math.PI) * 2.6;
+      // zásah uprostřed švihu
+      if (!didHit && p > 0.35) { didHit = true; doMeleeHit(); }
+    } else {
+      armPivot.rotation.x += (0 - armPivot.rotation.x) * Math.min(1, dt * 10);
+    }
+
+    // --- Příšery ---
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const e = enemies[i];
+      tmp.set(hero.position.x - e.group.position.x, 0, hero.position.z - e.group.position.z);
+      const dist = tmp.length();
+      if (dist > 0.001) tmp.divideScalar(dist);
+
+      // pohyb k hrdinovi
+      if (dist > e.radius + heroRadius + 0.1) {
+        e.group.position.x += tmp.x * e.speed * dt;
+        e.group.position.z += tmp.z * e.speed * dt;
+        e.walk += dt * 8;
+        e.group.position.y = Math.abs(Math.sin(e.walk)) * 0.12;
+      } else {
+        e.group.position.y *= 0.8;
+      }
+      // natočení k hrdinovi
+      e.group.rotation.y = Math.atan2(tmp.x, tmp.z);
+
+      // útok na hrdinu
+      if (e.hitCooldown > 0) e.hitCooldown -= dt;
+      if (dist < e.radius + heroRadius + 0.25 && e.hitCooldown <= 0) {
+        e.hitCooldown = 1.0;
+        heroHP = Math.max(0, heroHP - 8);
+        hpFill.style.width = (heroHP / HERO_MAX_HP * 100) + '%';
+        if (heroHP <= 0) { gameOver(); return; }
+      }
+
+      // blikání po zásahu
+      if (e.flash > 0) {
+        e.flash -= dt;
+        e.group.scale.setScalar(1 + e.flash * 0.5);
+      } else {
+        e.group.scale.setScalar(1);
+      }
+    }
+
+    // --- Spawn ---
+    spawnTimer += dt;
+    if (spawnTimer > spawnInterval) {
+      spawnTimer = 0;
+      spawnEnemy();
+      spawnInterval = Math.max(0.9, spawnInterval * 0.97); // časem zrychluj
+    }
+
+    // --- Kamera (third person, za hrdinou) ---
+    const camDist = 7, camHeight = 4.2;
+    const tx = hero.position.x - Math.sin(camYaw) * camDist * Math.cos(camPitch);
+    const tz = hero.position.z - Math.cos(camYaw) * camDist * Math.cos(camPitch);
+    const ty = hero.position.y + camHeight * camPitch + 1.5;
+    camera.position.lerp(tmp.set(tx, ty, tz), Math.min(1, dt * 10));
+    camera.lookAt(hero.position.x, hero.position.y + 1.5, hero.position.z);
+  }
+
+  function doMeleeHit() {
+    // dosah meče před hrdinou
+    const reach = 2.4, halfAngle = Math.cos(0.9);
+    const fx = Math.sin(hero.rotation.y), fz = Math.cos(hero.rotation.y);
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const e = enemies[i];
+      const ex = e.group.position.x - hero.position.x;
+      const ez = e.group.position.z - hero.position.z;
+      const d = Math.hypot(ex, ez);
+      if (d > reach + e.radius) continue;
+      const dot = (ex * fx + ez * fz) / (d || 1);
+      if (dot < halfAngle) continue; // mimo úhel seku
+      // zásah!
+      e.hp -= 1;
+      e.flash = 0.25;
+      // odhození
+      e.group.position.x += fx * 0.6;
+      e.group.position.z += fz * 0.6;
+      if (e.hp <= 0) {
+        scene.remove(e.group);
+        enemies.splice(i, 1);
+        score++;
+        scoreEl.textContent = '⚔️ Skóre: ' + score;
+      }
+    }
+  }
+
+  // ---------- Resize ----------
+  function onResize() {
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+  }
+  window.addEventListener('resize', onResize);
+  onResize();
+
+  requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

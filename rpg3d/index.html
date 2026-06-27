@@ -426,12 +426,14 @@
     if (keys['KeyS'] || keys['ArrowDown']) iz += 1;
     if (keys['KeyA'] || keys['ArrowLeft']) ix -= 1;
     if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
-    if (moveVec.x || moveVec.y) { ix -= moveVec.x; iz -= moveVec.y; }
+    if (moveVec.x || moveVec.y) { ix += moveVec.x; iz += moveVec.y; }
 
-    // Směr relativně ke kameře
+    // Směr pohybu relativně ke kameře (camYaw = směr pohledu kamery)
     const cos = Math.cos(camYaw), sin = Math.sin(camYaw);
-    let dx = ix * cos - iz * sin;
-    let dz = ix * sin + iz * cos;
+    const fwd = -iz, strafe = ix;
+    // dopředný vektor kamery (sin,cos) + boční vektor (cos,-sin)
+    let dx = sin * fwd + cos * strafe;
+    let dz = cos * fwd - sin * strafe;
     const len = Math.hypot(dx, dz);
     const moving = len > 0.01;
     if (moving) {
@@ -440,6 +442,11 @@
       hero.position.x += dx * speed * dt;
       hero.position.z += dz * speed * dt;
       heroAngle = Math.atan2(dx, dz);
+      // kamera se plynule natáčí za hrdinu, ať vidí dopředu před sebe
+      let dc = heroAngle - camYaw;
+      while (dc > Math.PI) dc -= Math.PI * 2;
+      while (dc < -Math.PI) dc += Math.PI * 2;
+      camYaw += dc * Math.min(1, dt * 4);
     }
 
     // Hranice arény

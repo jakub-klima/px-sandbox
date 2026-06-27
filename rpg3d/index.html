@@ -426,7 +426,7 @@
     if (keys['KeyS'] || keys['ArrowDown']) iz += 1;
     if (keys['KeyA'] || keys['ArrowLeft']) ix -= 1;
     if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
-    if (moveVec.x || moveVec.y) { ix += moveVec.x; iz += moveVec.y; }
+    if (moveVec.x || moveVec.y) { ix -= moveVec.x; iz += moveVec.y; }
 
     // Směr pohybu relativně ke kameře (camYaw = směr pohledu kamery)
     const cos = Math.cos(camYaw), sin = Math.sin(camYaw);

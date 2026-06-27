@@ -88,11 +88,16 @@
     #overlay h1 { font-size: 26px; margin-bottom: 10px; }
     #overlay p { opacity: .85; font-size: 14px; line-height: 1.6; margin-bottom: 18px; }
     #overlay button {
+      display: block; width: 100%; margin: 0 auto 10px;
       font-size: 16px; padding: 12px 26px; border: none; border-radius: 10px;
       background: linear-gradient(90deg, #ff7a3d, #ff5b8a); color: #fff; cursor: pointer;
       font-weight: 600;
     }
     #overlay button:active { transform: scale(.97); }
+    #ovFsBtn {
+      background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.3) !important;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -118,6 +123,7 @@
       <h1 id="ovTitle">Hrdina meče</h1>
       <p id="ovText">Poraz co nejvíce příšer!</p>
       <button id="ovBtn">Hrát</button>
+      <button id="ovFsBtn">📱 Hrát na celou obrazovku</button>
     </div>
   </div>
 
@@ -554,6 +560,18 @@
   const ovTitle = document.getElementById('ovTitle');
   const ovText = document.getElementById('ovText');
   const ovBtn = document.getElementById('ovBtn');
+  const ovFsBtn = document.getElementById('ovFsBtn');
+
+  // Celá obrazovka + zámek na šířku (na telefonu schová lišty prohlížeče)
+  async function goFullscreen() {
+    const el = document.documentElement;
+    try {
+      if (!document.fullscreenElement) {
+        await (el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen?.());
+      }
+    } catch (e) { /* některé prohlížeče fullscreen odmítnou – ignorujeme */ }
+    try { await screen.orientation?.lock?.('landscape'); } catch (e) { /* iOS Safari nepodporuje */ }
+  }
 
   function showOverlay(title, text, btn) {
     ovTitle.textContent = title; ovText.textContent = text; ovBtn.textContent = btn;
@@ -579,6 +597,7 @@
     showOverlay('Padl jsi 💀', `Skóre: ${score} poražených příšer.`, 'Hrát znovu');
   }
   ovBtn.addEventListener('click', startGame);
+  ovFsBtn.addEventListener('click', async () => { await goFullscreen(); startGame(); });
   showOverlay('Hrdina meče ⚔️', 'Chod po aréně, sekej mečem a poraz co nejvíce příšer. WASD = pohyb, mezerník / klik = útok.', 'Hrát');
 
   // ---------- Pomocné vektory ----------
@@ -773,6 +792,8 @@
     renderer.setSize(window.innerWidth, window.innerHeight, false);
   }
   window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', () => setTimeout(onResize, 200));
+  document.addEventListener('fullscreenchange', () => setTimeout(onResize, 100));
   onResize();
 
   requestAnimationFrame(animate);

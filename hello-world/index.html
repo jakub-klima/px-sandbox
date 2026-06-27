@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hello World – Android App</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .icon { font-size: 64px; margin-bottom: 16px; }
+    h1 { font-size: 2em; margin-bottom: 8px; color: #1a1a1a; }
+    .subtitle { color: #666; margin-bottom: 32px; }
+    .download-btn {
+      display: inline-block;
+      background: #2196F3;
+      color: white;
+      padding: 14px 32px;
+      font-size: 1.1em;
+      font-weight: bold;
+      text-decoration: none;
+      border-radius: 8px;
+      transition: background 0.2s;
+    }
+    .download-btn:hover { background: #1565C0; }
+    .info {
+      margin-top: 24px;
+      padding: 16px;
+      background: #fff8e1;
+      border-radius: 8px;
+      font-size: 0.85em;
+      color: #555;
+      text-align: left;
+    }
+    .info strong { color: #333; }
+    .back { margin-top: 24px; color: #2196F3; text-decoration: none; font-size: 0.9em; }
+    .back:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">📱</div>
+    <h1>Hello World</h1>
+    <p class="subtitle">Jednoduchá Android aplikace zobrazující "Hello, World!"</p>
+
+    <a class="download-btn" href="../downloads/hello-world.apk" download="hello-world.apk">
+      ⬇️ Stáhnout APK
+    </a>
+
+    <div class="info">
+      <strong>Jak nainstalovat:</strong><br>
+      1. Stáhněte APK soubor<br>
+      2. V nastavení Androidu povolte <em>Instalace z neznámých zdrojů</em><br>
+      3. Otevřete stažený soubor a potvrďte instalaci
+    </div>
+
+    <a class="back" href="../">← Zpět na hlavní stránku</a>
+  </div>
+</body>
+</html>

@@ -234,12 +234,14 @@
 
   function spawnEnemy() {
     const g = new THREE.Group();
-    const body = box(0.9, 0.9, 0.9, enemyBodyMat); body.position.y = 0.7; g.add(body);
-    const head = box(0.6, 0.5, 0.6, enemyBodyMat); head.position.y = 1.45; g.add(head);
+    // vlastní materiál pro každou příšeru (kvůli probliknutí při zásahu)
+    const bodyMat = enemyBodyMat.clone();
+    const body = box(0.9, 0.9, 0.9, bodyMat); body.position.y = 0.7; g.add(body);
+    const head = box(0.6, 0.5, 0.6, bodyMat); head.position.y = 1.45; g.add(head);
     const eyeL = box(0.12, 0.12, 0.05, enemyEyeMat); eyeL.position.set(-0.15, 1.5, 0.31); g.add(eyeL);
     const eyeR = box(0.12, 0.12, 0.05, enemyEyeMat); eyeR.position.set(0.15, 1.5, 0.31); g.add(eyeR);
-    const legL = box(0.25, 0.5, 0.25, enemyBodyMat); legL.position.set(-0.25, 0.25, 0); g.add(legL);
-    const legR = box(0.25, 0.5, 0.25, enemyBodyMat); legR.position.set(0.25, 0.25, 0); g.add(legR);
+    const legL = box(0.25, 0.5, 0.25, bodyMat); legL.position.set(-0.25, 0.25, 0); g.add(legL);
+    const legR = box(0.25, 0.5, 0.25, bodyMat); legR.position.set(0.25, 0.25, 0); g.add(legR);
 
     // Spawn na okraji arény, daleko od hrdiny
     let x, z;
@@ -252,9 +254,24 @@
     scene.add(g);
 
     enemies.push({
-      group: g, hp: 3, radius: 0.6, speed: 2 + Math.random() * 1.2,
+      group: g, bodyMat, hp: 3, radius: 0.6, speed: 2 + Math.random() * 1.2,
       hitCooldown: 0, flash: 0, walk: Math.random() * 10
     });
+  }
+
+  // ---------- Efekty zásahu ----------
+  const sparks = []; // krátké vizuální "jiskry" v místě zásahu
+  const sparkGeo = new THREE.BoxGeometry(0.18, 0.18, 0.18);
+  function spawnHitSpark(x, y, z) {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xfff2a0 });
+    for (let i = 0; i < 8; i++) {
+      const m = new THREE.Mesh(sparkGeo, mat);
+      m.position.set(x, y, z);
+      const a = Math.random() * Math.PI * 2, up = Math.random() * 4 + 2;
+      m.userData.v = new THREE.Vector3(Math.cos(a) * 4, up, Math.sin(a) * 4);
+      scene.add(m);
+      sparks.push({ mesh: m, life: 0.4 });
+    }
   }
 
   // ---------- Ovládání ----------
@@ -370,6 +387,8 @@
     // vyčistit příšery
     for (const e of enemies) scene.remove(e.group);
     enemies.length = 0;
+    for (const sp of sparks) scene.remove(sp.mesh);
+    sparks.length = 0;
     heroHP = HERO_MAX_HP; score = 0; spawnTimer = 0; spawnInterval = 2.4;
     hero.position.set(0, 0, 0); heroAngle = 0; camYaw = 0; camPitch = 0.35;
     scoreEl.textContent = '⚔️ Skóre: 0';
@@ -407,7 +426,7 @@
     if (keys['KeyS'] || keys['ArrowDown']) iz += 1;
     if (keys['KeyA'] || keys['ArrowLeft']) ix -= 1;
     if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
-    if (moveVec.x || moveVec.y) { ix += moveVec.x; iz += moveVec.y; }
+    if (moveVec.x || moveVec.y) { ix += moveVec.x; iz -= moveVec.y; }
 
     // Směr relativně ke kameře
     const cos = Math.cos(camYaw), sin = Math.sin(camYaw);
@@ -448,12 +467,15 @@
     if (attackTimer > 0) {
       attackTimer -= dt;
       const p = 1 - Math.max(0, attackTimer) / 0.32; // 0..1
-      // švih shora dolů a dopředu
-      armPivot.rotation.x = -2.2 + Math.sin(p * Math.PI) * 2.6;
+      // šikmý švih: z pravého ramene dolů doleva (kombinace os X a Z)
+      const swing = Math.sin(p * Math.PI); // 0 -> 1 -> 0
+      armPivot.rotation.x = -1.9 + swing * 2.4;   // shora dolů
+      armPivot.rotation.z = -1.4 + swing * 2.2;   // zprava doleva (šikmo)
       // zásah uprostřed švihu
       if (!didHit && p > 0.35) { didHit = true; doMeleeHit(); }
     } else {
       armPivot.rotation.x += (0 - armPivot.rotation.x) * Math.min(1, dt * 10);
+      armPivot.rotation.z += (0 - armPivot.rotation.z) * Math.min(1, dt * 10);
     }
 
     // --- Příšery ---
@@ -484,13 +506,27 @@
         if (heroHP <= 0) { gameOver(); return; }
       }
 
-      // blikání po zásahu
+      // probliknutí po zásahu – jasně bílá + nafouknutí
       if (e.flash > 0) {
         e.flash -= dt;
-        e.group.scale.setScalar(1 + e.flash * 0.5);
+        const f = Math.max(0, e.flash) / 0.25;
+        e.bodyMat.emissive.setRGB(f, f, f);
+        e.group.scale.setScalar(1 + f * 0.35);
       } else {
+        e.bodyMat.emissive.setRGB(0, 0, 0);
         e.group.scale.setScalar(1);
       }
+    }
+
+    // --- Jiskry zásahu ---
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const sp = sparks[i];
+      sp.life -= dt;
+      const m = sp.mesh;
+      m.userData.v.y -= 14 * dt; // gravitace
+      m.position.addScaledVector(m.userData.v, dt);
+      m.scale.setScalar(Math.max(0.01, sp.life / 0.4));
+      if (sp.life <= 0) { scene.remove(m); sparks.splice(i, 1); }
     }
 
     // --- Spawn ---
@@ -525,9 +561,11 @@
       // zásah!
       e.hp -= 1;
       e.flash = 0.25;
+      // jiskry v místě zásahu (jasná zpětná vazba)
+      spawnHitSpark(e.group.position.x, 1.0, e.group.position.z);
       // odhození
-      e.group.position.x += fx * 0.6;
-      e.group.position.z += fz * 0.6;
+      e.group.position.x += fx * 0.8;
+      e.group.position.z += fz * 0.8;
       if (e.hp <= 0) {
         scene.remove(e.group);
         enemies.splice(i, 1);

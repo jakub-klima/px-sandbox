@@ -93,7 +93,7 @@
     </div>
   </div>
   <div id="score">⚔️ Skóre: 0</div>
-  <div id="hint">WASD / šipky = chůze · myš = rozhlížení · mezerník nebo klik = útok mečem</div>
+  <div id="hint">WASD / šipky = chůze · mezerník nebo klik = útok mečem</div>
 
   <div id="touch">
     <div id="stick"><div id="knob"></div></div>
@@ -130,7 +130,12 @@
   scene.background = new THREE.Color(0x121a2b);
   scene.fog = new THREE.Fog(0x121a2b, 28, 64);
 
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 200);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
+  // Pevná kamera ve stylu Diablo – vysoko a daleko, pod strmým úhlem.
+  const CAM_HEIGHT = 19;  // výška nad hrdinou
+  const CAM_BACK = 14;    // odsazení směrem k divákovi (+z)
+  camera.position.set(0, CAM_HEIGHT, CAM_BACK);
+  camera.lookAt(0, 0.5, 0);
 
   // Světla
   scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a3142, 0.85));
@@ -282,23 +287,9 @@
   });
   window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
-  // Myš – otáčení kamery a útok
-  let camYaw = 0, camPitch = 0.35;
-  let pointerLocked = false;
-  canvas.addEventListener('click', () => {
-    if (!running) return;
-    if (!pointerLocked) canvas.requestPointerLock();
-    else attack();
-  });
-  document.addEventListener('pointerlockchange', () => {
-    pointerLocked = (document.pointerLockElement === canvas);
-  });
-  window.addEventListener('mousemove', (e) => {
-    if (!pointerLocked) return;
-    camYaw -= e.movementX * 0.0028;
-    camPitch -= e.movementY * 0.0022;
-    camPitch = Math.max(0.05, Math.min(0.95, camPitch));
-  });
+  // Pevná kamera ve stylu Diablo (shora pod úhlem, neotáčí se)
+  // Kliknutím se útočí mečem.
+  canvas.addEventListener('click', () => { attack(); });
 
   // Mobilní joystick
   const stick = document.getElementById('stick');
@@ -332,29 +323,6 @@
   stick.addEventListener('touchmove', (e) => { e.preventDefault(); stickMove(e); }, { passive: false });
   stick.addEventListener('touchend', (e) => { e.preventDefault(); stickEnd(); }, { passive: false });
   document.getElementById('attackBtn').addEventListener('touchstart', (e) => { e.preventDefault(); attack(); }, { passive: false });
-
-  // Otáčení kamery dotykem mimo joystick
-  let lookId = null, lookX = 0, lookY = 0;
-  window.addEventListener('touchstart', (e) => {
-    for (const t of e.changedTouches) {
-      const el = document.elementFromPoint(t.clientX, t.clientY);
-      if (el && (el.id === 'stick' || el.id === 'knob' || el.id === 'attackBtn')) continue;
-      if (lookId === null) { lookId = t.identifier; lookX = t.clientX; lookY = t.clientY; }
-    }
-  }, { passive: true });
-  window.addEventListener('touchmove', (e) => {
-    for (const t of e.changedTouches) {
-      if (t.identifier === lookId) {
-        camYaw -= (t.clientX - lookX) * 0.005;
-        camPitch -= (t.clientY - lookY) * 0.004;
-        camPitch = Math.max(0.05, Math.min(0.95, camPitch));
-        lookX = t.clientX; lookY = t.clientY;
-      }
-    }
-  }, { passive: true });
-  window.addEventListener('touchend', (e) => {
-    for (const t of e.changedTouches) { if (t.identifier === lookId) lookId = null; }
-  }, { passive: true });
 
   // ---------- Útok ----------
   let attackTimer = 0;       // doba trvání animace úderu
@@ -390,7 +358,7 @@
     for (const sp of sparks) scene.remove(sp.mesh);
     sparks.length = 0;
     heroHP = HERO_MAX_HP; score = 0; spawnTimer = 0; spawnInterval = 2.4;
-    hero.position.set(0, 0, 0); heroAngle = 0; camYaw = 0; camPitch = 0.35;
+    hero.position.set(0, 0, 0); heroAngle = 0;
     scoreEl.textContent = '⚔️ Skóre: 0';
     hpFill.style.width = '100%';
     overlay.classList.add('hidden');
@@ -399,11 +367,10 @@
   }
   function gameOver() {
     running = false;
-    if (document.pointerLockElement) document.exitPointerLock();
     showOverlay('Padl jsi 💀', `Skóre: ${score} poražených příšer.`, 'Hrát znovu');
   }
   ovBtn.addEventListener('click', startGame);
-  showOverlay('Hrdina meče ⚔️', 'Chod po aréně, sekej mečem a poraz co nejvíce příšer. WASD = pohyb, myš = rozhlížení, mezerník / klik = útok.', 'Hrát');
+  showOverlay('Hrdina meče ⚔️', 'Chod po aréně, sekej mečem a poraz co nejvíce příšer. WASD = pohyb, mezerník / klik = útok.', 'Hrát');
 
   // ---------- Pomocné vektory ----------
   const tmp = new THREE.Vector3();
@@ -426,14 +393,12 @@
     if (keys['KeyS'] || keys['ArrowDown']) iz += 1;
     if (keys['KeyA'] || keys['ArrowLeft']) ix -= 1;
     if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
-    if (moveVec.x || moveVec.y) { ix -= moveVec.x; iz += moveVec.y; }
+    if (moveVec.x || moveVec.y) { ix += moveVec.x; iz += moveVec.y; }
 
-    // Směr pohybu relativně ke kameře (camYaw = směr pohledu kamery)
-    const cos = Math.cos(camYaw), sin = Math.sin(camYaw);
-    const fwd = -iz, strafe = ix;
-    // dopředný vektor kamery (sin,cos) + boční vektor (cos,-sin)
-    let dx = sin * fwd + cos * strafe;
-    let dz = cos * fwd - sin * strafe;
+    // Pevná kamera (Diablo styl): pohyb je vůči obrazovce.
+    // +x = doprava, -z = nahoru (od kamery do hloubky).
+    let dx = ix;
+    let dz = iz;
     const len = Math.hypot(dx, dz);
     const moving = len > 0.01;
     if (moving) {
@@ -442,11 +407,6 @@
       hero.position.x += dx * speed * dt;
       hero.position.z += dz * speed * dt;
       heroAngle = Math.atan2(dx, dz);
-      // kamera se plynule natáčí za hrdinu, ať vidí dopředu před sebe
-      let dc = heroAngle - camYaw;
-      while (dc > Math.PI) dc -= Math.PI * 2;
-      while (dc < -Math.PI) dc += Math.PI * 2;
-      camYaw += dc * Math.min(1, dt * 4);
     }
 
     // Hranice arény
@@ -544,13 +504,12 @@
       spawnInterval = Math.max(0.9, spawnInterval * 0.97); // časem zrychluj
     }
 
-    // --- Kamera (third person, za hrdinou) ---
-    const camDist = 7, camHeight = 4.2;
-    const tx = hero.position.x - Math.sin(camYaw) * camDist * Math.cos(camPitch);
-    const tz = hero.position.z - Math.cos(camYaw) * camDist * Math.cos(camPitch);
-    const ty = hero.position.y + camHeight * camPitch + 1.5;
-    camera.position.lerp(tmp.set(tx, ty, tz), Math.min(1, dt * 10));
-    camera.lookAt(hero.position.x, hero.position.y + 1.5, hero.position.z);
+    // --- Kamera (pevná, shora pod úhlem jako v Diablu) ---
+    const tx = hero.position.x;
+    const ty = hero.position.y + CAM_HEIGHT;
+    const tz = hero.position.z + CAM_BACK;
+    camera.position.lerp(tmp.set(tx, ty, tz), Math.min(1, dt * 8));
+    camera.lookAt(hero.position.x, hero.position.y + 0.5, hero.position.z);
   }
 
   function doMeleeHit() {

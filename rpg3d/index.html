@@ -454,9 +454,9 @@
   const hornMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d0, roughness: 0.6 });
   // typy příšer: barva, velikost, rychlost, rohy
   const enemyTypes = [
-    { color: 0x7a2f3a, scale: 1.0, speed: 2.6, horns: true,  hp: 30 }, // skřet
-    { color: 0x39603a, scale: 0.85, speed: 3.4, horns: false, hp: 22 }, // skřítek (rychlý)
-    { color: 0x4a3b6b, scale: 1.25, speed: 1.9, horns: true,  hp: 46 }  // obr (pomalý, tuhý)
+    { color: 0x7a2f3a, scale: 1.0, speed: 2.1, horns: true,  hp: 30 }, // skřet
+    { color: 0x39603a, scale: 0.85, speed: 2.8, horns: false, hp: 22 }, // skřítek (rychlý)
+    { color: 0x4a3b6b, scale: 1.25, speed: 1.5, horns: true,  hp: 46 }  // obr (pomalý, tuhý)
   ];
 
   function spawnEnemy() {
@@ -502,7 +502,7 @@
 
     enemies.push({
       group: g, bodyMat, hp: type.hp, baseScale: type.scale, radius: 0.6 * type.scale,
-      speed: type.speed + Math.random() * 0.6,
+      speed: type.speed + Math.random() * 0.5,
       hitCooldown: 0, flash: 0, walk: Math.random() * 10
     });
   }
@@ -620,7 +620,8 @@
   let running = false;
   let score = 0;
   let spawnTimer = 0;
-  let spawnInterval = 2.4;
+  let spawnInterval = 3.6;
+  const MAX_ENEMIES = 6;
   const hpFill = document.querySelector('#hpBar > span');
   const scoreEl = document.getElementById('score');
   const overlay = document.getElementById('overlay');
@@ -651,13 +652,13 @@
     for (const sp of sparks) scene.remove(sp.mesh);
     sparks.length = 0;
     clearFloaters();
-    heroHP = HERO_MAX_HP; score = 0; spawnTimer = 0; spawnInterval = 2.4;
+    heroHP = HERO_MAX_HP; score = 0; spawnTimer = 0; spawnInterval = 3.6;
     hero.position.set(0, 0, 0); heroAngle = 0;
     scoreEl.textContent = '⚔️ Skóre: 0';
     hpFill.style.width = '100%';
     overlay.classList.add('hidden');
     running = true;
-    for (let i = 0; i < 3; i++) spawnEnemy();
+    for (let i = 0; i < 2; i++) spawnEnemy();
   }
   function gameOver() {
     running = false;
@@ -714,7 +715,7 @@
     const moving = len > 0.01;
     if (moving) {
       dx /= len; dz /= len;
-      const speed = 6.5;
+      const speed = 5.6;
       hero.position.x += dx * speed * dt;
       hero.position.z += dz * speed * dt;
       heroAngle = Math.atan2(dx, dz);
@@ -819,12 +820,12 @@
       torchFlames[i].scale.set(fl, fl + 0.15, fl);
     }
 
-    // --- Spawn ---
+    // --- Spawn (méně příšer, s horním limitem) ---
     spawnTimer += dt;
-    if (spawnTimer > spawnInterval) {
+    if (spawnTimer > spawnInterval && enemies.length < MAX_ENEMIES) {
       spawnTimer = 0;
       spawnEnemy();
-      spawnInterval = Math.max(0.9, spawnInterval * 0.97); // časem zrychluj
+      spawnInterval = Math.max(1.8, spawnInterval * 0.98); // časem mírně zrychluj
     }
 
     // --- Kamera (pevná, shora pod úhlem jako v Diablu) ---

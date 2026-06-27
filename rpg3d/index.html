@@ -37,6 +37,18 @@
       text-shadow: 0 1px 4px rgba(0,0,0,.7); pointer-events: none;
     }
 
+    /* Plovoucí čísla poškození */
+    #floaters { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
+    .dmg {
+      position: absolute; transform: translate(-50%, -50%);
+      font-weight: 800; font-size: 20px; white-space: nowrap;
+      text-shadow: 0 2px 4px rgba(0,0,0,.8), 0 0 2px rgba(0,0,0,.9);
+      will-change: transform, opacity;
+    }
+    .dmg.deal { color: #fff2a0; }
+    .dmg.crit { color: #ffd23d; font-size: 28px; }
+    .dmg.take { color: #ff6b6b; }
+
     #hint {
       position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
       color: #cfe0ff; font-size: 13px; text-align: center;
@@ -85,6 +97,7 @@
 </head>
 <body>
   <canvas id="game"></canvas>
+  <div id="floaters"></div>
 
   <div id="hud">
     <div class="row">
@@ -259,7 +272,7 @@
     scene.add(g);
 
     enemies.push({
-      group: g, bodyMat, hp: 3, radius: 0.6, speed: 2 + Math.random() * 1.2,
+      group: g, bodyMat, hp: 30, radius: 0.6, speed: 2 + Math.random() * 1.2,
       hitCooldown: 0, flash: 0, walk: Math.random() * 10
     });
   }
@@ -277,6 +290,44 @@
       scene.add(m);
       sparks.push({ mesh: m, life: 0.4 });
     }
+  }
+
+  // ---------- Plovoucí čísla poškození ----------
+  const floatersEl = document.getElementById('floaters');
+  const floaters = []; // { el, pos:Vector3, vy, life, maxLife }
+  const projV = new THREE.Vector3();
+  function spawnDamageNumber(x, y, z, amount, kind) {
+    const el = document.createElement('div');
+    el.className = 'dmg ' + kind; // 'deal' | 'crit' | 'take'
+    el.textContent = (kind === 'take' ? '-' : '') + amount;
+    floatersEl.appendChild(el);
+    floaters.push({
+      el,
+      pos: new THREE.Vector3(x + (Math.random() - 0.5) * 0.5, y, z),
+      vy: 2.4, life: 0.9, maxLife: 0.9
+    });
+  }
+  function updateFloaters(dt) {
+    for (let i = floaters.length - 1; i >= 0; i--) {
+      const f = floaters[i];
+      f.life -= dt;
+      f.pos.y += f.vy * dt;
+      f.vy *= 0.92;
+      if (f.life <= 0) { f.el.remove(); floaters.splice(i, 1); continue; }
+      projV.copy(f.pos).project(camera);
+      const sx = (projV.x * 0.5 + 0.5) * window.innerWidth;
+      const sy = (-projV.y * 0.5 + 0.5) * window.innerHeight;
+      const t = f.life / f.maxLife; // 1 -> 0
+      f.el.style.left = sx + 'px';
+      f.el.style.top = sy + 'px';
+      f.el.style.opacity = Math.min(1, t * 1.6);
+      const scale = 0.8 + (1 - t) * 0.3;
+      f.el.style.transform = `translate(-50%, -50%) scale(${scale})`;
+    }
+  }
+  function clearFloaters() {
+    for (const f of floaters) f.el.remove();
+    floaters.length = 0;
   }
 
   // ---------- Ovládání ----------
@@ -357,6 +408,7 @@
     enemies.length = 0;
     for (const sp of sparks) scene.remove(sp.mesh);
     sparks.length = 0;
+    clearFloaters();
     heroHP = HERO_MAX_HP; score = 0; spawnTimer = 0; spawnInterval = 2.4;
     hero.position.set(0, 0, 0); heroAngle = 0;
     scoreEl.textContent = '⚔️ Skóre: 0';
@@ -468,8 +520,10 @@
       if (e.hitCooldown > 0) e.hitCooldown -= dt;
       if (dist < e.radius + heroRadius + 0.25 && e.hitCooldown <= 0) {
         e.hitCooldown = 1.0;
-        heroHP = Math.max(0, heroHP - 8);
+        const dmg = 6 + Math.floor(Math.random() * 5); // 6–10
+        heroHP = Math.max(0, heroHP - dmg);
         hpFill.style.width = (heroHP / HERO_MAX_HP * 100) + '%';
+        spawnDamageNumber(hero.position.x, 2.4, hero.position.z, dmg, 'take');
         if (heroHP <= 0) { gameOver(); return; }
       }
 
@@ -495,6 +549,9 @@
       m.scale.setScalar(Math.max(0.01, sp.life / 0.4));
       if (sp.life <= 0) { scene.remove(m); sparks.splice(i, 1); }
     }
+
+    // --- Plovoucí čísla poškození ---
+    updateFloaters(dt);
 
     // --- Spawn ---
     spawnTimer += dt;
@@ -524,11 +581,14 @@
       if (d > reach + e.radius) continue;
       const dot = (ex * fx + ez * fz) / (d || 1);
       if (dot < halfAngle) continue; // mimo úhel seku
-      // zásah!
-      e.hp -= 1;
+      // zásah! výpočet poškození (občas kritický)
+      const crit = Math.random() < 0.18;
+      const dmg = (crit ? 2 : 1) * (8 + Math.floor(Math.random() * 5)); // 8–12, krit 2×
+      e.hp -= dmg;
       e.flash = 0.25;
-      // jiskry v místě zásahu (jasná zpětná vazba)
+      // jiskry + plovoucí číslo v místě zásahu
       spawnHitSpark(e.group.position.x, 1.0, e.group.position.z);
+      spawnDamageNumber(e.group.position.x, 2.1, e.group.position.z, dmg, crit ? 'crit' : 'deal');
       // odhození
       e.group.position.x += fx * 0.8;
       e.group.position.z += fz * 0.8;

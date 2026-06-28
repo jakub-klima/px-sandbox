@@ -385,8 +385,10 @@
       { icon: '🔥', name: 'Plamenný démon',     color: '#d4622a', tier: 3, desc: 'Pekelná bytost sálající žárem.' },
     ];
     const MOB_TARGET = 8;                  // kolik nestvůr držet kolem hráče
-    const MOB_MIN = 30, MOB_MAX = 220;     // vzdálenost spawnu (m)
+    const MOB_MIN = 8, MOB_MAX = 90;       // vzdálenost spawnu (m) – blízko hráče
+    const RELOCATE_MIN = 20000, RELOCATE_MAX = 45000; // za jak dlouho se nezabitá nestvůra přesune
     let mobSeq = 0;
+    function relocateTime() { return Date.now() + RELOCATE_MIN + Math.random() * (RELOCATE_MAX - RELOCATE_MIN); }
 
     // náhodný geo bod v okolí (m)
     function randomPointNear(center, minM, maxM) {
@@ -407,7 +409,7 @@
       const lvl = levelOf(xp);
       const maxHp = tier * 5 + 2 + Math.floor(lvl * 1.5) + Math.floor(Math.random() * tier * 3);
       const pos = randomPointNear(center, MOB_MIN, MOB_MAX);
-      return { id: ++mobSeq, ...t, ...pos, maxHp, hp: maxHp, xp: tier * 15 + lvl * 2 };
+      return { id: ++mobSeq, ...t, ...pos, maxHp, hp: maxHp, xp: tier * 15 + lvl * 2, relocateAt: relocateTime() };
     }
     function ensureMonsters(center) {
       while (monsters.length < MOB_TARGET) monsters.push(makeMob(center));
@@ -415,18 +417,22 @@
     // síla útoku hráče roste s úrovní
     function playerAttack() { return 2 + levelOf(xp) + Math.floor(Math.random() * 3); }
 
-    // nestvůry pomalu bloudí a vzdálené se nahrazují novými
+    // nestvůry stojí; když je delší dobu nikdo nezabije, přesunou se jinam
+    // (kolem hráče) – tak se k tobě časem nějaká dostane, i když stojíš na místě
     setInterval(function () {
       if (!player) return;
+      const now = Date.now();
       for (const m of monsters) {
-        const step = randomPointNear(m, 1, 6);
-        m.lat = step.lat; m.lng = step.lng;
+        if (m === selectedMob) continue;          // s vybranou právě bojuješ
+        if (now >= m.relocateAt || metersBetween(player, m) > 350) {
+          const pos = randomPointNear(player, MOB_MIN, MOB_MAX);
+          m.lat = pos.lat; m.lng = pos.lng;
+          m.hp = m.maxHp;                          // objeví se svěží na novém místě
+          m.relocateAt = relocateTime();
+        }
       }
-      monsters = monsters.filter(m => metersBetween(player, m) < 350);
       ensureMonsters(player);
-      if (selectedMob && !monsters.includes(selectedMob)) closeMob();
-      else if (selectedMob) updateMobPanel();
-    }, 1500);
+    }, 1000);
 
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
 

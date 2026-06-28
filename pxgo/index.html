@@ -145,11 +145,25 @@
     #poi-panel .collect:disabled { background: #3a4a5a; color: #8a99a8; cursor: default; }
     #poi-panel .close { background: rgba(255,255,255,.1); color: #e0e1dd; flex: 0 0 56px; }
     .hint { font-size: 13px; color: #9fb3c8; }
+    /* atribuce dlaždic (vyžaduje OpenStreetMap) */
+    #attribution {
+      position: absolute;
+      left: 0; bottom: 0;
+      background: rgba(255,255,255,.7);
+      color: #333;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-top-right-radius: 6px;
+      pointer-events: auto;
+    }
+    #attribution a { color: #1b6fa8; }
   </style>
 </head>
 <body>
   <div id="app">
     <canvas id="map"></canvas>
+
+    <div id="attribution">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>
 
     <div id="topbar">
       <h1>🗺️ PxGo</h1>
@@ -202,8 +216,40 @@
     let following = true;     // mapa sleduje hráče?
     let heading = 0;          // animovaný úhel pro pulzování
 
-    const METERS_PER_PX = 0.55;  // měřítko: kolik metrů odpovídá jednomu pixelu
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+    // --- mapové dlaždice (OpenStreetMap) + Web Mercator projekce ---
+    const TILE = 256;                       // velikost dlaždice v px
+    const Z = 18;                           // úroveň přiblížení (chůze po městě)
+    const WORLD = TILE * Math.pow(2, Z);    // velikost celého světa v px
+    function lngToWorldX(lng) { return (lng + 180) / 360 * WORLD; }
+    function latToWorldY(lat) {
+      const s = Math.sin(lat * Math.PI / 180);
+      return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * WORLD;
+    }
+    function worldXToLng(x) { return x / WORLD * 360 - 180; }
+    function worldYToLat(y) {
+      const n = Math.PI - 2 * Math.PI * y / WORLD;
+      return 180 / Math.PI * Math.atan(Math.sinh(n));
+    }
+    function metersPerPixel(lat) {
+      return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, Z);
+    }
+
+    // cache načtených dlaždic
+    const tileCache = new Map();
+    function getTile(x, y) {
+      const key = x + '/' + y;
+      let img = tileCache.get(key);
+      if (!img) {
+        img = new Image();
+        // subdomény a.b.c pro rovnoměrné rozložení požadavků
+        const sub = 'abc'[(x + y) % 3];
+        img.src = 'https://' + sub + '.tile.openstreetmap.org/' + Z + '/' + x + '/' + y + '.png';
+        tileCache.set(key, img);
+      }
+      return img;
+    }
 
     // typy PoI – ikona, název, barva, popis
     const POI_TYPES = [
@@ -227,21 +273,10 @@
       const y = dLat;
       return Math.sqrt(x * x + y * y) * EARTH;
     }
-    // převod geo -> metry vůči středu pohledu (x na východ, y na sever)
-    function toMeters(p, center) {
-      const dLat = (p.lat - center.lat) * Math.PI / 180;
-      const dLng = (p.lng - center.lng) * Math.PI / 180;
-      const lat = center.lat * Math.PI / 180;
-      return {
-        x: dLng * Math.cos(lat) * EARTH,
-        y: dLat * EARTH,
-      };
-    }
-    // posun středu pohledu o daný počet metrů
-    function moveView(dxMeters, dyMeters) {
-      const lat = view.lat * Math.PI / 180;
-      view.lat += (dyMeters / EARTH) * 180 / Math.PI;
-      view.lng += (dxMeters / (EARTH * Math.cos(lat))) * 180 / Math.PI;
+    // posun středu pohledu o daný počet pixelů (CSS px) – tažení mapy
+    function panView(dxPx, dyPx) {
+      view.lng = worldXToLng(lngToWorldX(view.lng) - dxPx);
+      view.lat = worldYToLat(latToWorldY(view.lat) - dyPx);
     }
     // náhodný PoI v okolí dané polohy
     function randomPoiNear(center, minM, maxM) {
@@ -275,43 +310,40 @@
       canvas.style.height = window.innerHeight + 'px';
     }
 
+    // geo bod -> pozice na obrazovce (device px); 1 world px = 1 CSS px = DPR device px
     function worldToScreen(p) {
-      const m = toMeters(p, view);
+      const vx = lngToWorldX(view.lng), vy = latToWorldY(view.lat);
       return {
-        x: canvas.width / 2 + (m.x / METERS_PER_PX) * DPR,
-        y: canvas.height / 2 - (m.y / METERS_PER_PX) * DPR,
+        x: (lngToWorldX(p.lng) - vx) * DPR + canvas.width / 2,
+        y: (latToWorldY(p.lat) - vy) * DPR + canvas.height / 2,
       };
     }
 
-    function drawGrid() {
+    function drawTiles() {
       const w = canvas.width, h = canvas.height;
-      ctx.fillStyle = '#16324a';
+      // podklad, než se dlaždice načtou (barva vody OSM)
+      ctx.fillStyle = '#aadaff';
       ctx.fillRect(0, 0, w, h);
 
-      // "ulice" – mřížka, která se posouvá s mapou
-      const spacingM = 50;
-      const step = (spacingM / METERS_PER_PX) * DPR;
-      const center = worldToScreen(view);
-      ctx.strokeStyle = 'rgba(255,255,255,.07)';
-      ctx.lineWidth = 2 * DPR;
+      const n = Math.pow(2, Z);
+      const vx = lngToWorldX(view.lng), vy = latToWorldY(view.lat);
+      const halfW = (w / 2) / DPR, halfH = (h / 2) / DPR;
+      const size = TILE * DPR;
 
-      let startX = center.x % step;
-      for (let x = startX; x < w; x += step) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-      }
-      let startY = center.y % step;
-      for (let y = startY; y < h; y += step) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-      }
+      const x0 = Math.floor((vx - halfW) / TILE);
+      const x1 = Math.floor((vx + halfW) / TILE);
+      const y0 = Math.floor((vy - halfH) / TILE);
+      const y1 = Math.floor((vy + halfH) / TILE);
 
-      // pár "bloků" (parky/budovy) pro pocit mapy – deterministicky podle mřížky
-      ctx.fillStyle = 'rgba(42,157,143,.10)';
-      for (let gx = -6; gx <= 6; gx++) {
-        for (let gy = -6; gy <= 6; gy++) {
-          if (((gx * 928371 ^ gy * 1299721) & 7) === 0) {
-            const cx = center.x + gx * step;
-            const cy = center.y + gy * step;
-            ctx.fillRect(cx + step * .15, cy + step * .15, step * .7, step * .7);
+      for (let tx = x0; tx <= x1; tx++) {
+        for (let ty = y0; ty <= y1; ty++) {
+          if (ty < 0 || ty >= n) continue;
+          const wrapX = ((tx % n) + n) % n;   // svět se po ose X opakuje
+          const img = getTile(wrapX, ty);
+          const sx = (tx * TILE - vx) * DPR + w / 2;
+          const sy = (ty * TILE - vy) * DPR + h / 2;
+          if (img.complete && img.naturalWidth) {
+            ctx.drawImage(img, sx, sy, size, size);
           }
         }
       }
@@ -347,7 +379,7 @@
       const s = worldToScreen(player);
       const pulse = (Math.sin(heading) + 1) / 2; // 0..1
       // dosahový kruh (kde lze sbírat)
-      const reach = (35 / METERS_PER_PX) * DPR;
+      const reach = (35 / metersPerPixel(player.lat)) * DPR;
       ctx.beginPath();
       ctx.arc(s.x, s.y, reach, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(27,154,170,.10)';
@@ -373,7 +405,7 @@
 
     function render() {
       if (!view) return;
-      drawGrid();
+      drawTiles();
       pois.forEach(drawPoi);
       if (player) drawPlayer();
     }
@@ -459,7 +491,7 @@
       if (Math.abs(dx) + Math.abs(dy) > 3) dragMoved = true;
       lastX = x; lastY = y;
       following = false;
-      moveView(-dx * METERS_PER_PX, dy * METERS_PER_PX);
+      panView(dx, dy);
     }
     function onUp(x, y) {
       if (dragging && !dragMoved) pickAt(x, y);

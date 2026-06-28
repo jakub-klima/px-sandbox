@@ -175,6 +175,22 @@
       transition: opacity .25s, transform .25s;
     }
     #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    /* vyskakující "+XP" po prozkoumání místa */
+    .xp-float {
+      position: absolute;
+      color: #ffd166;
+      font-weight: 800;
+      font-size: 22px;
+      text-shadow: 0 2px 6px rgba(0,0,0,.6);
+      pointer-events: none;
+      z-index: 50;
+      animation: xpfloat 1.2s ease-out forwards;
+    }
+    @keyframes xpfloat {
+      0%   { opacity: 0; transform: translate(-50%, -50%) scale(.6); }
+      20%  { opacity: 1; }
+      100% { opacity: 0; transform: translate(-50%, -180%) scale(1.1); }
+    }
   </style>
 </head>
 <body>
@@ -185,7 +201,7 @@
 
     <div id="topbar">
       <h1>🗺️ PxGo</h1>
-      <div class="badge" id="score">Sebráno: 0</div>
+      <div class="badge" id="score">✨ 0 XP · Lv 1</div>
     </div>
 
     <div id="toast"></div>
@@ -235,9 +251,28 @@
     let view = null;          // {lat, lng} střed pohledu (kvůli posunu mapy)
     let pois = [];            // seznam point of interest
     let selected = null;      // právě otevřený PoI
-    let collected = 0;
     let following = true;     // mapa sleduje hráče?
     let heading = 0;          // animovaný úhel pro pulzování
+
+    // --- XP a postup (ukládá se do localStorage) ---
+    const SAVE_KEY = 'pxgo.xp';
+    const COOLDOWN_MS = 60000;  // jak dlouho se místo po prozkoumání regeneruje
+    let xp = loadXp();
+    function loadXp() {
+      try { const v = parseInt(localStorage.getItem(SAVE_KEY) || '0', 10); return isNaN(v) ? 0 : v; }
+      catch (e) { return 0; }
+    }
+    function saveXp() { try { localStorage.setItem(SAVE_KEY, String(xp)); } catch (e) {} }
+    function levelOf(x) { return Math.floor(x / 100) + 1; }
+    function xpFor(type) {
+      const big = ['Muzeum', 'Galerie', 'Památka', 'Vyhlídka', 'Atrakce', 'Divadlo', 'Svatostánek'];
+      const mid = ['Kavárna', 'Restaurace', 'Hospoda', 'Park', 'Zahrada', 'Knihovna', 'Kino', 'Hřiště', 'Fontána', 'Občerstvení', 'Škola'];
+      if (big.includes(type)) return 25;
+      if (mid.includes(type)) return 15;
+      return 10;
+    }
+    // místo je připravené k prozkoumání (není v regeneraci)
+    function isReady(p) { return !p.cooldownUntil || Date.now() >= p.cooldownUntil; }
 
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
 
@@ -333,7 +368,8 @@
         lng: center.lng + (dx / (EARTH * Math.cos(lat))) * 180 / Math.PI,
         ...t,
         name: t.type + ' #' + (Math.floor(Math.random() * 900) + 100),
-        collected: false,
+        xp: xpFor(t.type),
+        cooldownUntil: 0,
       };
     }
     // záloha: náhodná místa, když se nepodaří načíst reálná
@@ -424,7 +460,8 @@
           list.push({
             lat, lng, ...cls,
             name: (el.tags && el.tags.name) ? el.tags.name : cls.type,
-            collected: false,
+            xp: xpFor(cls.type),
+            cooldownUntil: 0,
           });
         }
         if (!list.length) throw new Error('žádná místa');
@@ -493,6 +530,8 @@
       const s = worldToScreen(p);
       if (s.x < -40 || s.x > canvas.width + 40 || s.y < -40 || s.y > canvas.height + 40) return;
       const r = 16 * DPR;
+      const ready = isReady(p);
+      const cy = s.y - r * .2;
       // stín / podstavec
       ctx.beginPath();
       ctx.ellipse(s.x, s.y + r * .6, r * .7, r * .25, 0, 0, Math.PI * 2);
@@ -500,18 +539,27 @@
       ctx.fill();
       // kolečko
       ctx.beginPath();
-      ctx.arc(s.x, s.y - r * .2, r, 0, Math.PI * 2);
-      ctx.fillStyle = p.collected ? '#3a4a5a' : p.color;
+      ctx.arc(s.x, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = ready ? p.color : '#3a4a5a';
       ctx.fill();
       ctx.lineWidth = 3 * DPR;
       ctx.strokeStyle = selected === p ? '#fff' : 'rgba(255,255,255,.6)';
       ctx.stroke();
+      // při regeneraci – ubývající prstenec ukazující zbývající čas
+      if (!ready) {
+        const frac = (p.cooldownUntil - Date.now()) / COOLDOWN_MS;
+        ctx.beginPath();
+        ctx.arc(s.x, cy, r + 3 * DPR, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, frac));
+        ctx.strokeStyle = '#ffd166';
+        ctx.lineWidth = 3 * DPR;
+        ctx.stroke();
+      }
       // ikona
       ctx.font = (18 * DPR) + 'px system-ui';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.globalAlpha = p.collected ? 0.45 : 1;
-      ctx.fillText(p.icon, s.x, s.y - r * .2);
+      ctx.globalAlpha = ready ? 1 : 0.45;
+      ctx.fillText(p.icon, s.x, cy);
       ctx.globalAlpha = 1;
     }
 
@@ -574,34 +622,41 @@
       if (hideAfter) toastTimer = setTimeout(() => toastEl.classList.remove('show'), hideAfter);
     }
 
-    function updateScore() { scoreEl.textContent = 'Sebráno: ' + collected; }
+    function updateXpBadge() {
+      scoreEl.textContent = '✨ ' + xp + ' XP · Lv ' + levelOf(xp);
+    }
 
     const panel = document.getElementById('poi-panel');
+    const collectBtn = document.getElementById('poi-collect');
+    const distEl = document.getElementById('poi-dist');
+    // přepočítá dynamickou část panelu (vzdálenost + tlačítko) podle stavu
+    function updatePoiButtons() {
+      const p = selected;
+      if (!p) return;
+      const d = player ? Math.round(metersBetween(player, p)) : null;
+      if (d === null) { distEl.textContent = ''; collectBtn.disabled = true; collectBtn.textContent = 'Prozkoumat (+' + p.xp + ' XP)'; return; }
+      if (!isReady(p)) {
+        const sec = Math.ceil((p.cooldownUntil - Date.now()) / 1000);
+        distEl.textContent = '📏 Vzdálenost: ' + d + ' m';
+        collectBtn.textContent = '⏳ Regeneruje se… ' + sec + ' s';
+        collectBtn.disabled = true;
+      } else if (d <= 35) {
+        distEl.textContent = '📏 Vzdálenost: ' + d + ' m';
+        collectBtn.textContent = 'Prozkoumat (+' + p.xp + ' XP)';
+        collectBtn.disabled = false;
+      } else {
+        distEl.textContent = '📏 Vzdálenost: ' + d + ' m';
+        collectBtn.textContent = 'Přijdi blíž (do 35 m)';
+        collectBtn.disabled = true;
+      }
+    }
     function openPoi(p) {
       selected = p;
       document.getElementById('poi-icon').textContent = p.icon;
       document.getElementById('poi-title').textContent = p.name;
       document.getElementById('poi-type').textContent = p.type;
       document.getElementById('poi-desc').textContent = p.desc;
-      const d = player ? Math.round(metersBetween(player, p)) : null;
-      const distEl = document.getElementById('poi-dist');
-      const collectBtn = document.getElementById('poi-collect');
-      if (d !== null) {
-        distEl.textContent = '📏 Vzdálenost: ' + d + ' m';
-        if (p.collected) {
-          collectBtn.textContent = 'Už prozkoumáno ✓';
-          collectBtn.disabled = true;
-        } else if (d <= 35) {
-          collectBtn.textContent = 'Prozkoumat';
-          collectBtn.disabled = false;
-        } else {
-          collectBtn.textContent = 'Přijdi blíž (do 35 m)';
-          collectBtn.disabled = true;
-        }
-      } else {
-        distEl.textContent = '';
-        collectBtn.disabled = true;
-      }
+      updatePoiButtons();
       panel.classList.add('open');
     }
     function closePoi() {
@@ -609,14 +664,34 @@
       panel.classList.remove('open');
     }
     document.getElementById('poi-close').addEventListener('click', closePoi);
-    document.getElementById('poi-collect').addEventListener('click', function () {
-      if (selected && !selected.collected) {
-        selected.collected = true;
-        collected++;
-        updateScore();
-        openPoi(selected);
-      }
+
+    // efekt "+XP" vyletující od daného PoI
+    function spawnXpPopup(p, amount) {
+      const s = worldToScreen(p);
+      const el = document.createElement('div');
+      el.className = 'xp-float';
+      el.textContent = '+' + amount + ' XP';
+      el.style.left = (s.x / DPR) + 'px';
+      el.style.top = (s.y / DPR) + 'px';
+      document.getElementById('app').appendChild(el);
+      setTimeout(() => el.remove(), 1200);
+    }
+
+    collectBtn.addEventListener('click', function () {
+      const p = selected;
+      if (!p || !isReady(p)) return;
+      const d = player ? metersBetween(player, p) : Infinity;
+      if (d > 35) return;
+      xp += p.xp;
+      saveXp();
+      updateXpBadge();
+      spawnXpPopup(p, p.xp);
+      p.cooldownUntil = Date.now() + COOLDOWN_MS;  // místo se začne regenerovat
+      updatePoiButtons();
     });
+
+    // průběžně obnovuj odpočet regenerace v otevřeném panelu
+    setInterval(() => { if (selected) updatePoiButtons(); }, 500);
 
     // klik / tap na mapu – najdi nejbližší PoI v dosahu kliknutí
     function pickAt(clientX, clientY) {
@@ -717,7 +792,7 @@
         view = { lat: player.lat, lng: player.lng };
       }
       // pokud je panel otevřený, aktualizuj vzdálenost/tlačítko
-      if (selected) openPoi(selected);
+      if (selected) updatePoiButtons();
     }
 
     function startDemo() {
@@ -749,6 +824,7 @@
     statusBtn.addEventListener('click', startGeo);
 
     // --- start ---
+    updateXpBadge();
     window.addEventListener('resize', resize);
     resize();
     loop();

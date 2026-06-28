@@ -184,8 +184,10 @@
       text-shadow: 0 2px 6px rgba(0,0,0,.6);
       pointer-events: none;
       z-index: 50;
+      white-space: nowrap;
       animation: xpfloat 1.2s ease-out forwards;
     }
+    .xp-float.first { color: #ffe08a; font-size: 26px; }
     @keyframes xpfloat {
       0%   { opacity: 0; transform: translate(-50%, -50%) scale(.6); }
       20%  { opacity: 1; }
@@ -228,6 +230,7 @@
       </div>
       <div class="desc" id="poi-desc"></div>
       <div class="dist" id="poi-dist"></div>
+      <div class="dist" id="poi-badge"></div>
       <div class="actions">
         <button class="collect" id="poi-collect">Prozkoumat</button>
         <button class="close" id="poi-close">✕</button>
@@ -264,6 +267,19 @@
     }
     function saveXp() { try { localStorage.setItem(SAVE_KEY, String(xp)); } catch (e) {} }
     function levelOf(x) { return Math.floor(x / 100) + 1; }
+
+    // navštívená místa (odznáčky) – ukládá se podle souřadnic
+    const VISIT_KEY = 'pxgo.visited';
+    let visited = loadVisited();
+    function loadVisited() {
+      try { return new Set(JSON.parse(localStorage.getItem(VISIT_KEY) || '[]')); }
+      catch (e) { return new Set(); }
+    }
+    function saveVisited() {
+      try { localStorage.setItem(VISIT_KEY, JSON.stringify([...visited])); } catch (e) {}
+    }
+    function placeId(p) { return p.lat.toFixed(5) + ',' + p.lng.toFixed(5); }
+    function isVisited(p) { return visited.has(placeId(p)); }
     function xpFor(type) {
       const big = ['Muzeum', 'Galerie', 'Památka', 'Vyhlídka', 'Atrakce', 'Divadlo', 'Svatostánek'];
       const mid = ['Kavárna', 'Restaurace', 'Hospoda', 'Park', 'Zahrada', 'Knihovna', 'Kino', 'Hřiště', 'Fontána', 'Občerstvení', 'Škola'];
@@ -561,6 +577,20 @@
       ctx.globalAlpha = ready ? 1 : 0.45;
       ctx.fillText(p.icon, s.x, cy);
       ctx.globalAlpha = 1;
+      // odznáček navštíveného místa (zlatá hvězdička v rohu)
+      if (isVisited(p)) {
+        const bx = s.x + r * .72, by = cy - r * .72;
+        ctx.beginPath();
+        ctx.arc(bx, by, 8 * DPR, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffd166';
+        ctx.fill();
+        ctx.lineWidth = 2 * DPR;
+        ctx.strokeStyle = '#fff';
+        ctx.stroke();
+        ctx.fillStyle = '#5a3e00';
+        ctx.font = 'bold ' + (11 * DPR) + 'px system-ui';
+        ctx.fillText('★', bx, by + DPR);
+      }
     }
 
     function drawPlayer() {
@@ -629,23 +659,29 @@
     const panel = document.getElementById('poi-panel');
     const collectBtn = document.getElementById('poi-collect');
     const distEl = document.getElementById('poi-dist');
-    // přepočítá dynamickou část panelu (vzdálenost + tlačítko) podle stavu
+    const badgeEl = document.getElementById('poi-badge');
+    // odměna za prozkoumání – při první návštěvě dvojnásobek
+    function rewardFor(p) { return isVisited(p) ? p.xp : p.xp * 2; }
+    // přepočítá dynamickou část panelu (vzdálenost + tlačítko + odznáček) podle stavu
     function updatePoiButtons() {
       const p = selected;
       if (!p) return;
+      const gain = rewardFor(p);
+      const firstLabel = isVisited(p) ? '' : ' ×2!';
+      badgeEl.textContent = isVisited(p)
+        ? '🏅 Tady už jsi byl – odznáček získán'
+        : '✨ První návštěva = dvojnásobná odměna!';
       const d = player ? Math.round(metersBetween(player, p)) : null;
-      if (d === null) { distEl.textContent = ''; collectBtn.disabled = true; collectBtn.textContent = 'Prozkoumat (+' + p.xp + ' XP)'; return; }
+      if (d === null) { distEl.textContent = ''; collectBtn.disabled = true; collectBtn.textContent = 'Prozkoumat (+' + gain + ' XP' + firstLabel + ')'; return; }
+      distEl.textContent = '📏 Vzdálenost: ' + d + ' m';
       if (!isReady(p)) {
         const sec = Math.ceil((p.cooldownUntil - Date.now()) / 1000);
-        distEl.textContent = '📏 Vzdálenost: ' + d + ' m';
         collectBtn.textContent = '⏳ Regeneruje se… ' + sec + ' s';
         collectBtn.disabled = true;
       } else if (d <= 35) {
-        distEl.textContent = '📏 Vzdálenost: ' + d + ' m';
-        collectBtn.textContent = 'Prozkoumat (+' + p.xp + ' XP)';
+        collectBtn.textContent = 'Prozkoumat (+' + gain + ' XP' + firstLabel + ')';
         collectBtn.disabled = false;
       } else {
-        distEl.textContent = '📏 Vzdálenost: ' + d + ' m';
         collectBtn.textContent = 'Přijdi blíž (do 35 m)';
         collectBtn.disabled = true;
       }
@@ -666,11 +702,11 @@
     document.getElementById('poi-close').addEventListener('click', closePoi);
 
     // efekt "+XP" vyletující od daného PoI
-    function spawnXpPopup(p, amount) {
+    function spawnXpPopup(p, amount, first) {
       const s = worldToScreen(p);
       const el = document.createElement('div');
-      el.className = 'xp-float';
-      el.textContent = '+' + amount + ' XP';
+      el.className = 'xp-float' + (first ? ' first' : '');
+      el.textContent = '+' + amount + ' XP' + (first ? ' 🏅×2' : '');
       el.style.left = (s.x / DPR) + 'px';
       el.style.top = (s.y / DPR) + 'px';
       document.getElementById('app').appendChild(el);
@@ -682,10 +718,17 @@
       if (!p || !isReady(p)) return;
       const d = player ? metersBetween(player, p) : Infinity;
       if (d > 35) return;
-      xp += p.xp;
+      const first = !isVisited(p);
+      const gain = rewardFor(p);
+      xp += gain;
       saveXp();
       updateXpBadge();
-      spawnXpPopup(p, p.xp);
+      spawnXpPopup(p, gain, first);
+      if (first) {
+        visited.add(placeId(p));   // získá se odznáček
+        saveVisited();
+        showToast('🏅 Nové místo objeveno! Bonus ×2 za první návštěvu', 2800);
+      }
       p.cooldownUntil = Date.now() + COOLDOWN_MS;  // místo se začne regenerovat
       updatePoiButtons();
     });

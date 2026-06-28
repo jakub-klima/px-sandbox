@@ -157,10 +157,20 @@
       pointer-events: auto;
     }
     #attribution a { color: #1b6fa8; }
+    /* ukazatel postupu do dalšího levelu */
+    #xpbar {
+      position: absolute; top: 50px; left: 50%; transform: translateX(-50%); z-index: 2;
+      width: min(88vw, 360px); height: 16px;
+      border: 1px solid #6b5836; border-radius: 8px;
+      background: rgba(20,16,12,.7); overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,.5);
+    }
+    #xpbar > i { display: block; height: 100%; width: 0; background: linear-gradient(180deg,#e8c34a,#b8902a); transition: width .3s; }
+    #xpbar > span { position: absolute; inset: 0; text-align: center; font-size: 11px; font-weight: 700; color: #fff; line-height: 16px; text-shadow: 0 1px 2px rgba(0,0,0,.85); }
     /* informační bublina (načítání míst apod.) */
     #toast {
       position: absolute;
-      top: 56px; left: 50%;
+      top: 80px; left: 50%;
       transform: translateX(-50%) translateY(-12px);
       background: rgba(13,27,42,.92);
       color: #e0e1dd;
@@ -300,8 +310,10 @@
     <div id="topbar">
       <h1>🗡️ PxGo</h1>
       <div id="hp">❤️ 18/18</div>
-      <div class="badge" id="score">⚔️ 0 XP · Lv 1</div>
+      <div class="badge" id="score">⚔️ 0 XP</div>
     </div>
+
+    <div id="xpbar"><i id="xpbar-fill"></i><span id="xpbar-text"></span></div>
 
     <div id="toast"></div>
 
@@ -398,7 +410,21 @@
       catch (e) { return 0; }
     }
     function saveXp() { try { localStorage.setItem(SAVE_KEY, String(xp)); } catch (e) {} }
-    function levelOf(x) { return Math.floor(x / 100) + 1; }
+    // pomalejší, rostoucí leveling: každá další úroveň stojí víc XP
+    function xpToNext(L) { return 150 + (L - 1) * 100; }   // XP z úrovně L na L+1
+    function levelOf(x) {
+      let L = 1, acc = 0, need = xpToNext(1);
+      while (x >= acc + need) { acc += need; L++; need = xpToNext(L); }
+      return L;
+    }
+    // postup v rámci aktuální úrovně: { level, cur, need, frac }
+    function levelProgress(x) {
+      const L = levelOf(x);
+      let base = 0;
+      for (let k = 1; k < L; k++) base += xpToNext(k);
+      const need = xpToNext(L);
+      return { level: L, cur: x - base, need, frac: Math.min(1, (x - base) / need) };
+    }
 
     // --- hráčovo HP (regeneruje se v čase, i mezi spuštěními) ---
     const HP_KEY = 'pxgo.hp';
@@ -921,8 +947,13 @@
       if (hideAfter) toastTimer = setTimeout(() => toastEl.classList.remove('show'), hideAfter);
     }
 
+    const xpFillEl = document.getElementById('xpbar-fill');
+    const xpTextEl = document.getElementById('xpbar-text');
     function updateXpBadge() {
-      scoreEl.textContent = '⚔️ ' + xp + ' XP · Lv ' + levelOf(xp);
+      const p = levelProgress(xp);
+      scoreEl.textContent = '⚔️ ' + xp + ' XP';
+      xpFillEl.style.width = (p.frac * 100) + '%';
+      xpTextEl.textContent = 'Lv ' + p.level + ' · ' + p.cur + ' / ' + p.need + ' XP';
     }
 
     const hpEl = document.getElementById('hp');

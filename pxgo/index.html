@@ -203,6 +203,30 @@
       20%  { opacity: 1; }
       100% { opacity: 0; transform: translate(-50%, -180%) scale(1.1); }
     }
+    /* oslava při postupu na novou úroveň */
+    .levelup {
+      position: absolute; top: 38%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 20; text-align: center; pointer-events: none;
+      animation: lupop 2.2s ease forwards;
+    }
+    .levelup .lu-main { font-family: Georgia, serif; font-size: 34px; font-weight: 900; color: #ffd166; text-shadow: 0 3px 12px rgba(0,0,0,.8), 0 0 22px rgba(255,209,102,.6); }
+    .levelup .lu-sub { margin-top: 6px; font-size: 16px; font-weight: 700; color: #e8d8b0; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
+    @keyframes lupop {
+      0%   { opacity: 0; transform: translate(-50%, -50%) scale(.5); }
+      15%  { opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
+      30%  { transform: translate(-50%, -50%) scale(1); }
+      80%  { opacity: 1; }
+      100% { opacity: 0; transform: translate(-50%, -68%) scale(1); }
+    }
+    .confetti {
+      position: absolute; top: -20px; width: 10px; height: 14px; z-index: 19;
+      border-radius: 2px; pointer-events: none; opacity: .95;
+      animation-name: confall; animation-timing-function: ease-in; animation-fill-mode: forwards;
+    }
+    @keyframes confall {
+      0%   { transform: translateY(-12vh) translateX(0) rotate(0); opacity: 1; }
+      100% { transform: translateY(108vh) translateX(var(--x)) rotate(var(--r)); opacity: .9; }
+    }
 
     /* ===== temný RPG motiv (à la Gloomhaven) ===== */
     html, body { background: #100d0b; color: #d9c7a3; }
@@ -975,6 +999,45 @@
       }
     }, REGEN_MS);
 
+    // centrální přičtení XP – pohlídá si i postup na novou úroveň a oslavu
+    function gainXp(amount) {
+      const before = levelOf(xp);
+      xp += amount;
+      saveXp();
+      updateXpBadge();
+      const after = levelOf(xp);
+      if (after > before) celebrateLevelUp(after);
+    }
+    function celebrateLevelUp(level) {
+      // odměna: plné HP
+      playerHp = playerMaxHp();
+      saveHp();
+      updateHpHud();
+      if (selectedMob) updateMobPanel();
+      // banner
+      const b = document.createElement('div');
+      b.className = 'levelup';
+      b.innerHTML = '<div class="lu-main">✨ LEVEL UP! ✨</div><div class="lu-sub">Úroveň ' + level + ' · plné HP</div>';
+      document.getElementById('app').appendChild(b);
+      setTimeout(() => b.remove(), 2200);
+      // konfety
+      const app = document.getElementById('app');
+      const colors = ['#e8c34a', '#e07a5f', '#2a9d8f', '#48b5d4', '#f4a261', '#caa84a', '#ff6b6b'];
+      for (let i = 0; i < 80; i++) {
+        const c = document.createElement('div');
+        c.className = 'confetti';
+        c.style.left = (8 + Math.random() * 84) + 'vw';
+        c.style.background = colors[i % colors.length];
+        c.style.animationDelay = (Math.random() * 0.3) + 's';
+        c.style.animationDuration = (1.2 + Math.random() * 0.9) + 's';
+        c.style.setProperty('--x', (Math.random() * 200 - 100) + 'px');
+        c.style.setProperty('--r', (Math.random() * 720 - 360) + 'deg');
+        app.appendChild(c);
+        setTimeout(() => c.remove(), 2500);
+      }
+      showToast('🎉 Postup na úroveň ' + level + '!', 2600);
+    }
+
     const panel = document.getElementById('poi-panel');
     const collectBtn = document.getElementById('poi-collect');
     const distEl = document.getElementById('poi-dist');
@@ -1042,9 +1105,7 @@
       if (d > REACH_M) return;
       const first = !isVisited(p);
       const gain = rewardFor(p);
-      xp += gain;
-      saveXp();
-      updateXpBadge();
+      gainXp(gain);
       spawnXpPopup(p, gain, first);
       recordVisit(p);   // zapiš do kroniky (čas, počet návštěv)
       if (first) {
@@ -1105,9 +1166,7 @@
       spawnFloat(m, '-' + dmg, 'hit');
       if (m.hp <= 0) {
         // nestvůra padla – bez protiútoku
-        xp += m.xp;
-        saveXp();
-        updateXpBadge();
+        gainXp(m.xp);
         spawnFloat(m, '+' + m.xp + ' XP', 'kill');
         showToast('☠️ Poražena nestvůra: ' + m.name + '  (+' + m.xp + ' XP)', 2600);
         monsters = monsters.filter(x => x !== m);
@@ -1234,7 +1293,7 @@
         }
         return;
       }
-      xp += TRAVEL_BONUS_XP; saveXp(); updateXpBadge();
+      gainXp(TRAVEL_BONUS_XP);
       playerHp = playerMaxHp(); saveHp(); updateHpHud();
       travelDist = 0; lastTravelClaim = Date.now(); saveTravel();
       if (player) spawnFloat(player, '+' + TRAVEL_BONUS_XP + ' XP 🧭', 'first');

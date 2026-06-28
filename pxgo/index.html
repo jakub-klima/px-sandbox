@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>PxGo – hra s polohou a mapou</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      background: #0d1b2a;
+      font-family: system-ui, -apple-system, sans-serif;
+      -webkit-user-select: none;
+      user-select: none;
+      overflow: hidden;
+    }
+    #app {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    #map {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+    /* horní lišta */
+    #topbar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: linear-gradient(180deg, rgba(13,27,42,.9), rgba(13,27,42,0));
+      color: #fff;
+      pointer-events: none;
+    }
+    #topbar h1 {
+      font-size: 20px;
+      letter-spacing: .5px;
+      text-shadow: 0 2px 6px rgba(0,0,0,.5);
+    }
+    #topbar .badge {
+      margin-left: auto;
+      background: rgba(255,255,255,.12);
+      border-radius: 20px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      backdrop-filter: blur(4px);
+    }
+    /* tlačítka vpravo dole */
+    #buttons {
+      position: absolute;
+      right: 16px;
+      bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #buttons button {
+      width: 56px;
+      height: 56px;
+      border: none;
+      border-radius: 50%;
+      background: #1b9aaa;
+      color: #fff;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 6px 16px rgba(0,0,0,.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #buttons button:active { transform: scale(.92); }
+    /* stavová hláška uprostřed (např. čekání na GPS) */
+    #status {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(13,27,42,.92);
+      color: #e0e1dd;
+      padding: 22px 26px;
+      border-radius: 16px;
+      max-width: 80%;
+      text-align: center;
+      font-size: 15px;
+      line-height: 1.5;
+      box-shadow: 0 10px 30px rgba(0,0,0,.5);
+    }
+    #status button {
+      margin-top: 16px;
+      border: none;
+      background: #1b9aaa;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 22px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    #status.hidden { display: none; }
+    /* spodní panel s detailem PoI */
+    #poi-panel {
+      position: absolute;
+      left: 12px; right: 12px;
+      bottom: 24px;
+      background: #1b263b;
+      color: #e0e1dd;
+      border-radius: 18px;
+      padding: 18px 20px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.55);
+      transform: translateY(160%);
+      transition: transform .28s cubic-bezier(.2,.8,.2,1);
+    }
+    #poi-panel.open { transform: translateY(0); }
+    #poi-panel .head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    #poi-panel .icon {
+      font-size: 34px;
+      width: 54px; height: 54px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,.08);
+      border-radius: 14px;
+      flex-shrink: 0;
+    }
+    #poi-panel .title { font-size: 19px; font-weight: 700; }
+    #poi-panel .type { font-size: 13px; color: #9fb3c8; margin-top: 2px; }
+    #poi-panel .desc { margin-top: 12px; font-size: 14px; line-height: 1.55; }
+    #poi-panel .dist { margin-top: 10px; font-size: 13px; color: #1b9aaa; font-weight: 600; }
+    #poi-panel .actions { margin-top: 16px; display: flex; gap: 10px; }
+    #poi-panel .actions button {
+      flex: 1;
+      border: none;
+      border-radius: 22px;
+      padding: 12px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    #poi-panel .collect { background: #1b9aaa; color: #fff; }
+    #poi-panel .collect:disabled { background: #3a4a5a; color: #8a99a8; cursor: default; }
+    #poi-panel .close { background: rgba(255,255,255,.1); color: #e0e1dd; flex: 0 0 56px; }
+    .hint { font-size: 13px; color: #9fb3c8; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="map"></canvas>
+
+    <div id="topbar">
+      <h1>🗺️ PxGo</h1>
+      <div class="badge" id="score">Sebráno: 0</div>
+    </div>
+
+    <div id="buttons">
+      <button id="recenter" title="Vycentrovat na mě">🎯</button>
+    </div>
+
+    <div id="status">
+      <div id="status-text">Zjišťuji tvoji polohu…</div>
+      <button id="status-btn" style="display:none">Zkusit znovu</button>
+    </div>
+
+    <div id="poi-panel">
+      <div class="head">
+        <div class="icon" id="poi-icon">📍</div>
+        <div>
+          <div class="title" id="poi-title">Místo</div>
+          <div class="type" id="poi-type">Point of interest</div>
+        </div>
+      </div>
+      <div class="desc" id="poi-desc"></div>
+      <div class="dist" id="poi-dist"></div>
+      <div class="actions">
+        <button class="collect" id="poi-collect">Prozkoumat</button>
+        <button class="close" id="poi-close">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    const canvas = document.getElementById('map');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const statusText = document.getElementById('status-text');
+    const statusBtn = document.getElementById('status-btn');
+    const scoreEl = document.getElementById('score');
+
+    // --- stav hry ---
+    let player = null;        // {lat, lng} reálná poloha
+    let view = null;          // {lat, lng} střed pohledu (kvůli posunu mapy)
+    let pois = [];            // seznam point of interest
+    let selected = null;      // právě otevřený PoI
+    let collected = 0;
+    let following = true;     // mapa sleduje hráče?
+    let heading = 0;          // animovaný úhel pro pulzování
+
+    const METERS_PER_PX = 0.55;  // měřítko: kolik metrů odpovídá jednomu pixelu
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+    // typy PoI – ikona, název, barva, popis
+    const POI_TYPES = [
+      { icon: '🏛️', type: 'Památka',   color: '#e9c46a', desc: 'Historicky zajímavé místo. Zastav se a rozhlédni se kolem.' },
+      { icon: '🌳', type: 'Park',      color: '#2a9d8f', desc: 'Kus zeleně ve městě. Ideální na krátký odpočinek.' },
+      { icon: '☕', type: 'Kavárna',   color: '#c97b50', desc: 'Voňavá zastávka na cestě. Dej si pauzu.' },
+      { icon: '⛲', type: 'Fontána',   color: '#48b5d4', desc: 'Vodní prvek, oblíbené místo setkávání.' },
+      { icon: '🏪', type: 'Obchod',    color: '#f4a261', desc: 'Místo, kde se dá doplnit zásoba.' },
+      { icon: '🎨', type: 'Umění',     color: '#e76f51', desc: 'Pouliční umění nebo galerie. Pokochej se.' },
+      { icon: '📚', type: 'Knihovna',  color: '#8d99ae', desc: 'Ticho a spousta příběhů na pultech.' },
+      { icon: '🏟️', type: 'Hřiště',   color: '#90be6d', desc: 'Místo na sport a hraní.' },
+    ];
+
+    // --- geo matematika ---
+    const EARTH = 6378137;
+    function metersBetween(a, b) {
+      const dLat = (b.lat - a.lat) * Math.PI / 180;
+      const dLng = (b.lng - a.lng) * Math.PI / 180;
+      const lat1 = a.lat * Math.PI / 180, lat2 = b.lat * Math.PI / 180;
+      const x = dLng * Math.cos((lat1 + lat2) / 2);
+      const y = dLat;
+      return Math.sqrt(x * x + y * y) * EARTH;
+    }
+    // převod geo -> metry vůči středu pohledu (x na východ, y na sever)
+    function toMeters(p, center) {
+      const dLat = (p.lat - center.lat) * Math.PI / 180;
+      const dLng = (p.lng - center.lng) * Math.PI / 180;
+      const lat = center.lat * Math.PI / 180;
+      return {
+        x: dLng * Math.cos(lat) * EARTH,
+        y: dLat * EARTH,
+      };
+    }
+    // posun středu pohledu o daný počet metrů
+    function moveView(dxMeters, dyMeters) {
+      const lat = view.lat * Math.PI / 180;
+      view.lat += (dyMeters / EARTH) * 180 / Math.PI;
+      view.lng += (dxMeters / (EARTH * Math.cos(lat))) * 180 / Math.PI;
+    }
+    // náhodný PoI v okolí dané polohy
+    function randomPoiNear(center, minM, maxM) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = minM + Math.random() * (maxM - minM);
+      const dx = Math.cos(angle) * dist;
+      const dy = Math.sin(angle) * dist;
+      const lat = center.lat * Math.PI / 180;
+      const t = POI_TYPES[Math.floor(Math.random() * POI_TYPES.length)];
+      return {
+        lat: center.lat + (dy / EARTH) * 180 / Math.PI,
+        lng: center.lng + (dx / (EARTH * Math.cos(lat))) * 180 / Math.PI,
+        ...t,
+        name: t.type + ' #' + (Math.floor(Math.random() * 900) + 100),
+        collected: false,
+      };
+    }
+    function generatePois(center) {
+      pois = [];
+      const count = 7 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < count; i++) {
+        pois.push(randomPoiNear(center, 40, 320));
+      }
+    }
+
+    // --- vykreslení ---
+    function resize() {
+      canvas.width = window.innerWidth * DPR;
+      canvas.height = window.innerHeight * DPR;
+      canvas.style.width = window.innerWidth + 'px';
+      canvas.style.height = window.innerHeight + 'px';
+    }
+
+    function worldToScreen(p) {
+      const m = toMeters(p, view);
+      return {
+        x: canvas.width / 2 + (m.x / METERS_PER_PX) * DPR,
+        y: canvas.height / 2 - (m.y / METERS_PER_PX) * DPR,
+      };
+    }
+
+    function drawGrid() {
+      const w = canvas.width, h = canvas.height;
+      ctx.fillStyle = '#16324a';
+      ctx.fillRect(0, 0, w, h);
+
+      // "ulice" – mřížka, která se posouvá s mapou
+      const spacingM = 50;
+      const step = (spacingM / METERS_PER_PX) * DPR;
+      const center = worldToScreen(view);
+      ctx.strokeStyle = 'rgba(255,255,255,.07)';
+      ctx.lineWidth = 2 * DPR;
+
+      let startX = center.x % step;
+      for (let x = startX; x < w; x += step) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+      }
+      let startY = center.y % step;
+      for (let y = startY; y < h; y += step) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      }
+
+      // pár "bloků" (parky/budovy) pro pocit mapy – deterministicky podle mřížky
+      ctx.fillStyle = 'rgba(42,157,143,.10)';
+      for (let gx = -6; gx <= 6; gx++) {
+        for (let gy = -6; gy <= 6; gy++) {
+          if (((gx * 928371 ^ gy * 1299721) & 7) === 0) {
+            const cx = center.x + gx * step;
+            const cy = center.y + gy * step;
+            ctx.fillRect(cx + step * .15, cy + step * .15, step * .7, step * .7);
+          }
+        }
+      }
+    }
+
+    function drawPoi(p) {
+      const s = worldToScreen(p);
+      if (s.x < -40 || s.x > canvas.width + 40 || s.y < -40 || s.y > canvas.height + 40) return;
+      const r = 16 * DPR;
+      // stín / podstavec
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y + r * .6, r * .7, r * .25, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,.35)';
+      ctx.fill();
+      // kolečko
+      ctx.beginPath();
+      ctx.arc(s.x, s.y - r * .2, r, 0, Math.PI * 2);
+      ctx.fillStyle = p.collected ? '#3a4a5a' : p.color;
+      ctx.fill();
+      ctx.lineWidth = 3 * DPR;
+      ctx.strokeStyle = selected === p ? '#fff' : 'rgba(255,255,255,.6)';
+      ctx.stroke();
+      // ikona
+      ctx.font = (18 * DPR) + 'px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.globalAlpha = p.collected ? 0.45 : 1;
+      ctx.fillText(p.icon, s.x, s.y - r * .2);
+      ctx.globalAlpha = 1;
+    }
+
+    function drawPlayer() {
+      const s = worldToScreen(player);
+      const pulse = (Math.sin(heading) + 1) / 2; // 0..1
+      // dosahový kruh (kde lze sbírat)
+      const reach = (35 / METERS_PER_PX) * DPR;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, reach, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(27,154,170,.10)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(27,154,170,.35)';
+      ctx.lineWidth = 2 * DPR;
+      ctx.stroke();
+      // pulzující prstenec
+      const pr = (14 + pulse * 10) * DPR;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, pr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(27,154,170,' + (0.35 * (1 - pulse)) + ')';
+      ctx.fill();
+      // tělo hráče
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 11 * DPR, 0, Math.PI * 2);
+      ctx.fillStyle = '#1b9aaa';
+      ctx.fill();
+      ctx.lineWidth = 4 * DPR;
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+    }
+
+    function render() {
+      if (!view) return;
+      drawGrid();
+      pois.forEach(drawPoi);
+      if (player) drawPlayer();
+    }
+
+    function loop() {
+      heading += 0.05;
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    // --- interakce ---
+    function showStatus(text, retry) {
+      statusText.textContent = text;
+      statusBtn.style.display = retry ? 'inline-block' : 'none';
+      statusEl.classList.remove('hidden');
+    }
+    function hideStatus() { statusEl.classList.add('hidden'); }
+
+    function updateScore() { scoreEl.textContent = 'Sebráno: ' + collected; }
+
+    const panel = document.getElementById('poi-panel');
+    function openPoi(p) {
+      selected = p;
+      document.getElementById('poi-icon').textContent = p.icon;
+      document.getElementById('poi-title').textContent = p.name;
+      document.getElementById('poi-type').textContent = p.type;
+      document.getElementById('poi-desc').textContent = p.desc;
+      const d = player ? Math.round(metersBetween(player, p)) : null;
+      const distEl = document.getElementById('poi-dist');
+      const collectBtn = document.getElementById('poi-collect');
+      if (d !== null) {
+        distEl.textContent = '📏 Vzdálenost: ' + d + ' m';
+        if (p.collected) {
+          collectBtn.textContent = 'Už prozkoumáno ✓';
+          collectBtn.disabled = true;
+        } else if (d <= 35) {
+          collectBtn.textContent = 'Prozkoumat';
+          collectBtn.disabled = false;
+        } else {
+          collectBtn.textContent = 'Přijdi blíž (do 35 m)';
+          collectBtn.disabled = true;
+        }
+      } else {
+        distEl.textContent = '';
+        collectBtn.disabled = true;
+      }
+      panel.classList.add('open');
+    }
+    function closePoi() {
+      selected = null;
+      panel.classList.remove('open');
+    }
+    document.getElementById('poi-close').addEventListener('click', closePoi);
+    document.getElementById('poi-collect').addEventListener('click', function () {
+      if (selected && !selected.collected) {
+        selected.collected = true;
+        collected++;
+        updateScore();
+        openPoi(selected);
+      }
+    });
+
+    // klik / tap na mapu – najdi nejbližší PoI v dosahu kliknutí
+    function pickAt(clientX, clientY) {
+      const px = clientX * DPR;
+      const py = clientY * DPR;
+      let best = null, bestD = 30 * DPR;
+      for (const p of pois) {
+        const s = worldToScreen(p);
+        const d = Math.hypot(s.x - px, s.y - py);
+        if (d < bestD) { bestD = d; best = p; }
+      }
+      if (best) openPoi(best);
+      else closePoi();
+    }
+
+    // tažení mapy (myš i dotyk)
+    let dragging = false, dragMoved = false, lastX = 0, lastY = 0;
+    function onDown(x, y) { dragging = true; dragMoved = false; lastX = x; lastY = y; }
+    function onMove(x, y) {
+      if (!dragging) return;
+      const dx = x - lastX, dy = y - lastY;
+      if (Math.abs(dx) + Math.abs(dy) > 3) dragMoved = true;
+      lastX = x; lastY = y;
+      following = false;
+      moveView(-dx * METERS_PER_PX, dy * METERS_PER_PX);
+    }
+    function onUp(x, y) {
+      if (dragging && !dragMoved) pickAt(x, y);
+      dragging = false;
+    }
+
+    canvas.addEventListener('mousedown', e => onDown(e.clientX, e.clientY));
+    window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+    window.addEventListener('mouseup', e => onUp(e.clientX, e.clientY));
+    canvas.addEventListener('touchstart', e => {
+      const t = e.touches[0]; onDown(t.clientX, t.clientY);
+    }, { passive: true });
+    canvas.addEventListener('touchmove', e => {
+      const t = e.touches[0]; onMove(t.clientX, t.clientY);
+    }, { passive: true });
+    canvas.addEventListener('touchend', e => {
+      const t = e.changedTouches[0]; onUp(t.clientX, t.clientY);
+    });
+
+    document.getElementById('recenter').addEventListener('click', function () {
+      if (player) {
+        view = { lat: player.lat, lng: player.lng };
+        following = true;
+      }
+    });
+
+    // --- geolokace ---
+    function onPosition(lat, lng) {
+      const first = !player;
+      player = { lat, lng };
+      if (first) {
+        view = { lat, lng };
+        generatePois(player);
+        hideStatus();
+      } else if (following) {
+        view = { lat: player.lat, lng: player.lng };
+      }
+      // pokud je panel otevřený, aktualizuj vzdálenost/tlačítko
+      if (selected) openPoi(selected);
+    }
+
+    function startDemo() {
+      // záložní režim bez GPS – Praha, Staroměstské náměstí
+      onPosition(50.0875, 14.4213);
+      showStatus('Nepodařilo se získat tvoji polohu, hraješ v ukázkovém režimu (Praha). Mapou můžeš posouvat tažením.', true);
+      setTimeout(hideStatus, 3500);
+    }
+
+    function startGeo() {
+      if (!('geolocation' in navigator)) { startDemo(); return; }
+      showStatus('Zjišťuji tvoji polohu…');
+      navigator.geolocation.getCurrentPosition(
+        pos => onPosition(pos.coords.latitude, pos.coords.longitude),
+        err => {
+          console.warn('geo error', err);
+          startDemo();
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+      );
+      // průběžné sledování polohy
+      navigator.geolocation.watchPosition(
+        pos => onPosition(pos.coords.latitude, pos.coords.longitude),
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 3000 }
+      );
+    }
+
+    statusBtn.addEventListener('click', startGeo);
+
+    // --- start ---
+    window.addEventListener('resize', resize);
+    resize();
+    loop();
+    startGeo();
+  })();
+  </script>
+</body>
+</html>

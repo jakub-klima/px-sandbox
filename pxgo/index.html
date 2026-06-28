@@ -211,6 +211,16 @@
     #topbar #hp.low { color: #ff9a7a; border-color: #b3402f; }
     #topbar #hp.empty { color: #ff6b6b; border-color: #ff6b6b; animation: hppulse 1s infinite; }
     @keyframes hppulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+    /* cestovní bonus – tlumený dokud není připravený, pak svítí drobná ikonka */
+    #buttons #travel { position: relative; opacity: .5; }
+    #buttons #travel.ready { opacity: 1; background: linear-gradient(180deg,#3a5a2e,#26401d); border-color: #caa84a; }
+    #buttons #travel.ready::after {
+      content: '✦'; position: absolute; top: -4px; right: -4px;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #ffd166; color: #1c1712; border: 2px solid #1c1712;
+      font-size: 11px; line-height: 14px; text-align: center; font-weight: 900;
+      box-shadow: 0 0 8px #ffd166; animation: hppulse 1.2s infinite;
+    }
     #buttons button { background: linear-gradient(180deg,#2a231b,#1c1712); border: 1px solid #6b5836; border-radius: 10px; color: #e8d8b0; }
     #status { background: #1c1712; border: 1px solid #6b5836; color: #d9c7a3; border-radius: 12px; }
     #status button { background: #2a231b; border: 1px solid #6b5836; color: #e8d8b0; border-radius: 8px; }
@@ -275,6 +285,7 @@
     <div id="toast"></div>
 
     <div id="buttons">
+      <button id="travel" title="Cestovní bonus">🧭</button>
       <button id="rescan" title="Najít místa v tomto výřezu">🔄</button>
       <button id="recenter" title="Vycentrovat na mě">🎯</button>
     </div>
@@ -367,6 +378,24 @@
       } catch (e) { return playerMaxHp(); }
     }
     function saveHp() { try { localStorage.setItem(HP_KEY, JSON.stringify({ hp: playerHp, t: Date.now() })); } catch (e) {} }
+
+    // --- cestovní bonus (ujdi ≥ 1 km, cooldown 1 h) ---
+    const TRAVEL_DIST_KEY = 'pxgo.travelDist';
+    const TRAVEL_CLAIM_KEY = 'pxgo.travelClaim';
+    const TRAVEL_NEED_M = 1000;          // potřebná ušlá vzdálenost
+    const TRAVEL_COOLDOWN_MS = 3600000;  // 1 hodina
+    const TRAVEL_BONUS_XP = 50;
+    let travelDist = parseFloat(localStorage.getItem(TRAVEL_DIST_KEY) || '0') || 0;
+    let lastTravelClaim = parseInt(localStorage.getItem(TRAVEL_CLAIM_KEY) || '0', 10) || 0;
+    function saveTravel() {
+      try {
+        localStorage.setItem(TRAVEL_DIST_KEY, String(Math.round(travelDist)));
+        localStorage.setItem(TRAVEL_CLAIM_KEY, String(lastTravelClaim));
+      } catch (e) {}
+    }
+    function travelReady() {
+      return travelDist >= TRAVEL_NEED_M && (Date.now() - lastTravelClaim) >= TRAVEL_COOLDOWN_MS;
+    }
 
     // navštívená místa (odznáčky) – ukládá se podle souřadnic
     const VISIT_KEY = 'pxgo.visited';
@@ -1095,10 +1124,40 @@
       if (view) loadPois({ lat: view.lat, lng: view.lng });
     });
 
+    // --- cestovní bonus ---
+    const travelBtn = document.getElementById('travel');
+    function updateTravelButton() { travelBtn.classList.toggle('ready', travelReady()); }
+    function claimTravel() {
+      if (!travelReady()) {
+        if (travelDist < TRAVEL_NEED_M) {
+          showToast('🧭 Cestovní bonus: ujdi ještě ' + Math.ceil(TRAVEL_NEED_M - travelDist)
+            + ' m (máš ' + (travelDist / 1000).toFixed(2) + ' km)', 2800);
+        } else {
+          const min = Math.ceil((TRAVEL_COOLDOWN_MS - (Date.now() - lastTravelClaim)) / 60000);
+          showToast('🧭 Cestovní bonus bude k dispozici za ' + min + ' min', 2800);
+        }
+        return;
+      }
+      xp += TRAVEL_BONUS_XP; saveXp(); updateXpBadge();
+      playerHp = playerMaxHp(); saveHp(); updateHpHud();
+      travelDist = 0; lastTravelClaim = Date.now(); saveTravel();
+      if (player) spawnFloat(player, '+' + TRAVEL_BONUS_XP + ' XP 🧭', 'first');
+      showToast('🧭 Cestovní bonus! +' + TRAVEL_BONUS_XP + ' XP a plné HP', 3000);
+      updateTravelButton();
+    }
+    travelBtn.addEventListener('click', claimTravel);
+    setInterval(updateTravelButton, 5000);
+
     // --- geolokace ---
     function onPosition(lat, lng) {
       const first = !player;
+      const prev = player;
       player = { lat, lng };
+      // nasčítej ušlou vzdálenost pro cestovní bonus (ignoruj jitter a velké skoky)
+      if (prev) {
+        const step = metersBetween(prev, player);
+        if (step > 5 && step < 500) { travelDist += step; saveTravel(); updateTravelButton(); }
+      }
       if (first) {
         view = { lat, lng };
         hideStatus();
@@ -1145,6 +1204,7 @@
     // --- start ---
     updateXpBadge();
     updateHpHud();
+    updateTravelButton();
     window.addEventListener('resize', resize);
     resize();
     loop();

@@ -157,6 +157,24 @@
       pointer-events: auto;
     }
     #attribution a { color: #1b6fa8; }
+    /* informační bublina (načítání míst apod.) */
+    #toast {
+      position: absolute;
+      top: 56px; left: 50%;
+      transform: translateX(-50%) translateY(-12px);
+      background: rgba(13,27,42,.92);
+      color: #e0e1dd;
+      padding: 9px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      box-shadow: 0 6px 18px rgba(0,0,0,.4);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s, transform .25s;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
@@ -170,9 +188,12 @@
       <div class="badge" id="score">Sebráno: 0</div>
     </div>
 
+    <div id="toast"></div>
+
     <div id="buttons">
       <button id="zoomin" title="Přiblížit">+</button>
       <button id="zoomout" title="Oddálit">−</button>
+      <button id="rescan" title="Najít místa v tomto výřezu">🔄</button>
       <button id="recenter" title="Vycentrovat na mě">🎯</button>
     </div>
 
@@ -315,11 +336,107 @@
         collected: false,
       };
     }
-    function generatePois(center) {
+    // záloha: náhodná místa, když se nepodaří načíst reálná
+    function generateRandomPois(center) {
       pois = [];
       const count = 7 + Math.floor(Math.random() * 4);
       for (let i = 0; i < count; i++) {
         pois.push(randomPoiNear(center, 40, 320));
+      }
+    }
+
+    // --- reálná místa z OpenStreetMap (Overpass API) ---
+    // převod OSM značek na typ PoI (ikona, název, barva, popis)
+    function classify(t) {
+      if (t.tourism === 'museum') return { icon: '🏛️', type: 'Muzeum', color: '#e9c46a', desc: 'Muzeum – nahlédni do historie nebo umění.' };
+      if (t.tourism === 'gallery') return { icon: '🖼️', type: 'Galerie', color: '#e76f51', desc: 'Galerie umění.' };
+      if (t.tourism === 'artwork') return { icon: '🎨', type: 'Umění', color: '#e76f51', desc: 'Socha nebo pouliční umění. Pokochej se.' };
+      if (t.tourism === 'viewpoint') return { icon: '🔭', type: 'Vyhlídka', color: '#48b5d4', desc: 'Místo s pěkným výhledem do okolí.' };
+      if (t.tourism === 'attraction') return { icon: '⭐', type: 'Atrakce', color: '#f4a261', desc: 'Turisticky zajímavé místo.' };
+      if (t.historic) return { icon: '🏛️', type: 'Památka', color: '#e9c46a', desc: 'Historicky zajímavé místo. Rozhlédni se kolem.' };
+      switch (t.amenity) {
+        case 'cafe': return { icon: '☕', type: 'Kavárna', color: '#c97b50', desc: 'Voňavá zastávka na cestě. Dej si pauzu.' };
+        case 'restaurant': return { icon: '🍽️', type: 'Restaurace', color: '#e76f51', desc: 'Místo na dobré jídlo.' };
+        case 'fast_food': return { icon: '🍔', type: 'Občerstvení', color: '#f4a261', desc: 'Rychlé občerstvení.' };
+        case 'bar': case 'pub': return { icon: '🍺', type: 'Hospoda', color: '#d4a017', desc: 'Místo na posezení a osvěžení.' };
+        case 'library': return { icon: '📚', type: 'Knihovna', color: '#8d99ae', desc: 'Ticho a spousta příběhů na pultech.' };
+        case 'fountain': return { icon: '⛲', type: 'Fontána', color: '#48b5d4', desc: 'Vodní prvek, oblíbené místo setkávání.' };
+        case 'pharmacy': return { icon: '💊', type: 'Lékárna', color: '#2a9d8f', desc: 'Lékárna.' };
+        case 'bank': return { icon: '🏦', type: 'Banka', color: '#90be6d', desc: 'Banka.' };
+        case 'atm': return { icon: '🏧', type: 'Bankomat', color: '#90be6d', desc: 'Bankomat.' };
+        case 'place_of_worship': return { icon: '⛪', type: 'Svatostánek', color: '#b08968', desc: 'Kostel nebo jiné místo víry.' };
+        case 'school': case 'university': case 'college': return { icon: '🏫', type: 'Škola', color: '#f4a261', desc: 'Vzdělávací instituce.' };
+        case 'cinema': return { icon: '🎬', type: 'Kino', color: '#e76f51', desc: 'Kino.' };
+        case 'theatre': return { icon: '🎭', type: 'Divadlo', color: '#e76f51', desc: 'Divadlo.' };
+      }
+      switch (t.leisure) {
+        case 'park': return { icon: '🌳', type: 'Park', color: '#2a9d8f', desc: 'Kus zeleně ve městě. Ideální na odpočinek.' };
+        case 'garden': return { icon: '🌷', type: 'Zahrada', color: '#2a9d8f', desc: 'Zahrada plná rostlin.' };
+        case 'playground': return { icon: '🛝', type: 'Hřiště', color: '#90be6d', desc: 'Místo na hraní.' };
+      }
+      if (t.shop === 'supermarket') return { icon: '🛒', type: 'Supermarket', color: '#f4a261', desc: 'Větší obchod s potravinami.' };
+      if (t.shop) return { icon: '🏪', type: 'Obchod', color: '#f4a261', desc: 'Místo, kde se dá doplnit zásoba.' };
+      return null;
+    }
+
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    let loadingPois = false;
+    async function loadPois(center, radius = 800) {
+      if (loadingPois) return;
+      loadingPois = true;
+      showToast('🔎 Hledám místa v okolí…');
+      const R = Math.round(radius);
+      const q = `[out:json][timeout:25];(`
+        + `node["tourism"](around:${R},${center.lat},${center.lng});`
+        + `node["historic"](around:${R},${center.lat},${center.lng});`
+        + `node["amenity"~"cafe|restaurant|fast_food|bar|pub|library|fountain|pharmacy|bank|atm|place_of_worship|school|university|college|cinema|theatre"](around:${R},${center.lat},${center.lng});`
+        + `node["leisure"~"park|playground|garden"](around:${R},${center.lat},${center.lng});`
+        + `node["shop"](around:${R},${center.lat},${center.lng});`
+        + `way["leisure"~"park|playground|garden"](around:${R},${center.lat},${center.lng});`
+        + `way["tourism"](around:${R},${center.lat},${center.lng});`
+        + `way["historic"](around:${R},${center.lat},${center.lng});`
+        + `);out center 120;`;
+      try {
+        const res = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          body: 'data=' + encodeURIComponent(q),
+        });
+        if (!res.ok) throw new Error('Overpass ' + res.status);
+        const json = await res.json();
+        const seen = new Set();
+        const list = [];
+        for (const el of json.elements || []) {
+          const lat = el.lat != null ? el.lat : (el.center && el.center.lat);
+          const lng = el.lon != null ? el.lon : (el.center && el.center.lon);
+          if (lat == null || lng == null) continue;
+          const cls = classify(el.tags || {});
+          if (!cls) continue;
+          const key = lat.toFixed(5) + ',' + lng.toFixed(5);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          list.push({
+            lat, lng, ...cls,
+            name: (el.tags && el.tags.name) ? el.tags.name : cls.type,
+            collected: false,
+          });
+        }
+        if (!list.length) throw new Error('žádná místa');
+        // promíchat a omezit počet, ať není mapa přeplněná
+        pois = shuffle(list).slice(0, 45);
+        showToast('✅ Načteno ' + pois.length + ' míst z okolí', 2200);
+      } catch (e) {
+        console.warn('Overpass selhal, používám náhodná místa:', e);
+        generateRandomPois(center);
+        showToast('⚠️ Reálná místa se nenačetla, hraješ s náhodnými', 2600);
+      } finally {
+        loadingPois = false;
       }
     }
 
@@ -447,6 +564,16 @@
     }
     function hideStatus() { statusEl.classList.add('hidden'); }
 
+    // krátká informační bublina nahoře
+    const toastEl = document.getElementById('toast');
+    let toastTimer = null;
+    function showToast(text, hideAfter) {
+      toastEl.textContent = text;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      if (hideAfter) toastTimer = setTimeout(() => toastEl.classList.remove('show'), hideAfter);
+    }
+
     function updateScore() { scoreEl.textContent = 'Sebráno: ' + collected; }
 
     const panel = document.getElementById('poi-panel');
@@ -573,14 +700,19 @@
       }
     });
 
+    // znovu načti reálná místa kolem středu aktuálního výřezu
+    document.getElementById('rescan').addEventListener('click', function () {
+      if (view) loadPois({ lat: view.lat, lng: view.lng });
+    });
+
     // --- geolokace ---
     function onPosition(lat, lng) {
       const first = !player;
       player = { lat, lng };
       if (first) {
         view = { lat, lng };
-        generatePois(player);
         hideStatus();
+        loadPois(player);   // načti reálná místa z OpenStreetMap
       } else if (following) {
         view = { lat: player.lat, lng: player.lng };
       }

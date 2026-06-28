@@ -207,6 +207,10 @@
     #topbar { background: linear-gradient(180deg, rgba(16,13,11,.92), rgba(16,13,11,0)); }
     #topbar h1 { font-family: Georgia, 'Times New Roman', serif; color: #e8d8b0; font-size: 22px; }
     #topbar .badge { background: rgba(30,24,18,.85); border: 1px solid #6b5836; border-radius: 6px; color: #e8d8b0; backdrop-filter: none; }
+    #topbar #hp { background: rgba(40,18,16,.85); border: 1px solid #7a3a30; border-radius: 6px; padding: 6px 12px; font-size: 13px; font-weight: 700; color: #f0b0a0; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+    #topbar #hp.low { color: #ff9a7a; border-color: #b3402f; }
+    #topbar #hp.empty { color: #ff6b6b; border-color: #ff6b6b; animation: hppulse 1s infinite; }
+    @keyframes hppulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
     #buttons button { background: linear-gradient(180deg,#2a231b,#1c1712); border: 1px solid #6b5836; border-radius: 10px; color: #e8d8b0; }
     #status { background: #1c1712; border: 1px solid #6b5836; color: #d9c7a3; border-radius: 12px; }
     #status button { background: #2a231b; border: 1px solid #6b5836; color: #e8d8b0; border-radius: 8px; }
@@ -264,6 +268,7 @@
 
     <div id="topbar">
       <h1>🗡️ PxGo</h1>
+      <div id="hp">❤️ 18/18</div>
       <div class="badge" id="score">⚔️ 0 XP · Lv 1</div>
     </div>
 
@@ -347,6 +352,22 @@
     }
     function saveXp() { try { localStorage.setItem(SAVE_KEY, String(xp)); } catch (e) {} }
     function levelOf(x) { return Math.floor(x / 100) + 1; }
+
+    // --- hráčovo HP (regeneruje se v čase, i mezi spuštěními) ---
+    const HP_KEY = 'pxgo.hp';
+    const REGEN_MS = 4000;   // +1 HP každé 4 s
+    function playerMaxHp() { return 18 + (levelOf(xp) - 1) * 4; }
+    let playerHp = loadHp();
+    function loadHp() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(HP_KEY) || 'null');
+        const max = playerMaxHp();
+        if (!raw || typeof raw.hp !== 'number') return max;
+        const regen = Math.floor(Math.max(0, Date.now() - (raw.t || Date.now())) / REGEN_MS);
+        return Math.max(0, Math.min(max, raw.hp + regen));
+      } catch (e) { return playerMaxHp(); }
+    }
+    function saveHp() { try { localStorage.setItem(HP_KEY, JSON.stringify({ hp: playerHp, t: Date.now() })); } catch (e) {} }
 
     // navštívená místa (odznáčky) – ukládá se podle souřadnic
     const VISIT_KEY = 'pxgo.visited';
@@ -837,8 +858,27 @@
     }
 
     function updateXpBadge() {
-      scoreEl.textContent = '✨ ' + xp + ' XP · Lv ' + levelOf(xp);
+      scoreEl.textContent = '⚔️ ' + xp + ' XP · Lv ' + levelOf(xp);
     }
+
+    const hpEl = document.getElementById('hp');
+    function updateHpHud() {
+      const max = playerMaxHp();
+      if (playerHp > max) playerHp = max;
+      hpEl.textContent = '❤️ ' + playerHp + '/' + max;
+      hpEl.classList.toggle('low', playerHp > 0 && playerHp <= Math.max(1, Math.floor(max * 0.25)));
+      hpEl.classList.toggle('empty', playerHp <= 0);
+    }
+    // pomalá regenerace HP (funguje i jako podklad pro „počkat na regen")
+    setInterval(function () {
+      const max = playerMaxHp();
+      if (playerHp < max) {
+        playerHp = Math.min(max, playerHp + 1);
+        saveHp();
+        updateHpHud();
+        if (selectedMob) updateMobPanel();
+      }
+    }, REGEN_MS);
 
     const panel = document.getElementById('poi-panel');
     const collectBtn = document.getElementById('poi-collect');
@@ -934,7 +974,10 @@
       const d = player ? Math.round(metersBetween(player, m)) : null;
       if (d === null) { mobDistEl.textContent = ''; mobAttackBtn.disabled = true; mobAttackBtn.textContent = '⚔️ Zaútočit'; return; }
       mobDistEl.textContent = '📏 Vzdálenost: ' + d + ' m';
-      if (d <= 35) {
+      if (playerHp <= 0) {
+        mobAttackBtn.disabled = true;
+        mobAttackBtn.textContent = '💀 Vyčerpaný – počkej na regeneraci';
+      } else if (d <= 35) {
         mobAttackBtn.disabled = false;
         mobAttackBtn.textContent = '⚔️ Zaútočit (+' + m.xp + ' XP)';
       } else {
@@ -960,12 +1003,14 @@
     mobAttackBtn.addEventListener('click', function () {
       const m = selectedMob;
       if (!m) return;
+      if (playerHp <= 0) return;                 // vyčerpaný – nelze bojovat
       const d = player ? metersBetween(player, m) : Infinity;
       if (d > 35) return;
       const dmg = playerAttack();
       m.hp -= dmg;
       spawnFloat(m, '-' + dmg, 'hit');
       if (m.hp <= 0) {
+        // nestvůra padla – bez protiútoku
         xp += m.xp;
         saveXp();
         updateXpBadge();
@@ -975,6 +1020,13 @@
         closeMob();
         if (player) ensureMonsters(player);
       } else {
+        // přeživší nestvůra ti vrátí úder
+        const back = m.tier * 2 + 1 + Math.floor(Math.random() * 3);
+        playerHp = Math.max(0, playerHp - back);
+        saveHp();
+        updateHpHud();
+        if (player) spawnFloat(player, '-' + back, 'hit');
+        if (playerHp <= 0) showToast('💀 Jsi vyčerpaný! Počkej, než se zregeneruješ.', 3200);
         updateMobPanel();
       }
     });
@@ -1126,6 +1178,7 @@
 
     // --- start ---
     updateXpBadge();
+    updateHpHud();
     window.addEventListener('resize', resize);
     resize();
     loop();

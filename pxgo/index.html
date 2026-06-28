@@ -492,18 +492,6 @@
       return img;
     }
 
-    // typy PoI – ikona, název, barva, popis
-    const POI_TYPES = [
-      { icon: '🏛️', type: 'Památka',   color: '#e9c46a', desc: 'Historicky zajímavé místo. Zastav se a rozhlédni se kolem.' },
-      { icon: '🌳', type: 'Park',      color: '#2a9d8f', desc: 'Kus zeleně ve městě. Ideální na krátký odpočinek.' },
-      { icon: '☕', type: 'Kavárna',   color: '#c97b50', desc: 'Voňavá zastávka na cestě. Dej si pauzu.' },
-      { icon: '⛲', type: 'Fontána',   color: '#48b5d4', desc: 'Vodní prvek, oblíbené místo setkávání.' },
-      { icon: '🏪', type: 'Obchod',    color: '#f4a261', desc: 'Místo, kde se dá doplnit zásoba.' },
-      { icon: '🎨', type: 'Umění',     color: '#e76f51', desc: 'Pouliční umění nebo galerie. Pokochej se.' },
-      { icon: '📚', type: 'Knihovna',  color: '#8d99ae', desc: 'Ticho a spousta příběhů na pultech.' },
-      { icon: '🏟️', type: 'Hřiště',   color: '#90be6d', desc: 'Místo na sport a hraní.' },
-    ];
-
     // --- geo matematika ---
     const EARTH = 6378137;
     function metersBetween(a, b) {
@@ -536,31 +524,6 @@
       view.lng = worldXToLng(vx);
       view.lat = worldYToLat(vy);
       following = false;
-    }
-    // náhodný PoI v okolí dané polohy
-    function randomPoiNear(center, minM, maxM) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = minM + Math.random() * (maxM - minM);
-      const dx = Math.cos(angle) * dist;
-      const dy = Math.sin(angle) * dist;
-      const lat = center.lat * Math.PI / 180;
-      const t = POI_TYPES[Math.floor(Math.random() * POI_TYPES.length)];
-      return {
-        lat: center.lat + (dy / EARTH) * 180 / Math.PI,
-        lng: center.lng + (dx / (EARTH * Math.cos(lat))) * 180 / Math.PI,
-        ...t,
-        name: t.type + ' #' + (Math.floor(Math.random() * 900) + 100),
-        xp: xpFor(t.type),
-        cooldownUntil: 0,
-      };
-    }
-    // záloha: náhodná místa, když se nepodaří načíst reálná
-    function generateRandomPois(center) {
-      pois = [];
-      const count = 7 + Math.floor(Math.random() * 4);
-      for (let i = 0; i < count; i++) {
-        pois.push(randomPoiNear(center, 40, 320));
-      }
     }
 
     // --- reálná místa z OpenStreetMap (Overpass API) ---
@@ -651,9 +614,9 @@
         pois = shuffle(list).slice(0, 45);
         showToast('✅ Načteno ' + pois.length + ' míst z okolí', 2200);
       } catch (e) {
-        console.warn('Overpass selhal, používám náhodná místa:', e);
-        generateRandomPois(center);
-        showToast('⚠️ Reálná místa se nenačetla, hraješ s náhodnými', 2600);
+        console.warn('Overpass selhal, žádná místa se nenačetla:', e);
+        pois = [];
+        showToast('⚠️ Místa se nenačetla. Zkus to znovu tlačítkem 🔄', 2800);
       } finally {
         loadingPois = false;
       }

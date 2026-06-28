@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>PxGo – hra s polohou a mapou</title>
+  <title>PxGo – temné RPG s polohou a mapou</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -193,17 +193,78 @@
       20%  { opacity: 1; }
       100% { opacity: 0; transform: translate(-50%, -180%) scale(1.1); }
     }
+
+    /* ===== temný RPG motiv (à la Gloomhaven) ===== */
+    html, body { background: #100d0b; color: #d9c7a3; }
+    /* ponuré ztmavení okrajů mapy (dungeon vibe) */
+    #vignette {
+      position: absolute; inset: 0; pointer-events: none; z-index: 1;
+      background: radial-gradient(120% 90% at 50% 45%,
+        rgba(8,6,5,0) 42%, rgba(8,6,5,.5) 78%, rgba(4,3,2,.85) 100%);
+    }
+    /* UI nad vinětu */
+    #topbar, #buttons, #status, #poi-panel, #mob-panel, #toast, #attribution { z-index: 2; }
+    #topbar { background: linear-gradient(180deg, rgba(16,13,11,.92), rgba(16,13,11,0)); }
+    #topbar h1 { font-family: Georgia, 'Times New Roman', serif; color: #e8d8b0; font-size: 22px; }
+    #topbar .badge { background: rgba(30,24,18,.85); border: 1px solid #6b5836; border-radius: 6px; color: #e8d8b0; backdrop-filter: none; }
+    #buttons button { background: linear-gradient(180deg,#2a231b,#1c1712); border: 1px solid #6b5836; border-radius: 10px; color: #e8d8b0; }
+    #status { background: #1c1712; border: 1px solid #6b5836; color: #d9c7a3; border-radius: 12px; }
+    #status button { background: #2a231b; border: 1px solid #6b5836; color: #e8d8b0; border-radius: 8px; }
+    #toast { background: #1c1712; border: 1px solid #6b5836; color: #e8d8b0; border-radius: 8px; }
+    #attribution { background: rgba(20,16,12,.7); color: #bbb; }
+    #attribution a { color: #caa84a; }
+    .hint { color: #a08c6a; }
+    .xp-float { color: #e8c34a; }
+    .xp-float.kill { color: #e07a5f; }
+    .xp-float.hit { color: #f08a6a; font-size: 18px; }
+
+    /* panel místa – temná „parchment" varianta */
+    #poi-panel { background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; color: #d9c7a3; border-radius: 14px; }
+    #poi-panel .icon { background: rgba(0,0,0,.35); border: 1px solid #6b5836; border-radius: 10px; }
+    #poi-panel .title { font-family: Georgia, serif; color: #e8d8b0; }
+    #poi-panel .type { color: #a08c6a; }
+    #poi-panel .desc { font-style: italic; color: #c2b18d; }
+    #poi-panel .dist { color: #caa84a; }
+    #poi-panel .collect { background: linear-gradient(180deg,#3a5a2e,#26401d); color: #f2e6c8; border: 1px solid #6b5836; border-radius: 8px; }
+    #poi-panel .collect:disabled { background: #2a241d; color: #7a6f5a; border-color: #473a26; }
+    #poi-panel .close { background: #2a241d; color: #d9c7a3; border: 1px solid #6b5836; border-radius: 8px; }
+
+    /* panel nestvůry (krvavější tón) */
+    #mob-panel {
+      position: absolute; left: 12px; right: 12px; bottom: 24px;
+      background: linear-gradient(180deg,#2a1916,#1a100e);
+      border: 1px solid #7a3a30; color: #d9c7a3; border-radius: 14px;
+      padding: 18px 20px; box-shadow: 0 12px 30px rgba(0,0,0,.7);
+      transform: translateY(180%); transition: transform .28s cubic-bezier(.2,.8,.2,1);
+    }
+    #mob-panel.open { transform: translateY(0); }
+    #mob-panel .head { display: flex; align-items: center; gap: 12px; }
+    #mob-panel .icon { font-size: 34px; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.4); border: 1px solid #7a3a30; border-radius: 10px; flex-shrink: 0; }
+    #mob-panel .title { font-family: Georgia, serif; font-size: 20px; font-weight: 700; color: #f0c9a0; }
+    #mob-panel .type { font-size: 13px; color: #bf8a6a; margin-top: 2px; }
+    #mob-panel .desc { margin-top: 12px; font-size: 14px; line-height: 1.5; font-style: italic; color: #c8a98f; }
+    #mob-panel .dist { margin-top: 10px; font-size: 13px; color: #caa84a; font-weight: 600; }
+    #mob-panel .actions { margin-top: 14px; display: flex; gap: 10px; }
+    #mob-panel .actions button { flex: 1; border: 1px solid #7a3a30; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 700; cursor: pointer; color: #f2e6c8; }
+    #mob-panel .attack { background: linear-gradient(180deg,#8c2f2a,#5c1e1b); }
+    #mob-panel .actions button:disabled { background: #2a201d; color: #7a6f5a; border-color: #4a2e28; cursor: default; }
+    #mob-panel .close { background: #2a201d; color: #d9c7a3; flex: 0 0 56px; }
+    /* HP lišta nestvůry */
+    .hpbar { margin-top: 12px; height: 16px; border: 1px solid #7a3a30; border-radius: 8px; background: #140d0b; overflow: hidden; position: relative; }
+    .hpbar > i { display: block; height: 100%; width: 100%; background: linear-gradient(180deg,#c0402f,#7a201c); transition: width .2s; }
+    .hpbar > span { position: absolute; inset: 0; text-align: center; font-size: 11px; font-weight: 700; color: #f2e6c8; line-height: 16px; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
   </style>
 </head>
 <body>
   <div id="app">
     <canvas id="map"></canvas>
+    <div id="vignette"></div>
 
     <div id="attribution">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>
 
     <div id="topbar">
-      <h1>🗺️ PxGo</h1>
-      <div class="badge" id="score">✨ 0 XP · Lv 1</div>
+      <h1>🗡️ PxGo</h1>
+      <div class="badge" id="score">⚔️ 0 XP · Lv 1</div>
     </div>
 
     <div id="toast"></div>
@@ -236,6 +297,23 @@
         <button class="close" id="poi-close">✕</button>
       </div>
     </div>
+
+    <div id="mob-panel">
+      <div class="head">
+        <div class="icon" id="mob-icon">👹</div>
+        <div>
+          <div class="title" id="mob-title">Nestvůra</div>
+          <div class="type" id="mob-type">Nestvůra</div>
+        </div>
+      </div>
+      <div class="desc" id="mob-desc"></div>
+      <div class="hpbar"><i id="mob-hp-fill"></i><span id="mob-hp-text"></span></div>
+      <div class="dist" id="mob-dist"></div>
+      <div class="actions">
+        <button class="attack" id="mob-attack">⚔️ Zaútočit</button>
+        <button class="close" id="mob-close">✕</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -254,6 +332,8 @@
     let view = null;          // {lat, lng} střed pohledu (kvůli posunu mapy)
     let pois = [];            // seznam point of interest
     let selected = null;      // právě otevřený PoI
+    let monsters = [];        // nestvůry kolem hráče
+    let selectedMob = null;   // právě otevřená nestvůra
     let following = true;     // mapa sleduje hráče?
     let heading = 0;          // animovaný úhel pro pulzování
 
@@ -289,6 +369,64 @@
     }
     // místo je připravené k prozkoumání (není v regeneraci)
     function isReady(p) { return !p.cooldownUntil || Date.now() >= p.cooldownUntil; }
+
+    // --- nestvůry (temné RPG) ---
+    const MOB_TYPES = [
+      { icon: '💀', name: 'Oživlé kosti',       color: '#cdd3d6', tier: 1, desc: 'Rachotící kostra povstalá z mělkého hrobu.' },
+      { icon: '🐀', name: 'Vermlingský zloděj', color: '#8d7b5a', tier: 1, desc: 'Krysí stvůra svírající rezavou dýku.' },
+      { icon: '🕷️', name: 'Jeskynní pavouk',    color: '#7a7270', tier: 1, desc: 'Chlupatý lovec číhající ve tmě.' },
+      { icon: '🦇', name: 'Stínový netopýr',    color: '#8a7f9a', tier: 1, desc: 'Slepě se vrhá z noční oblohy.' },
+      { icon: '👺', name: 'Bandita',            color: '#9a5b3b', tier: 2, desc: 'Otrhaný lapka číhající na kořist.' },
+      { icon: '🧟', name: 'Hnijící mrtvý',      color: '#7f9a5a', tier: 2, desc: 'Pomalý, ale neúprosný nemrtvý.' },
+      { icon: '👹', name: 'Inoxí strážce',      color: '#b23b2e', tier: 2, desc: 'Statný rohatý válečník s palicí.' },
+      { icon: '🦂', name: 'Pouštní škorpion',   color: '#b08a3a', tier: 2, desc: 'Klepeta a smrtící osten plný jedu.' },
+      { icon: '👻', name: 'Naříkající přízrak',  color: '#bcdfe0', tier: 3, desc: 'Bloudící duše plná dávné zloby.' },
+      { icon: '🗿', name: 'Kamenný golem',      color: '#9a9a9a', tier: 3, desc: 'Pradávný strážce z živé skály.' },
+      { icon: '🔥', name: 'Plamenný démon',     color: '#d4622a', tier: 3, desc: 'Pekelná bytost sálající žárem.' },
+    ];
+    const MOB_TARGET = 8;                  // kolik nestvůr držet kolem hráče
+    const MOB_MIN = 30, MOB_MAX = 220;     // vzdálenost spawnu (m)
+    let mobSeq = 0;
+
+    // náhodný geo bod v okolí (m)
+    function randomPointNear(center, minM, maxM) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = minM + Math.random() * (maxM - minM);
+      const dx = Math.cos(angle) * dist, dy = Math.sin(angle) * dist;
+      const lat = center.lat * Math.PI / 180;
+      return {
+        lat: center.lat + (dy / EARTH) * 180 / Math.PI,
+        lng: center.lng + (dx / (EARTH * Math.cos(lat))) * 180 / Math.PI,
+      };
+    }
+    function makeMob(center) {
+      const r = Math.random();
+      const tier = r < 0.55 ? 1 : (r < 0.85 ? 2 : 3);   // silnější nestvůry vzácnější
+      const pool = MOB_TYPES.filter(m => m.tier === tier);
+      const t = pool[Math.floor(Math.random() * pool.length)];
+      const lvl = levelOf(xp);
+      const maxHp = tier * 5 + 2 + Math.floor(lvl * 1.5) + Math.floor(Math.random() * tier * 3);
+      const pos = randomPointNear(center, MOB_MIN, MOB_MAX);
+      return { id: ++mobSeq, ...t, ...pos, maxHp, hp: maxHp, xp: tier * 15 + lvl * 2 };
+    }
+    function ensureMonsters(center) {
+      while (monsters.length < MOB_TARGET) monsters.push(makeMob(center));
+    }
+    // síla útoku hráče roste s úrovní
+    function playerAttack() { return 2 + levelOf(xp) + Math.floor(Math.random() * 3); }
+
+    // nestvůry pomalu bloudí a vzdálené se nahrazují novými
+    setInterval(function () {
+      if (!player) return;
+      for (const m of monsters) {
+        const step = randomPointNear(m, 1, 6);
+        m.lat = step.lat; m.lng = step.lng;
+      }
+      monsters = monsters.filter(m => metersBetween(player, m) < 350);
+      ensureMonsters(player);
+      if (selectedMob && !monsters.includes(selectedMob)) closeMob();
+      else if (selectedMob) updateMobPanel();
+    }, 1500);
 
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
 
@@ -528,6 +666,8 @@
       const y0 = Math.floor((vy - halfH) / tileWorld);
       const y1 = Math.floor((vy + halfH) / tileWorld);
 
+      // ztmavení a sépiový nádech mapy pro ponurou RPG atmosféru
+      ctx.filter = 'brightness(0.72) saturate(0.65) sepia(0.35) contrast(1.05)';
       for (let tx = x0; tx <= x1; tx++) {
         for (let ty = y0; ty <= y1; ty++) {
           if (ty < 0 || ty >= n) continue;
@@ -540,6 +680,43 @@
           }
         }
       }
+      ctx.filter = 'none';
+    }
+
+    function drawMob(m) {
+      const s = worldToScreen(m);
+      if (s.x < -40 || s.x > canvas.width + 40 || s.y < -40 || s.y > canvas.height + 40) return;
+      const r = 16 * DPR;
+      const cy = s.y - r * .2;
+      // rudá aura
+      ctx.beginPath();
+      ctx.arc(s.x, cy, r + 5 * DPR, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(150,40,35,.20)';
+      ctx.fill();
+      // stín
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y + r * .6, r * .7, r * .25, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,.45)';
+      ctx.fill();
+      // disk
+      ctx.beginPath();
+      ctx.arc(s.x, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = m.color;
+      ctx.fill();
+      ctx.lineWidth = 3 * DPR;
+      ctx.strokeStyle = selectedMob === m ? '#fff' : '#7a2a26';
+      ctx.stroke();
+      // ikona
+      ctx.font = (18 * DPR) + 'px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(m.icon, s.x, cy);
+      // proužek HP pod nestvůrou
+      const bw = r * 1.9, bh = 4 * DPR, bx = s.x - bw / 2, by = s.y + r * 0.95;
+      ctx.fillStyle = 'rgba(0,0,0,.6)';
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = '#c0402f';
+      ctx.fillRect(bx, by, bw * Math.max(0, m.hp / m.maxHp), bh);
     }
 
     function drawPoi(p) {
@@ -625,6 +802,7 @@
       if (!view) return;
       drawTiles();
       pois.forEach(drawPoi);
+      monsters.forEach(drawMob);
       if (player) drawPlayer();
     }
 
@@ -701,16 +879,19 @@
     }
     document.getElementById('poi-close').addEventListener('click', closePoi);
 
-    // efekt "+XP" vyletující od daného PoI
-    function spawnXpPopup(p, amount, first) {
+    // vyskakující text (XP / poškození) od daného bodu na mapě
+    function spawnFloat(p, text, cls) {
       const s = worldToScreen(p);
       const el = document.createElement('div');
-      el.className = 'xp-float' + (first ? ' first' : '');
-      el.textContent = '+' + amount + ' XP' + (first ? ' 🏅×2' : '');
+      el.className = 'xp-float' + (cls ? ' ' + cls : '');
+      el.textContent = text;
       el.style.left = (s.x / DPR) + 'px';
       el.style.top = (s.y / DPR) + 'px';
       document.getElementById('app').appendChild(el);
       setTimeout(() => el.remove(), 1200);
+    }
+    function spawnXpPopup(p, amount, first) {
+      spawnFloat(p, '+' + amount + ' XP' + (first ? ' 🏅×2' : ''), first ? 'first' : '');
     }
 
     collectBtn.addEventListener('click', function () {
@@ -733,21 +914,90 @@
       updatePoiButtons();
     });
 
-    // průběžně obnovuj odpočet regenerace v otevřeném panelu
-    setInterval(() => { if (selected) updatePoiButtons(); }, 500);
+    // --- panel nestvůry ---
+    const mobPanel = document.getElementById('mob-panel');
+    const mobAttackBtn = document.getElementById('mob-attack');
+    const mobDistEl = document.getElementById('mob-dist');
+    const mobHpFill = document.getElementById('mob-hp-fill');
+    const mobHpText = document.getElementById('mob-hp-text');
+    function updateMobPanel() {
+      const m = selectedMob;
+      if (!m) return;
+      mobHpFill.style.width = Math.max(0, m.hp / m.maxHp * 100) + '%';
+      mobHpText.textContent = Math.max(0, m.hp) + ' / ' + m.maxHp + ' HP';
+      const d = player ? Math.round(metersBetween(player, m)) : null;
+      if (d === null) { mobDistEl.textContent = ''; mobAttackBtn.disabled = true; mobAttackBtn.textContent = '⚔️ Zaútočit'; return; }
+      mobDistEl.textContent = '📏 Vzdálenost: ' + d + ' m';
+      if (d <= 35) {
+        mobAttackBtn.disabled = false;
+        mobAttackBtn.textContent = '⚔️ Zaútočit (+' + m.xp + ' XP)';
+      } else {
+        mobAttackBtn.disabled = true;
+        mobAttackBtn.textContent = 'Přijdi blíž (do 35 m)';
+      }
+    }
+    function openMob(m) {
+      selectedMob = m;
+      document.getElementById('mob-icon').textContent = m.icon;
+      document.getElementById('mob-title').textContent = m.name;
+      document.getElementById('mob-type').textContent = 'Nestvůra · úroveň ' + m.tier;
+      document.getElementById('mob-desc').textContent = m.desc;
+      updateMobPanel();
+      mobPanel.classList.add('open');
+    }
+    function closeMob() {
+      selectedMob = null;
+      mobPanel.classList.remove('open');
+    }
+    document.getElementById('mob-close').addEventListener('click', closeMob);
 
-    // klik / tap na mapu – najdi nejbližší PoI v dosahu kliknutí
+    mobAttackBtn.addEventListener('click', function () {
+      const m = selectedMob;
+      if (!m) return;
+      const d = player ? metersBetween(player, m) : Infinity;
+      if (d > 35) return;
+      const dmg = playerAttack();
+      m.hp -= dmg;
+      spawnFloat(m, '-' + dmg, 'hit');
+      if (m.hp <= 0) {
+        xp += m.xp;
+        saveXp();
+        updateXpBadge();
+        spawnFloat(m, '+' + m.xp + ' XP', 'kill');
+        showToast('☠️ Poražena nestvůra: ' + m.name + '  (+' + m.xp + ' XP)', 2600);
+        monsters = monsters.filter(x => x !== m);
+        closeMob();
+        if (player) ensureMonsters(player);
+      } else {
+        updateMobPanel();
+      }
+    });
+
+    // průběžně obnovuj odpočet regenerace / vzdálenost v otevřených panelech
+    setInterval(() => {
+      if (selected) updatePoiButtons();
+      if (selectedMob) updateMobPanel();
+    }, 500);
+
+    // klik / tap na mapu – najdi nejbližší cíl (místo nebo nestvůru) v dosahu
     function pickAt(clientX, clientY) {
       const px = clientX * DPR;
       const py = clientY * DPR;
-      let best = null, bestD = 30 * DPR;
+      let best = null, bestKind = null, bestD = 30 * DPR;
       for (const p of pois) {
         const s = worldToScreen(p);
         const d = Math.hypot(s.x - px, s.y - py);
-        if (d < bestD) { bestD = d; best = p; }
+        if (d < bestD) { bestD = d; best = p; bestKind = 'poi'; }
       }
-      if (best) openPoi(best);
-      else closePoi();
+      for (const m of monsters) {
+        const s = worldToScreen(m);
+        const d = Math.hypot(s.x - px, s.y - py);
+        if (d < bestD) { bestD = d; best = m; bestKind = 'mob'; }
+      }
+      closePoi();
+      closeMob();
+      if (bestKind === 'poi') openPoi(best);
+      else if (bestKind === 'mob') openMob(best);
     }
 
     // tažení mapy (myš i dotyk)
@@ -830,12 +1080,14 @@
       if (first) {
         view = { lat, lng };
         hideStatus();
-        loadPois(player);   // načti reálná místa z OpenStreetMap
+        loadPois(player);        // načti reálná místa z OpenStreetMap
+        ensureMonsters(player);  // vyvolej nestvůry kolem hráče
       } else if (following) {
         view = { lat: player.lat, lng: player.lng };
       }
       // pokud je panel otevřený, aktualizuj vzdálenost/tlačítko
       if (selected) updatePoiButtons();
+      if (selectedMob) updateMobPanel();
     }
 
     function startDemo() {

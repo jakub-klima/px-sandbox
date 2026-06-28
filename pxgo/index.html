@@ -171,6 +171,8 @@
     </div>
 
     <div id="buttons">
+      <button id="zoomin" title="Přiblížit">+</button>
+      <button id="zoomout" title="Oddálit">−</button>
       <button id="recenter" title="Vycentrovat na mě">🎯</button>
     </div>
 
@@ -220,32 +222,33 @@
 
     // --- mapové dlaždice (OpenStreetMap) + Web Mercator projekce ---
     const TILE = 256;                       // velikost dlaždice v px
-    const Z = 18;                           // úroveň přiblížení (chůze po městě)
-    const WORLD = TILE * Math.pow(2, Z);    // velikost celého světa v px
-    function lngToWorldX(lng) { return (lng + 180) / 360 * WORLD; }
+    const ZMIN = 11, ZMAX = 19;             // meze přiblížení (OSM má dlaždice do 19)
+    let zoom = 18;                          // aktuální (klidně desetinné) přiblížení
+    function worldSize() { return TILE * Math.pow(2, zoom); } // velikost světa v px
+    function lngToWorldX(lng) { return (lng + 180) / 360 * worldSize(); }
     function latToWorldY(lat) {
       const s = Math.sin(lat * Math.PI / 180);
-      return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * WORLD;
+      return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * worldSize();
     }
-    function worldXToLng(x) { return x / WORLD * 360 - 180; }
+    function worldXToLng(x) { return x / worldSize() * 360 - 180; }
     function worldYToLat(y) {
-      const n = Math.PI - 2 * Math.PI * y / WORLD;
+      const n = Math.PI - 2 * Math.PI * y / worldSize();
       return 180 / Math.PI * Math.atan(Math.sinh(n));
     }
     function metersPerPixel(lat) {
-      return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, Z);
+      return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
     }
 
-    // cache načtených dlaždic
+    // cache načtených dlaždic (klíč včetně úrovně zoomu)
     const tileCache = new Map();
-    function getTile(x, y) {
-      const key = x + '/' + y;
+    function getTile(z, x, y) {
+      const key = z + '/' + x + '/' + y;
       let img = tileCache.get(key);
       if (!img) {
         img = new Image();
         // subdomény a.b.c pro rovnoměrné rozložení požadavků
         const sub = 'abc'[(x + y) % 3];
-        img.src = 'https://' + sub + '.tile.openstreetmap.org/' + Z + '/' + x + '/' + y + '.png';
+        img.src = 'https://' + sub + '.tile.openstreetmap.org/' + z + '/' + x + '/' + y + '.png';
         tileCache.set(key, img);
       }
       return img;
@@ -277,6 +280,24 @@
     function panView(dxPx, dyPx) {
       view.lng = worldXToLng(lngToWorldX(view.lng) - dxPx);
       view.lat = worldYToLat(latToWorldY(view.lat) - dyPx);
+    }
+    // geo souřadnice pod bodem na obrazovce (device px)
+    function screenToLatLng(sxDev, syDev) {
+      const wx = lngToWorldX(view.lng) + (sxDev - canvas.width / 2) / DPR;
+      const wy = latToWorldY(view.lat) + (syDev - canvas.height / 2) / DPR;
+      return { lng: worldXToLng(wx), lat: worldYToLat(wy) };
+    }
+    // změna přiblížení tak, aby bod (device px) zůstal na místě
+    function setZoom(newZoom, sxDev, syDev) {
+      newZoom = Math.max(ZMIN, Math.min(ZMAX, newZoom));
+      if (newZoom === zoom) return;
+      const anchor = screenToLatLng(sxDev, syDev);
+      zoom = newZoom;
+      const vx = lngToWorldX(anchor.lng) - (sxDev - canvas.width / 2) / DPR;
+      const vy = latToWorldY(anchor.lat) - (syDev - canvas.height / 2) / DPR;
+      view.lng = worldXToLng(vx);
+      view.lat = worldYToLat(vy);
+      following = false;
     }
     // náhodný PoI v okolí dané polohy
     function randomPoiNear(center, minM, maxM) {
@@ -325,23 +346,25 @@
       ctx.fillStyle = '#aadaff';
       ctx.fillRect(0, 0, w, h);
 
-      const n = Math.pow(2, Z);
+      const tz = Math.max(0, Math.min(19, Math.round(zoom)));  // celočíselná úroveň dlaždic
+      const tileWorld = TILE * Math.pow(2, zoom - tz);         // velikost dlaždice ve world px
+      const n = Math.pow(2, tz);
       const vx = lngToWorldX(view.lng), vy = latToWorldY(view.lat);
       const halfW = (w / 2) / DPR, halfH = (h / 2) / DPR;
-      const size = TILE * DPR;
+      const size = tileWorld * DPR + 1;  // +1 px proti spárám mezi škálovanými dlaždicemi
 
-      const x0 = Math.floor((vx - halfW) / TILE);
-      const x1 = Math.floor((vx + halfW) / TILE);
-      const y0 = Math.floor((vy - halfH) / TILE);
-      const y1 = Math.floor((vy + halfH) / TILE);
+      const x0 = Math.floor((vx - halfW) / tileWorld);
+      const x1 = Math.floor((vx + halfW) / tileWorld);
+      const y0 = Math.floor((vy - halfH) / tileWorld);
+      const y1 = Math.floor((vy + halfH) / tileWorld);
 
       for (let tx = x0; tx <= x1; tx++) {
         for (let ty = y0; ty <= y1; ty++) {
           if (ty < 0 || ty >= n) continue;
           const wrapX = ((tx % n) + n) % n;   // svět se po ose X opakuje
-          const img = getTile(wrapX, ty);
-          const sx = (tx * TILE - vx) * DPR + w / 2;
-          const sy = (ty * TILE - vy) * DPR + h / 2;
+          const img = getTile(tz, wrapX, ty);
+          const sx = (tx * tileWorld - vx) * DPR + w / 2;
+          const sy = (ty * tileWorld - vy) * DPR + h / 2;
           if (img.complete && img.naturalWidth) {
             ctx.drawImage(img, sx, sy, size, size);
           }
@@ -501,15 +524,47 @@
     canvas.addEventListener('mousedown', e => onDown(e.clientX, e.clientY));
     window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
     window.addEventListener('mouseup', e => onUp(e.clientX, e.clientY));
+
+    // kolečko myši = zoom k pozici kurzoru
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      setZoom(zoom - Math.sign(e.deltaY) * 0.5, e.clientX * DPR, e.clientY * DPR);
+    }, { passive: false });
+
+    // dotyk: jeden prst = posun/tap, dva prsty = pinch zoom
+    let pinchDist = 0, pinchZoom = 0;
+    const tDist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const tMid = (a, b) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 });
     canvas.addEventListener('touchstart', e => {
-      const t = e.touches[0]; onDown(t.clientX, t.clientY);
+      if (e.touches.length === 2) {
+        dragging = false;
+        pinchDist = tDist(e.touches[0], e.touches[1]);
+        pinchZoom = zoom;
+      } else {
+        const t = e.touches[0]; onDown(t.clientX, t.clientY);
+      }
     }, { passive: true });
     canvas.addEventListener('touchmove', e => {
-      const t = e.touches[0]; onMove(t.clientX, t.clientY);
+      if (e.touches.length === 2 && pinchDist > 0) {
+        const d = tDist(e.touches[0], e.touches[1]);
+        const mid = tMid(e.touches[0], e.touches[1]);
+        setZoom(pinchZoom + Math.log2(d / pinchDist), mid.x * DPR, mid.y * DPR);
+      } else if (e.touches.length === 1 && !pinchDist) {
+        const t = e.touches[0]; onMove(t.clientX, t.clientY);
+      }
     }, { passive: true });
     canvas.addEventListener('touchend', e => {
-      const t = e.changedTouches[0]; onUp(t.clientX, t.clientY);
+      if (e.touches.length === 0) {
+        const t = e.changedTouches[0];
+        if (!pinchDist) onUp(t.clientX, t.clientY);  // tap jen pokud nešlo o pinch
+        pinchDist = 0;
+      }
     });
+
+    document.getElementById('zoomin').addEventListener('click',
+      () => setZoom(zoom + 1, canvas.width / 2, canvas.height / 2));
+    document.getElementById('zoomout').addEventListener('click',
+      () => setZoom(zoom - 1, canvas.width / 2, canvas.height / 2));
 
     document.getElementById('recenter').addEventListener('click', function () {
       if (player) {

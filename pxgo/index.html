@@ -431,8 +431,15 @@
       const pos = randomPointNear(center, MOB_MIN, MOB_MAX);
       return { id: ++mobSeq, ...t, ...pos, maxHp, hp: maxHp, xp: tier * 15 + lvl * 2, relocateAt: relocateTime() };
     }
+    const SPAWN_INTERVAL = 12000;  // jak rychle přibývají nové nestvůry (ms)
+    let lastSpawnAt = 0;
+    // pomalé doplňování – max jedna nová nestvůra za SPAWN_INTERVAL
     function ensureMonsters(center) {
-      while (monsters.length < MOB_TARGET) monsters.push(makeMob(center));
+      if (monsters.length >= MOB_TARGET) return;
+      const now = Date.now();
+      if (now - lastSpawnAt < SPAWN_INTERVAL) return;
+      monsters.push(makeMob(center));
+      lastSpawnAt = now;
     }
     // síla útoku hráče roste s úrovní
     function playerAttack() { return 2 + levelOf(xp) + Math.floor(Math.random() * 3); }
@@ -1096,7 +1103,9 @@
         view = { lat, lng };
         hideStatus();
         loadPois(player);        // načti reálná místa z OpenStreetMap
-        ensureMonsters(player);  // vyvolej nestvůry kolem hráče
+        // pár nestvůr hned na start, další pak přibývají pomalu
+        for (let i = 0; i < 3; i++) monsters.push(makeMob(player));
+        lastSpawnAt = Date.now();
       } else if (following) {
         view = { lat: player.lat, lng: player.lng };
       }

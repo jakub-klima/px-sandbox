@@ -199,8 +199,8 @@
     /* ponuré ztmavení okrajů mapy (dungeon vibe) */
     #vignette {
       position: absolute; inset: 0; pointer-events: none; z-index: 1;
-      background: radial-gradient(120% 90% at 50% 45%,
-        rgba(8,6,5,0) 42%, rgba(8,6,5,.5) 78%, rgba(4,3,2,.85) 100%);
+      background: radial-gradient(135% 105% at 50% 45%,
+        rgba(20,15,10,0) 62%, rgba(24,17,11,.22) 88%, rgba(18,12,8,.4) 100%);
     }
     /* UI nad vinětu */
     #topbar, #buttons, #status, #poi-panel, #mob-panel, #toast, #attribution { z-index: 2; }
@@ -758,7 +758,7 @@
       const y1 = Math.floor((vy + halfH) / tileWorld);
 
       // ztmavení a sépiový nádech mapy pro ponurou RPG atmosféru
-      ctx.filter = 'brightness(0.72) saturate(0.65) sepia(0.35) contrast(1.05)';
+      ctx.filter = 'brightness(0.96) saturate(1.12) contrast(1.02)';
       for (let tx = x0; tx <= x1; tx++) {
         for (let ty = y0; ty <= y1; ty++) {
           if (ty < 0 || ty >= n) continue;
@@ -1288,7 +1288,7 @@
       const halfW = cssW / 2, halfH = cssH / 2, ts = TILE * DPR;
       const x0 = Math.floor((vx - halfW) / TILE), x1 = Math.floor((vx + halfW) / TILE);
       const y0 = Math.floor((vy - halfH) / TILE), y1 = Math.floor((vy + halfH) / TILE);
-      c.filter = 'brightness(0.72) saturate(0.65) sepia(0.35) contrast(1.05)';
+      c.filter = 'brightness(0.96) saturate(1.12) contrast(1.02)';
       for (let tx = x0; tx <= x1; tx++) {
         for (let ty = y0; ty <= y1; ty++) {
           if (ty < 0 || ty >= n) continue;

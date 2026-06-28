@@ -345,6 +345,7 @@
     // --- XP a postup (ukládá se do localStorage) ---
     const SAVE_KEY = 'pxgo.xp';
     const COOLDOWN_MS = 60000;  // jak dlouho se místo po prozkoumání regeneruje
+    const REACH_M = 70;         // dosah interakce s místy i nestvůrami (m)
     let xp = loadXp();
     function loadXp() {
       try { const v = parseInt(localStorage.getItem(SAVE_KEY) || '0', 10); return isNaN(v) ? 0 : v; }
@@ -406,7 +407,7 @@
       { icon: '🔥', name: 'Plamenný démon',     color: '#d4622a', tier: 3, desc: 'Pekelná bytost sálající žárem.' },
     ];
     const MOB_TARGET = 8;                  // kolik nestvůr držet kolem hráče
-    const MOB_MIN = 8, MOB_MAX = 90;       // vzdálenost spawnu (m) – blízko hráče
+    const MOB_MIN = 16, MOB_MAX = 180;     // vzdálenost spawnu (m) – úměrně většímu dosahu
     const RELOCATE_MIN = 20000, RELOCATE_MAX = 45000; // za jak dlouho se nezabitá nestvůra přesune
     let mobSeq = 0;
     function relocateTime() { return Date.now() + RELOCATE_MIN + Math.random() * (RELOCATE_MAX - RELOCATE_MIN); }
@@ -801,7 +802,7 @@
       const s = worldToScreen(player);
       const pulse = (Math.sin(heading) + 1) / 2; // 0..1
       // dosahový kruh (kde lze sbírat)
-      const reach = (35 / metersPerPixel(player.lat)) * DPR;
+      const reach = (REACH_M / metersPerPixel(player.lat)) * DPR;
       ctx.beginPath();
       ctx.arc(s.x, s.y, reach, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(27,154,170,.10)';
@@ -902,11 +903,11 @@
         const sec = Math.ceil((p.cooldownUntil - Date.now()) / 1000);
         collectBtn.textContent = '⏳ Regeneruje se… ' + sec + ' s';
         collectBtn.disabled = true;
-      } else if (d <= 35) {
+      } else if (d <= REACH_M) {
         collectBtn.textContent = 'Prozkoumat (+' + gain + ' XP' + firstLabel + ')';
         collectBtn.disabled = false;
       } else {
-        collectBtn.textContent = 'Přijdi blíž (do 35 m)';
+        collectBtn.textContent = 'Přijdi blíž (do ' + REACH_M + ' m)';
         collectBtn.disabled = true;
       }
     }
@@ -944,7 +945,7 @@
       const p = selected;
       if (!p || !isReady(p)) return;
       const d = player ? metersBetween(player, p) : Infinity;
-      if (d > 35) return;
+      if (d > REACH_M) return;
       const first = !isVisited(p);
       const gain = rewardFor(p);
       xp += gain;
@@ -977,12 +978,12 @@
       if (playerHp <= 0) {
         mobAttackBtn.disabled = true;
         mobAttackBtn.textContent = '💀 Vyčerpaný – počkej na regeneraci';
-      } else if (d <= 35) {
+      } else if (d <= REACH_M) {
         mobAttackBtn.disabled = false;
         mobAttackBtn.textContent = '⚔️ Zaútočit (+' + m.xp + ' XP)';
       } else {
         mobAttackBtn.disabled = true;
-        mobAttackBtn.textContent = 'Přijdi blíž (do 35 m)';
+        mobAttackBtn.textContent = 'Přijdi blíž (do ' + REACH_M + ' m)';
       }
     }
     function openMob(m) {
@@ -1005,7 +1006,7 @@
       if (!m) return;
       if (playerHp <= 0) return;                 // vyčerpaný – nelze bojovat
       const d = player ? metersBetween(player, m) : Infinity;
-      if (d > 35) return;
+      if (d > REACH_M) return;
       const dmg = playerAttack();
       m.hp -= dmg;
       spawnFloat(m, '-' + dmg, 'hit');

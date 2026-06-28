@@ -275,8 +275,6 @@
     <div id="toast"></div>
 
     <div id="buttons">
-      <button id="zoomin" title="Přiblížit">+</button>
-      <button id="zoomout" title="Oddálit">−</button>
       <button id="rescan" title="Najít místa v tomto výřezu">🔄</button>
       <button id="recenter" title="Vycentrovat na mě">🎯</button>
     </div>
@@ -1077,11 +1075,6 @@
         pinchDist = 0;
       }
     });
-
-    document.getElementById('zoomin').addEventListener('click',
-      () => setZoom(zoom + 1, canvas.width / 2, canvas.height / 2));
-    document.getElementById('zoomout').addEventListener('click',
-      () => setZoom(zoom - 1, canvas.width / 2, canvas.height / 2));
 
     document.getElementById('recenter').addEventListener('click', function () {
       if (player) {

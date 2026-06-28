@@ -36,6 +36,13 @@
       color: #fff; font-size: 16px; font-weight: 600;
       text-shadow: 0 1px 4px rgba(0,0,0,.7); pointer-events: none;
     }
+    #soundBtn {
+      position: fixed; top: 40px; right: 14px; z-index: 6;
+      width: 38px; height: 38px; border-radius: 50%;
+      background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25);
+      color: #fff; font-size: 18px; cursor: pointer; line-height: 1;
+    }
+    #soundBtn:active { transform: scale(.94); }
 
     /* Vinětace pro filmovější vzhled */
     #vignette {
@@ -118,6 +125,7 @@
     </div>
   </div>
   <div id="score">⚔️ Skóre: 0</div>
+  <button id="soundBtn" title="Zvuk">🔊</button>
   <div id="hint">WASD / šipky = chůze · mezerník nebo klik = útok mečem</div>
 
   <div id="touch">
@@ -560,6 +568,76 @@
     floaters.length = 0;
   }
 
+  // ---------- Zvuky (procedurální, Web Audio – bez externích souborů) ----------
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  let actx = null, masterGain = null;
+  let soundOn = localStorage.getItem('rpg3d_sound') !== 'off';
+  function initAudio() {
+    if (actx || !AudioCtx) return;
+    actx = new AudioCtx();
+    masterGain = actx.createGain();
+    masterGain.gain.value = 0.5;
+    masterGain.connect(actx.destination);
+  }
+  function resumeAudio() { initAudio(); if (actx && actx.state === 'suspended') actx.resume(); }
+
+  // tón s obálkou
+  function tone({ freq = 440, freq2 = null, type = 'sine', dur = 0.2, vol = 0.3, attack = 0.005, delay = 0 }) {
+    if (!soundOn || !actx) return;
+    const t0 = actx.currentTime + delay;
+    const osc = actx.createOscillator();
+    const g = actx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    if (freq2) osc.frequency.exponentialRampToValueAtTime(Math.max(1, freq2), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(masterGain);
+    osc.start(t0); osc.stop(t0 + dur + 0.02);
+  }
+  // šumový impulz (úder, švih) přes filtr
+  function noise({ dur = 0.2, vol = 0.3, filter = 'bandpass', freq = 1200, freq2 = null, q = 1, delay = 0 }) {
+    if (!soundOn || !actx) return;
+    const t0 = actx.currentTime + delay;
+    const n = Math.floor(actx.sampleRate * dur);
+    const buf = actx.createBuffer(1, n, actx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) data[i] = Math.random() * 2 - 1;
+    const src = actx.createBufferSource(); src.buffer = buf;
+    const flt = actx.createBiquadFilter(); flt.type = filter; flt.frequency.setValueAtTime(freq, t0); flt.Q.value = q;
+    if (freq2) flt.frequency.exponentialRampToValueAtTime(Math.max(1, freq2), t0 + dur);
+    const g = actx.createGain();
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(flt); flt.connect(g); g.connect(masterGain);
+    src.start(t0); src.stop(t0 + dur + 0.02);
+  }
+
+  const SFX = {
+    swing() { noise({ dur: 0.16, vol: 0.22, filter: 'bandpass', freq: 1600, freq2: 500, q: 1.2 }); },
+    hit()   { noise({ dur: 0.12, vol: 0.3, filter: 'lowpass', freq: 2200, q: 1 });
+              tone({ freq: 180, freq2: 90, type: 'square', dur: 0.12, vol: 0.18 }); },
+    crit()  { noise({ dur: 0.16, vol: 0.34, filter: 'lowpass', freq: 3000, q: 1 });
+              tone({ freq: 320, freq2: 120, type: 'square', dur: 0.18, vol: 0.2 });
+              tone({ freq: 900, freq2: 1500, type: 'sine', dur: 0.16, vol: 0.12, delay: 0.02 }); },
+    kill()  { tone({ freq: 300, freq2: 70, type: 'sawtooth', dur: 0.35, vol: 0.22 });
+              noise({ dur: 0.3, vol: 0.2, filter: 'lowpass', freq: 1200, freq2: 300 }); },
+    hurt()  { tone({ freq: 200, freq2: 80, type: 'sawtooth', dur: 0.22, vol: 0.25 }); },
+    over()  { [392, 330, 262, 196].forEach((f, i) => tone({ freq: f, type: 'triangle', dur: 0.5, vol: 0.22, delay: i * 0.16 })); },
+    start() { [440, 660].forEach((f, i) => tone({ freq: f, type: 'triangle', dur: 0.18, vol: 0.2, delay: i * 0.09 })); },
+  };
+
+  const soundBtn = document.getElementById('soundBtn');
+  function updateSoundBtn() { soundBtn.textContent = soundOn ? '🔊' : '🔇'; }
+  updateSoundBtn();
+  soundBtn.addEventListener('click', () => {
+    soundOn = !soundOn;
+    localStorage.setItem('rpg3d_sound', soundOn ? 'on' : 'off');
+    updateSoundBtn();
+    if (soundOn) { resumeAudio(); SFX.start(); }
+  });
+
   // ---------- Ovládání ----------
   const keys = {};
   window.addEventListener('keydown', (e) => {
@@ -614,6 +692,7 @@
     attackTimer = 0.32;
     attackCooldown = 0.42;
     didHit = false;
+    SFX.swing();
   }
 
   // ---------- Stav hry ----------
@@ -646,6 +725,8 @@
     overlay.classList.remove('hidden');
   }
   function startGame() {
+    resumeAudio(); // odemčení zvuku uživatelským gestem
+    SFX.start();
     // vyčistit příšery
     for (const e of enemies) scene.remove(e.group);
     enemies.length = 0;
@@ -662,6 +743,7 @@
   }
   function gameOver() {
     running = false;
+    SFX.over();
     showOverlay('Padl jsi 💀', `Skóre: ${score} poražených příšer.`, 'Hrát znovu');
   }
   ovBtn.addEventListener('click', startGame);
@@ -784,6 +866,7 @@
         heroHP = Math.max(0, heroHP - dmg);
         hpFill.style.width = (heroHP / HERO_MAX_HP * 100) + '%';
         spawnDamageNumber(hero.position.x, 2.4, hero.position.z, dmg, 'take');
+        SFX.hurt();
         if (heroHP <= 0) { gameOver(); return; }
       }
 
@@ -856,6 +939,7 @@
       // jiskry + plovoucí číslo v místě zásahu
       spawnHitSpark(e.group.position.x, 1.0, e.group.position.z);
       spawnDamageNumber(e.group.position.x, 2.1, e.group.position.z, dmg, crit ? 'crit' : 'deal');
+      crit ? SFX.crit() : SFX.hit();
       // odhození
       e.group.position.x += fx * 0.8;
       e.group.position.z += fz * 0.8;
@@ -864,6 +948,7 @@
         enemies.splice(i, 1);
         score++;
         scoreEl.textContent = '⚔️ Skóre: ' + score;
+        SFX.kill();
       }
     }
   }

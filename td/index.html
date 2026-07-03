@@ -48,8 +48,9 @@
     .stat .lbl { font-size: 10px; color: #9fb3d9; text-transform: uppercase; letter-spacing: .5px; }
     .stat .val { font-size: 18px; font-weight: 700; }
     #money .val { color: #ffd166; }
-    #lives .val { color: #ff6b6b; }
+    #lives .val { color: #ff6b6b; transition: color .2s; }
     #score .val { color: #7ee787; }
+    #lives.critical .val { animation: pulse .6s infinite; color: #ff2d2d; }
 
     #waveInfo { font-size: 12px; color: #9fb3d9; min-height: 16px; margin-bottom: 6px; text-align: center; }
 
@@ -126,11 +127,21 @@
     #towerPanel .tpHead b { font-size: 14px; color: #ffd166; }
     #towerPanel .tpHead .lvl { font-size: 12px; color: #9fb3d9; }
     #towerPanel .tpStats { font-size: 11px; color: #9fb3d9; margin-bottom: 6px; }
+    #tpMode {
+      width: 100%; font-size: 12px; padding: 7px 4px; margin-bottom: 6px;
+      background: linear-gradient(180deg, #818cf8, #6366f1); box-shadow: 0 3px 0 #4338ca;
+    }
     #towerPanel .tpBtns { display: flex; gap: 6px; }
     #towerPanel .tpBtns button { flex: 1; font-size: 12px; padding: 8px 4px; box-shadow: 0 3px 0 #1e40af; }
     #towerPanel #tpUpgrade { background: linear-gradient(180deg, #34d399, #10b981); box-shadow: 0 3px 0 #047857; }
     #towerPanel #tpSell { background: linear-gradient(180deg, #f87171, #ef4444); box-shadow: 0 3px 0 #b91c1c; }
     #towerPanel #tpClose { flex: 0 0 40px; background: linear-gradient(180deg, #475569, #334155); box-shadow: 0 3px 0 #1e293b; }
+
+    #nextWaveBtn {
+      width: 100%; max-width: 440px; margin-top: 10px;
+      background: linear-gradient(180deg, #fbbf24, #f59e0b); box-shadow: 0 4px 0 #b45309;
+    }
+    #nextWaveBtn.hidden { display: none; }
 
     .help { font-size: 12px; color: #9fb3d9; margin-top: 10px; max-width: 440px; text-align: center; line-height: 1.5; }
 
@@ -148,7 +159,7 @@
     #overlay .rec { font-size: 14px; color: #9fb3d9; }
     #overlay .newrec { color: #ffd166; font-weight: 700; animation: pulse 1s infinite; }
     @keyframes pulse { 50% { opacity: .4; } }
-    #overlay button { max-width: 300px; width: 100%; }
+    #overlay button { max-width: 300px; width: 100%; flex: none; }
     a { color: #9fb3d9; font-size: 12px; margin-top: 14px; }
   </style>
 </head>
@@ -188,12 +199,15 @@
   <div id="towerPanel" class="hidden">
     <div class="tpHead"><b id="tpName">Věž</b><span class="lvl" id="tpLevel">Úroveň 1</span></div>
     <div class="tpStats" id="tpStats"></div>
+    <button id="tpMode"></button>
     <div class="tpBtns">
       <button id="tpUpgrade">⬆ Vylepšit</button>
       <button id="tpSell">💰 Prodat</button>
       <button id="tpClose">✕</button>
     </div>
   </div>
+
+  <button id="nextWaveBtn" class="hidden">⏭ Vyvolat vlnu dřív (+bonus)</button>
 
   <div id="controls">
     <button id="speedBtn">⏩ Rychlost 1×</button>
@@ -244,6 +258,11 @@
   let raf = null, last = 0;
   let buildType = 'basic';
   let selectedTower = null;
+  let hitFlash = 0;
+
+  // --- cílení věží ---
+  const TARGET_MODES = ['first', 'hp', 'near'];
+  const TARGET_NAMES = { first: '🏁 Cíl: Postup', hp: '❤️ Cíl: Nejsilnější', near: '🎯 Cíl: Nejbližší' };
 
   // --- typy věží ---
   const MAX_LEVEL = 4;
@@ -276,6 +295,8 @@
 
   const HIGH_KEY = 'td_highscore';
   let high = parseInt(localStorage.getItem(HIGH_KEY) || '0', 10);
+  const WAVE_KEY = 'td_highwave';
+  let highWave = parseInt(localStorage.getItem(WAVE_KEY) || '0', 10);
 
   // --- zvuky (Web Audio, bez externích souborů); defaultně zapnuté,
   // volba se pamatuje v localStorage ---
@@ -328,13 +349,15 @@
     money = 150; lives = 5; score = 0; waveNum = 0;
     running = false; gameOver = false;
     spawnQueue = []; spawnTimer = 0; betweenTimer = 1.0; countdown = 0;
+    hitFlash = 0;
     deselectTower();
     document.getElementById('waveInfo').textContent = '';
+    document.getElementById('nextWaveBtn').classList.add('hidden');
     updateHud();
     updateTowerBar();
   }
 
-  const ENEMY_ICON = { normal: '🔴', fast: '🟢', armored: '⚙️' };
+  const ENEMY_ICON = { normal: '🔴', fast: '🟢', armored: '⚙️', elite: '💀' };
   function waveComposition(q) {
     const counts = {};
     let boss = false;
@@ -348,12 +371,15 @@
     // n = 1..TOTAL_WAVES ; obtížnost roste, postupně přibývají nové typy nepřátel
     const count = 6 + n * 2;
     const q = [];
+    // každou 4. vlnu (kromě finální s bossem) uzavírá mini-boss
+    const eliteWave = n % 4 === 0 && n !== TOTAL_WAVES;
     for (let i = 0; i < count; i++) {
       const boss = (n === TOTAL_WAVES && i === count - 1);
+      const elite = (!boss && eliteWave && i === count - 1);
       const baseHp = Math.round((25 + n * 14) * (1 + i * 0.04));
       const baseSpd = 40 + n * 1.8;
       let type = 'normal', hp = baseHp, spd = baseSpd, armor = 0;
-      if (!boss) {
+      if (!boss && !elite) {
         const fastChance = Math.min(0.5, 0.08 * n);
         const armorChance = n >= 4 ? Math.min(0.35, 0.05 * (n - 3)) : 0;
         const r = Math.random();
@@ -361,6 +387,7 @@
         else if (r < armorChance + fastChance) type = 'fast';
       }
       if (boss) { hp = 1100 + n*73; spd = 32; }
+      else if (elite) { type = 'elite'; hp = Math.round(400 + n * 55); spd = 36; armor = 4 + Math.floor(n * 0.6); }
       else if (type === 'fast') { hp = Math.round(baseHp * 0.55); spd = baseSpd * 1.7; }
       else if (type === 'armored') { hp = Math.round(baseHp * 1.6); spd = baseSpd * 0.8; armor = 6 + Math.floor(n * 0.8); }
       q.push({ hp, spd, boss, type, armor });
@@ -373,6 +400,7 @@
     document.querySelector('#lives .val').textContent = lives;
     document.querySelector('#wave .val').textContent = waveNum + '/' + TOTAL_WAVES;
     document.querySelector('#score .val').textContent = score;
+    document.getElementById('lives').classList.toggle('critical', lives > 0 && lives <= 2);
     updateTowerBar();
     if (selectedTower) refreshTowerPanel();
   }
@@ -421,7 +449,7 @@
     const def = TOWER_TYPES[buildType];
     if (money >= def.cost) {
       money -= def.cost;
-      towers.push({ cx: c.cx, cy: c.cy, x: c.cx*CELL+CELL/2, y: c.cy*CELL+CELL/2, type: buildType, level: 1, cool: 0, angle: 0, spent: def.cost });
+      towers.push({ cx: c.cx, cy: c.cy, x: c.cx*CELL+CELL/2, y: c.cy*CELL+CELL/2, type: buildType, level: 1, cool: 0, angle: 0, spent: def.cost, targetMode: 'first' });
       flash(c.cx*CELL+CELL/2, c.cy*CELL+CELL/2, def.color2);
       sfx('build');
       updateHud();
@@ -448,6 +476,7 @@
     if (st.splash) stats += ' · Splash';
     if (st.slow) stats += ' · Zpomalení';
     document.getElementById('tpStats').textContent = stats;
+    document.getElementById('tpMode').textContent = TARGET_NAMES[t.targetMode] + ' (změnit)';
     const upBtn = document.getElementById('tpUpgrade');
     if (t.level >= MAX_LEVEL) {
       upBtn.textContent = '⬆ MAX úroveň';
@@ -480,6 +509,12 @@
     updateHud();
   });
   document.getElementById('tpClose').addEventListener('click', deselectTower);
+  document.getElementById('tpMode').addEventListener('click', () => {
+    if (!selectedTower) return;
+    const idx = TARGET_MODES.indexOf(selectedTower.targetMode);
+    selectedTower.targetMode = TARGET_MODES[(idx + 1) % TARGET_MODES.length];
+    refreshTowerPanel();
+  });
 
   document.querySelectorAll('.ttype').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -520,6 +555,7 @@
         }
       }
     }
+    updateNextWaveVisibility();
 
     // nepřátelé po cestě
     for (let i = enemies.length - 1; i >= 0; i--) {
@@ -544,13 +580,13 @@
     for (const t of towers) {
       t.cool -= dt;
       const st = towerStats(t);
-      // cíl: nepřítel nejdál po cestě v dosahu
-      let best = null, bestProg = -1;
+      // cíl podle zvoleného režimu: postup po cestě / nejvíc HP / nejblíž věži
+      let best = null, bestVal = -Infinity;
       for (const e of enemies) {
         const d = Math.hypot(e.x - t.x, e.y - t.y);
         if (d <= st.range) {
-          const prog = e.seg + e.t;
-          if (prog > bestProg) { bestProg = prog; best = e; }
+          const val = t.targetMode === 'hp' ? e.hp : t.targetMode === 'near' ? -d : e.seg + e.t;
+          if (val > bestVal) { bestVal = val; best = e; }
         }
       }
       if (best) {
@@ -612,17 +648,24 @@
     money += Math.round(base * mul);
     const scoreBase = e.boss ? 1000 : 10 + Math.floor(e.maxhp / 5);
     score += Math.round(scoreBase * mul);
-    sfx(e.boss ? 'bosskill' : 'kill');
+    sfx(e.boss || e.type === 'elite' ? 'bosskill' : 'kill');
     for (let i = 0; i < 12; i++) flash(e.x, e.y, '#ff6b6b');
     updateHud();
   }
 
   function reachEnd(e, i) {
     enemies.splice(i, 1);
-    lives -= e.boss ? 5 : 1;
+    lives -= e.boss ? 5 : e.type === 'elite' ? 3 : 1;
+    hitFlash = Math.min(1, hitFlash + 0.35);
     sfx('leak');
     if (lives <= 0) { lives = 0; updateHud(); endGame(false); }
     else updateHud();
+  }
+
+  function updateNextWaveVisibility() {
+    const can = running && !gameOver && countdown <= 0 && enemies.length === 0 &&
+      spawnQueue.length === 0 && waveNum > 0 && waveNum < TOTAL_WAVES && betweenTimer > 0;
+    document.getElementById('nextWaveBtn').classList.toggle('hidden', !can);
   }
 
   function endGame(survived) {
@@ -630,14 +673,19 @@
     gameOver = true; running = false;
     if (survived) score += lives * 50 + money; // bonus za přežití
     updateHud();
+    document.getElementById('nextWaveBtn').classList.add('hidden');
     const isNew = score > high;
     if (isNew) { high = score; localStorage.setItem(HIGH_KEY, String(high)); }
+    const reachedWave = survived ? TOTAL_WAVES : waveNum;
+    const isNewWave = reachedWave > highWave;
+    if (isNewWave) { highWave = reachedWave; localStorage.setItem(WAVE_KEY, String(highWave)); }
     sfx(survived ? 'win' : 'lose');
     document.getElementById('ovTitle').textContent = survived ? '🎉 Ubránil jsi to!' : '💀 Prolomili obranu';
     document.getElementById('ovBody').innerHTML =
-      '<div class="big">' + score + '</div><div class="rec">bodů</div>' +
+      '<div class="big">' + score + '</div><div class="rec">bodů · vlna ' + reachedWave + '/' + TOTAL_WAVES + '</div>' +
       (isNew ? '<div class="newrec">🏆 Nový osobní rekord!</div>'
-             : '<div class="rec">Tvůj rekord: ' + high + '</div>');
+             : '<div class="rec">Tvůj rekord: ' + high + '</div>') +
+      (isNewWave ? '<div class="newrec">🌊 Nejdelší postup!</div>' : '');
     document.getElementById('startBtn').textContent = '↻ Hrát znovu';
     overlay.classList.remove('hidden');
   }
@@ -655,6 +703,11 @@
 
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    if (hitFlash > 0) {
+      const s = hitFlash * 8;
+      ctx.translate((Math.random()-0.5)*s, (Math.random()-0.5)*s);
+    }
 
     // pozadí (jemný přechod)
     const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
@@ -756,12 +809,13 @@
 
     // nepřátelé
     for (const e of enemies) {
-      const r = e.boss ? CELL*0.4 : e.type === 'armored' ? CELL*0.3 : CELL*0.26;
+      const r = e.boss ? CELL*0.4 : e.type === 'elite' ? CELL*0.34 : e.type === 'armored' ? CELL*0.3 : CELL*0.26;
       ctx.save();
-      ctx.shadowColor = e.boss ? '#a855f7' : 'rgba(0,0,0,.4)';
-      ctx.shadowBlur = e.boss ? 16 : 5; ctx.shadowOffsetY = e.boss ? 0 : 2;
+      ctx.shadowColor = e.boss ? '#a855f7' : e.type === 'elite' ? '#f59e0b' : 'rgba(0,0,0,.4)';
+      ctx.shadowBlur = e.boss ? 16 : e.type === 'elite' ? 13 : 5; ctx.shadowOffsetY = (e.boss || e.type === 'elite') ? 0 : 2;
       const g = ctx.createRadialGradient(e.x-r*0.3, e.y-r*0.3, r*0.2, e.x, e.y, r);
       if (e.boss) { g.addColorStop(0, '#d8b4fe'); g.addColorStop(1, '#7e22ce'); }
+      else if (e.type === 'elite') { g.addColorStop(0, '#fcd34d'); g.addColorStop(1, '#78350f'); }
       else if (e.type === 'fast') { g.addColorStop(0, '#bbf7d0'); g.addColorStop(1, '#16a34a'); }
       else if (e.type === 'armored') { g.addColorStop(0, '#cbd5e1'); g.addColorStop(1, '#475569'); }
       else { g.addColorStop(0, '#ff9d9d'); g.addColorStop(1, '#dc2626'); }
@@ -786,9 +840,14 @@
         ctx.font = 'bold '+(CELL*0.34)+'px system-ui';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText('👑', e.x, e.y - r - CELL*0.18);
+      } else if (e.type === 'elite') { // lebka mini-bosse
+        ctx.fillStyle = '#fca5a5';
+        ctx.font = 'bold '+(CELL*0.3)+'px system-ui';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('💀', e.x, e.y - r - CELL*0.16);
       }
       // healthbar (zaoblený, barva podle stavu)
-      const w = r*2.1, p = Math.max(0, e.hp/e.maxhp), by = e.y - r - (e.boss ? CELL*0.36 : 8);
+      const w = r*2.1, p = Math.max(0, e.hp/e.maxhp), by = e.y - r - (e.boss ? CELL*0.36 : e.type === 'elite' ? CELL*0.32 : 8);
       ctx.fillStyle = 'rgba(0,0,0,.5)';
       rrect(e.x-w/2, by, w, 4, 2); ctx.fill();
       ctx.fillStyle = p > 0.5 ? '#7ee787' : p > 0.25 ? '#ffd166' : '#ff6b6b';
@@ -828,12 +887,19 @@
       ctx.fillText(n, canvas.width/2, canvas.height*0.55);
       ctx.restore();
     }
+
+    ctx.restore();
+    if (hitFlash > 0) {
+      ctx.fillStyle = 'rgba(239,68,68,' + (hitFlash*0.35) + ')';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
   }
 
   function loop(ts) {
     if (!last) last = ts;
     let dt = (ts - last) / 1000; last = ts;
     if (dt > 0.1) dt = 0.1;
+    if (hitFlash > 0) { hitFlash -= dt * 2; if (hitFlash < 0) hitFlash = 0; }
     if (running && !gameOver && countdown > 0) countdown -= dt; // odpočet reálným časem
     if (running && !gameOver) tick(dt * speed);
     draw();
@@ -867,6 +933,16 @@
     updateHud();
   });
 
+  document.getElementById('nextWaveBtn').addEventListener('click', () => {
+    if (running && !gameOver && countdown <= 0 && enemies.length === 0 && spawnQueue.length === 0 &&
+        waveNum > 0 && waveNum < TOTAL_WAVES && betweenTimer > 0) {
+      money += Math.round(betweenTimer * 4); // bonus za rychlejší vyvolání vlny
+      betweenTimer = 0;
+      sfx('build');
+      updateHud();
+    }
+  });
+
   document.getElementById('speedBtn').addEventListener('click', (e) => {
     speed = speed === 1 ? 2 : speed === 2 ? 4 : 1;
     e.target.textContent = '⏩ Rychlost ' + speed + '×';
@@ -896,7 +972,8 @@
   reset();
   document.getElementById('ovBody').innerHTML =
     '<div class="rec">Postav věže, ubraň ' + TOTAL_WAVES + ' vln a nahraj rekord.</div>' +
-    '<div class="rec" style="margin-top:6px">🏆 Tvůj rekord: ' + high + '</div>';
+    '<div class="rec" style="margin-top:6px">🏆 Tvůj rekord: ' + high + '</div>' +
+    (highWave > 0 ? '<div class="rec">🌊 Nejdelší postup: vlna ' + highWave + '/' + TOTAL_WAVES + '</div>' : '');
   raf = requestAnimationFrame(loop);
 })();
 </script>

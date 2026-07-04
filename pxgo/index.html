@@ -618,15 +618,15 @@
         lng: center.lng + (dx / (EARTH * Math.cos(lat))) * 180 / Math.PI,
       };
     }
+    // síla nestvůr je daná jen jejich tierem (1–3) – nezávisí na úrovni hráče
     function makeMob(center) {
       const r = Math.random();
       const tier = r < 0.55 ? 1 : (r < 0.85 ? 2 : 3);   // silnější nestvůry vzácnější
       const pool = MOB_TYPES.filter(m => m.tier === tier);
       const t = pool[Math.floor(Math.random() * pool.length)];
-      const lvl = levelOf(xp);
-      const maxHp = tier * 5 + 2 + Math.floor(lvl * 1.5) + Math.floor(Math.random() * tier * 3);
+      const maxHp = tier * 5 + 2 + Math.floor(Math.random() * tier * 3);
       const pos = randomPointNear(center, MOB_MIN, MOB_MAX);
-      return { id: ++mobSeq, ...t, ...pos, maxHp, hp: maxHp, xp: tier * 15 + lvl * 2, relocateAt: relocateTime() };
+      return { id: ++mobSeq, ...t, ...pos, maxHp, hp: maxHp, xp: tier * 15, relocateAt: relocateTime() };
     }
     const SPAWN_INTERVAL = 30000;  // jak rychle přibývají nové nestvůry (ms)
     let lastSpawnAt = 0;

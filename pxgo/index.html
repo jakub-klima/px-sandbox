@@ -40,9 +40,18 @@
     #hud {
       display: flex;
       flex-direction: column;
-      gap: 6px;
       width: min(88vw, 360px);
+      border: 1px solid #6b5836;
+      border-radius: 10px;
+      background: rgba(20,16,12,.78);
+      box-shadow: 0 2px 10px rgba(0,0,0,.5);
+      overflow: hidden;
+      pointer-events: auto;
     }
+    #hud .bar { position: relative; height: 18px; }
+    #hud .bar + .bar { border-top: 1px solid rgba(0,0,0,.4); }
+    #hud .bar > i { display: block; height: 100%; width: 0; transition: width .3s; }
+    #hud .bar > span { position: absolute; inset: 0; text-align: center; font-size: 11px; font-weight: 700; color: #fff; line-height: 18px; text-shadow: 0 1px 2px rgba(0,0,0,.85); }
     /* tlačítka vpravo dole */
     #buttons {
       position: absolute;
@@ -149,16 +158,9 @@
       pointer-events: auto;
     }
     #attribution a { color: #1b6fa8; }
-    /* ukazatel postupu do dalšího levelu */
-    #xpbar {
-      position: relative;
-      width: 100%; height: 16px;
-      border: 1px solid #6b5836; border-radius: 8px;
-      background: rgba(20,16,12,.7); overflow: hidden;
-      box-shadow: 0 2px 8px rgba(0,0,0,.5);
-    }
-    #xpbar > i { display: block; height: 100%; width: 0; background: linear-gradient(180deg,#e8c34a,#b8902a); transition: width .3s; }
-    #xpbar > span { position: absolute; inset: 0; text-align: center; font-size: 11px; font-weight: 700; color: #fff; line-height: 16px; text-shadow: 0 1px 2px rgba(0,0,0,.85); }
+    /* barvy výplně HP a XP pruhů v HUDu */
+    #hp > i { background: linear-gradient(180deg,#d94a3a,#8a1f16); }
+    #xpbar > i { background: linear-gradient(180deg,#e8c34a,#b8902a); }
     /* informační bublina (načítání míst apod.) */
     #toast {
       position: absolute;
@@ -231,9 +233,9 @@
     /* UI nad vinětu */
     #topbar, #buttons, #status, #poi-panel, #mob-panel, #herb-panel, #toast, #attribution { z-index: 2; }
     #topbar { background: linear-gradient(180deg, rgba(16,13,11,.92), rgba(16,13,11,0)); }
-    #topbar #hp { background: rgba(40,18,16,.85); border: 1px solid #7a3a30; border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 700; color: #f0b0a0; box-shadow: 0 2px 8px rgba(0,0,0,.5); text-align: center; }
-    #topbar #hp.low { color: #ff9a7a; border-color: #b3402f; }
-    #topbar #hp.empty { color: #ff6b6b; border-color: #ff6b6b; animation: hppulse 1s infinite; }
+    #hp.low > i { background: linear-gradient(180deg,#ff7a5a,#b3402f); }
+    #hp.empty { animation: hppulse 1s infinite; }
+    #hp.empty > i { background: #ff6b6b; }
     @keyframes hppulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
     /* cestovní bonus – tlumený dokud není připravený, pak svítí drobná ikonka */
     #buttons #travel { position: relative; opacity: .5; }
@@ -356,8 +358,8 @@
 
     <div id="topbar">
       <div id="hud">
-        <div id="hp">❤️ 18/18</div>
-        <div id="xpbar"><i id="xpbar-fill"></i><span id="xpbar-text"></span></div>
+        <div id="hp" class="bar"><i id="hp-fill"></i><span id="hp-text">❤️ 18/18</span></div>
+        <div id="xpbar" class="bar"><i id="xpbar-fill"></i><span id="xpbar-text"></span></div>
       </div>
     </div>
 
@@ -1093,14 +1095,17 @@
     function updateXpBadge() {
       const p = levelProgress(xp);
       xpFillEl.style.width = (p.frac * 100) + '%';
-      xpTextEl.textContent = '⚔️ Lv ' + p.level + ' · ' + p.cur + ' / ' + p.need + ' XP';
+      xpTextEl.textContent = 'Lv ' + p.level + ' · ' + p.cur + ' / ' + p.need + ' XP';
     }
 
     const hpEl = document.getElementById('hp');
+    const hpFillEl = document.getElementById('hp-fill');
+    const hpTextEl = document.getElementById('hp-text');
     function updateHpHud() {
       const max = playerMaxHp();
       if (playerHp > max) playerHp = max;
-      hpEl.textContent = '❤️ ' + playerHp + '/' + max;
+      hpFillEl.style.width = (Math.max(0, playerHp) / max * 100) + '%';
+      hpTextEl.textContent = '❤️ ' + playerHp + '/' + max;
       hpEl.classList.toggle('low', playerHp > 0 && playerHp <= Math.max(1, Math.floor(max * 0.25)));
       hpEl.classList.toggle('empty', playerHp <= 0);
     }

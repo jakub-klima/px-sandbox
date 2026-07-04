@@ -249,8 +249,8 @@
     #hud-menu-actions button { padding: 14px; border: 1px solid #6b5836; border-radius: 10px; background: #2a231b; color: #e8d8b0; font-size: 15px; font-weight: 700; cursor: pointer; text-align: left; }
     #hud-menu-actions button:active { transform: scale(.97); }
     .hud-menu-info { padding: 2px 4px; font-size: 13px; color: #caa84a; font-weight: 600; text-align: center; }
-    /* cestovní bonus v menu – tlačítko s vlastním výplňovým pruhem */
-    #hud-menu-travel { position: relative; padding: 0; height: 46px; overflow: hidden; }
+    /* cestovní bonus v menu – jen info s výplňovým pruhem, ne tlačítko */
+    #hud-menu-travel { position: relative; height: 46px; overflow: hidden; border: 1px solid #6b5836; border-radius: 10px; background: #2a231b; font-size: 15px; font-weight: 700; color: #e8d8b0; cursor: pointer; }
     #hud-menu-travel > i { display: block; position: absolute; inset: 0; width: 0; background: linear-gradient(180deg,#2a9d9a,#1a6663); transition: width .3s; }
     #hud-menu-travel > span { position: relative; display: flex; align-items: center; height: 100%; padding: 0 14px; }
     #hud-menu-travel.ready > i { background: linear-gradient(180deg,#ffd166,#caa84a); }
@@ -441,7 +441,7 @@
         </div>
         <div id="hud-menu-actions">
           <div id="hud-menu-hp-info" class="hud-menu-info"></div>
-          <button id="hud-menu-travel"><i id="travel-menu-fill"></i><span id="travel-menu-text"></span></button>
+          <div id="hud-menu-travel"><i id="travel-menu-fill"></i><span id="travel-menu-text"></span></div>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
         </div>

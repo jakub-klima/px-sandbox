@@ -698,7 +698,7 @@
     // --- mapové dlaždice (OpenStreetMap) + Web Mercator projekce ---
     const TILE = 256;                       // velikost dlaždice v px
     const ZMIN = 11, ZMAX = 19;             // meze přiblížení (OSM má dlaždice do 19)
-    let zoom = 18;                          // aktuální (klidně desetinné) přiblížení
+    let zoom = 17;                          // aktuální (klidně desetinné) přiblížení
     function worldSize() { return TILE * Math.pow(2, zoom); } // velikost světa v px
     function lngToWorldX(lng) { return (lng + 180) / 360 * worldSize(); }
     function latToWorldY(lat) {

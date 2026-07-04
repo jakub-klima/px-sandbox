@@ -162,6 +162,9 @@
     /* barvy výplně HP a XP pruhů v HUDu */
     #hp > i { background: linear-gradient(180deg,#d94a3a,#8a1f16); }
     #xpbar > i { background: linear-gradient(180deg,#e8c34a,#b8902a); }
+    #travel > i { background: linear-gradient(180deg,#2a9d9a,#1a6663); }
+    #travel.ready > i { background: linear-gradient(180deg,#ffd166,#caa84a); }
+    #travel.ready { animation: hppulse 1.2s infinite; }
     /* informační bublina (načítání míst apod.) */
     #toast {
       position: absolute;
@@ -238,16 +241,6 @@
     #hp.empty { animation: hppulse 1s infinite; }
     #hp.empty > i { background: #ff6b6b; }
     @keyframes hppulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
-    /* cestovní bonus – tlumený dokud není připravený, pak svítí drobná ikonka */
-    #buttons #travel { position: relative; opacity: .5; }
-    #buttons #travel.ready { opacity: 1; background: linear-gradient(180deg,#3a5a2e,#26401d); border-color: #caa84a; }
-    #buttons #travel.ready::after {
-      content: '✦'; position: absolute; top: -4px; right: -4px;
-      width: 18px; height: 18px; border-radius: 50%;
-      background: #ffd166; color: #1c1712; border: 2px solid #1c1712;
-      font-size: 11px; line-height: 14px; text-align: center; font-weight: 900;
-      box-shadow: 0 0 8px #ffd166; animation: hppulse 1.2s infinite;
-    }
     /* menu otevřené klepnutím na HUD (HP/XP) – kronika a reset postupu */
     #hud-menu-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
     #hud-menu-overlay.hidden { display: none; }
@@ -368,13 +361,13 @@
       <div id="hud">
         <div id="hp" class="bar"><i id="hp-fill"></i><span id="hp-text">❤️ 18/18</span></div>
         <div id="xpbar" class="bar"><i id="xpbar-fill"></i><span id="xpbar-text"></span></div>
+        <div id="travel" class="bar" title="Cestovní bonus"><i id="travel-fill"></i><span id="travel-text"></span></div>
       </div>
     </div>
 
     <div id="toast"></div>
 
     <div id="buttons">
-      <button id="travel" title="Cestovní bonus">🧭</button>
       <button id="rescan" title="Najít místa v tomto výřezu">🔄</button>
       <button id="recenter" title="Vycentrovat na mě">🎯</button>
     </div>
@@ -1485,9 +1478,26 @@
       if (view) loadPois({ lat: view.lat, lng: view.lng });
     });
 
-    // --- cestovní bonus ---
+    // --- cestovní bonus (3. řádek HUDu) ---
     const travelBtn = document.getElementById('travel');
-    function updateTravelButton() { travelBtn.classList.toggle('ready', travelReady()); }
+    const travelFillEl = document.getElementById('travel-fill');
+    const travelTextEl = document.getElementById('travel-text');
+    function updateTravelButton() {
+      const ready = travelReady();
+      travelBtn.classList.toggle('ready', ready);
+      if (ready) {
+        travelFillEl.style.width = '100%';
+        travelTextEl.textContent = '🧭 Bonus připraven!';
+      } else if (travelDist < TRAVEL_NEED_M) {
+        travelFillEl.style.width = (travelDist / TRAVEL_NEED_M * 100) + '%';
+        travelTextEl.textContent = '🧭 ' + Math.round(travelDist) + ' / ' + TRAVEL_NEED_M + ' m';
+      } else {
+        const elapsed = Date.now() - lastTravelClaim;
+        travelFillEl.style.width = (Math.min(1, elapsed / TRAVEL_COOLDOWN_MS) * 100) + '%';
+        const min = Math.ceil((TRAVEL_COOLDOWN_MS - elapsed) / 60000);
+        travelTextEl.textContent = '🧭 za ' + min + ' min';
+      }
+    }
     function claimTravel() {
       if (!travelReady()) {
         if (travelDist < TRAVEL_NEED_M) {
@@ -1506,7 +1516,7 @@
       showToast('🧭 Cestovní bonus! +' + TRAVEL_BONUS_XP + ' XP a plné HP', 3000);
       updateTravelButton();
     }
-    travelBtn.addEventListener('click', claimTravel);
+    travelBtn.addEventListener('click', function (e) { e.stopPropagation(); claimTravel(); });
     setInterval(updateTravelButton, 5000);
 
     // --- kronika navštívených míst (přehled: seznam + mapa) ---

@@ -162,9 +162,6 @@
     /* barvy výplně HP a XP pruhů v HUDu */
     #hp > i { background: linear-gradient(180deg,#d94a3a,#8a1f16); }
     #xpbar > i { background: linear-gradient(180deg,#e8c34a,#b8902a); }
-    #travel > i { background: linear-gradient(180deg,#2a9d9a,#1a6663); }
-    #travel.ready > i { background: linear-gradient(180deg,#ffd166,#caa84a); }
-    #travel.ready { animation: hppulse 1.2s infinite; }
     /* informační bublina (načítání míst apod.) */
     #toast {
       position: absolute;
@@ -248,6 +245,12 @@
     #hud-menu-actions { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
     #hud-menu-actions button { padding: 14px; border: 1px solid #6b5836; border-radius: 10px; background: #2a231b; color: #e8d8b0; font-size: 15px; font-weight: 700; cursor: pointer; text-align: left; }
     #hud-menu-actions button:active { transform: scale(.97); }
+    /* cestovní bonus v menu – tlačítko s vlastním výplňovým pruhem */
+    #hud-menu-travel { position: relative; padding: 0; height: 46px; overflow: hidden; }
+    #hud-menu-travel > i { display: block; position: absolute; inset: 0; width: 0; background: linear-gradient(180deg,#2a9d9a,#1a6663); transition: width .3s; }
+    #hud-menu-travel > span { position: relative; display: flex; align-items: center; height: 100%; padding: 0 14px; }
+    #hud-menu-travel.ready > i { background: linear-gradient(180deg,#ffd166,#caa84a); }
+    #hud-menu-travel.ready { animation: hppulse 1.2s infinite; }
     /* kronika navštívených míst (přehled: seznam + mapa) */
     #log-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
     #log-overlay.hidden { display: none; }
@@ -361,7 +364,6 @@
       <div id="hud">
         <div id="hp" class="bar"><i id="hp-fill"></i><span id="hp-text">❤️ 18/18</span></div>
         <div id="xpbar" class="bar"><i id="xpbar-fill"></i><span id="xpbar-text"></span></div>
-        <div id="travel" class="bar" title="Cestovní bonus"><i id="travel-fill"></i><span id="travel-text"></span></div>
       </div>
     </div>
 
@@ -430,10 +432,10 @@
     <div id="hud-menu-overlay" class="hidden">
       <div id="hud-menu-card">
         <div class="log-head">
-          <div class="log-title">Menu</div>
           <button id="hud-menu-close" class="log-x">✕</button>
         </div>
         <div id="hud-menu-actions">
+          <button id="hud-menu-travel"><i id="travel-fill"></i><span id="travel-text"></span></button>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
         </div>
@@ -1478,8 +1480,8 @@
       if (view) loadPois({ lat: view.lat, lng: view.lng });
     });
 
-    // --- cestovní bonus (3. řádek HUDu) ---
-    const travelBtn = document.getElementById('travel');
+    // --- cestovní bonus (v menu otevřeném klepnutím na HUD) ---
+    const travelBtn = document.getElementById('hud-menu-travel');
     const travelFillEl = document.getElementById('travel-fill');
     const travelTextEl = document.getElementById('travel-text');
     function updateTravelButton() {
@@ -1516,7 +1518,7 @@
       showToast('🧭 Cestovní bonus! +' + TRAVEL_BONUS_XP + ' XP a plné HP', 3000);
       updateTravelButton();
     }
-    travelBtn.addEventListener('click', function (e) { e.stopPropagation(); claimTravel(); });
+    travelBtn.addEventListener('click', function () { closeHudMenu(); claimTravel(); });
     setInterval(updateTravelButton, 5000);
 
     // --- kronika navštívených míst (přehled: seznam + mapa) ---

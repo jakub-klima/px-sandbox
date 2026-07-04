@@ -162,6 +162,9 @@
     /* barvy výplně HP a XP pruhů v HUDu */
     #hp > i { background: linear-gradient(180deg,#d94a3a,#8a1f16); }
     #xpbar > i { background: linear-gradient(180deg,#e8c34a,#b8902a); }
+    #travel > i { background: linear-gradient(180deg,#2a9d9a,#1a6663); }
+    #travel.ready > i { background: linear-gradient(180deg,#ffd166,#caa84a); }
+    #travel.ready { animation: hppulse 1.2s infinite; }
     /* informační bublina (načítání míst apod.) */
     #toast {
       position: absolute;
@@ -364,6 +367,7 @@
       <div id="hud">
         <div id="hp" class="bar"><i id="hp-fill"></i><span id="hp-text">❤️ 18/18</span></div>
         <div id="xpbar" class="bar"><i id="xpbar-fill"></i><span id="xpbar-text"></span></div>
+        <div id="travel" class="bar"><i id="travel-fill"></i><span id="travel-text"></span></div>
       </div>
     </div>
 
@@ -435,7 +439,7 @@
           <button id="hud-menu-close" class="log-x">✕</button>
         </div>
         <div id="hud-menu-actions">
-          <button id="hud-menu-travel"><i id="travel-fill"></i><span id="travel-text"></span></button>
+          <button id="hud-menu-travel"><i id="travel-menu-fill"></i><span id="travel-menu-text"></span></button>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
         </div>
@@ -1480,25 +1484,34 @@
       if (view) loadPois({ lat: view.lat, lng: view.lng });
     });
 
-    // --- cestovní bonus (v menu otevřeném klepnutím na HUD) ---
-    const travelBtn = document.getElementById('hud-menu-travel');
+    // --- cestovní bonus: pruh v HUDu (jen náhled) + akce v menu po klepnutí na HUD ---
+    const travelHudEl = document.getElementById('travel');
     const travelFillEl = document.getElementById('travel-fill');
     const travelTextEl = document.getElementById('travel-text');
+    const travelBtn = document.getElementById('hud-menu-travel');
+    const travelMenuFillEl = document.getElementById('travel-menu-fill');
+    const travelMenuTextEl = document.getElementById('travel-menu-text');
     function updateTravelButton() {
       const ready = travelReady();
-      travelBtn.classList.toggle('ready', ready);
+      let frac, text;
       if (ready) {
-        travelFillEl.style.width = '100%';
-        travelTextEl.textContent = '🧭 Bonus připraven!';
+        frac = 1;
+        text = '🧭 Bonus připraven!';
       } else if (travelDist < TRAVEL_NEED_M) {
-        travelFillEl.style.width = (travelDist / TRAVEL_NEED_M * 100) + '%';
-        travelTextEl.textContent = '🧭 ' + Math.round(travelDist) + ' / ' + TRAVEL_NEED_M + ' m';
+        frac = travelDist / TRAVEL_NEED_M;
+        text = '🧭 ' + Math.round(travelDist) + ' / ' + TRAVEL_NEED_M + ' m';
       } else {
         const elapsed = Date.now() - lastTravelClaim;
-        travelFillEl.style.width = (Math.min(1, elapsed / TRAVEL_COOLDOWN_MS) * 100) + '%';
+        frac = Math.min(1, elapsed / TRAVEL_COOLDOWN_MS);
         const min = Math.ceil((TRAVEL_COOLDOWN_MS - elapsed) / 60000);
-        travelTextEl.textContent = '🧭 za ' + min + ' min';
+        text = '🧭 za ' + min + ' min';
       }
+      travelHudEl.classList.toggle('ready', ready);
+      travelFillEl.style.width = (frac * 100) + '%';
+      travelTextEl.textContent = text;
+      travelBtn.classList.toggle('ready', ready);
+      travelMenuFillEl.style.width = (frac * 100) + '%';
+      travelMenuTextEl.textContent = text;
     }
     function claimTravel() {
       if (!travelReady()) {

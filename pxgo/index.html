@@ -286,6 +286,8 @@
     .xp-float { color: #e8c34a; }
     .xp-float.kill { color: #e07a5f; }
     .xp-float.hit { color: #f08a6a; font-size: 18px; }
+    .xp-float.crit { color: #ff4d4d; font-size: 30px; }
+    .xp-float.dodge { color: #7ad1ff; font-style: italic; }
 
     /* panel místa – temná „parchment" varianta */
     #poi-panel { background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; color: #d9c7a3; border-radius: 14px; }
@@ -309,6 +311,14 @@
     #mob-panel.open { transform: translateY(0); }
     #mob-panel .head { display: flex; align-items: center; gap: 12px; }
     #mob-panel .icon { font-size: 34px; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.4); border: 1px solid #7a3a30; border-radius: 10px; flex-shrink: 0; }
+    #mob-panel .icon.shake { animation: mobshake .35s; }
+    @keyframes mobshake {
+      0%, 100% { transform: translate(0, 0); }
+      20% { transform: translate(-4px, 2px); }
+      40% { transform: translate(4px, -2px); }
+      60% { transform: translate(-3px, 1px); }
+      80% { transform: translate(3px, -1px); }
+    }
     #mob-panel .title { font-family: Georgia, serif; font-size: 20px; font-weight: 700; color: #f0c9a0; }
     #mob-panel .type { font-size: 13px; color: #bf8a6a; margin-top: 2px; }
     #mob-panel .desc { margin-top: 12px; font-size: 14px; line-height: 1.5; font-style: italic; color: #c8a98f; }
@@ -586,8 +596,14 @@
       monsters.push(makeMob(center));
       lastSpawnAt = now;
     }
-    // síla útoku hráče roste s úrovní
-    function playerAttack() { return 2 + levelOf(xp) + Math.floor(Math.random() * 3); }
+    // síla útoku hráče roste s úrovní; občas padne kritický zásah za dvojnásobek
+    const CRIT_CHANCE = 0.18;
+    const DODGE_CHANCE = 0.15;
+    function playerAttack() {
+      const base = 2 + levelOf(xp) + Math.floor(Math.random() * 3);
+      const crit = Math.random() < CRIT_CHANCE;
+      return { dmg: crit ? base * 2 : base, crit };
+    }
 
     // nestvůry stojí; když je delší dobu nikdo nezabije, přesunou se jinam
     // (kolem hráče) – tak se k tobě časem nějaká dostane, i když stojíš na místě
@@ -1161,17 +1177,27 @@
       if (playerHp <= 0) return;                 // vyčerpaný – nelze bojovat
       const d = player ? metersBetween(player, m) : Infinity;
       if (d > REACH_M) return;
-      const dmg = playerAttack();
-      m.hp -= dmg;
-      spawnFloat(m, '-' + dmg, 'hit');
+      const atk = playerAttack();
+      m.hp -= atk.dmg;
+      if (atk.crit) {
+        spawnFloat(m, '💥 -' + atk.dmg + '!', 'crit');
+        const icon = document.getElementById('mob-icon');
+        icon.classList.remove('shake'); void icon.offsetWidth; icon.classList.add('shake');
+      } else {
+        spawnFloat(m, '-' + atk.dmg, 'hit');
+      }
       if (m.hp <= 0) {
         // nestvůra padla – bez protiútoku
         gainXp(m.xp);
         spawnFloat(m, '+' + m.xp + ' XP', 'kill');
-        showToast('☠️ Poražena nestvůra: ' + m.name + '  (+' + m.xp + ' XP)', 2600);
+        showToast((atk.crit ? '💥 Kritický zásah! ' : '☠️ ') + 'Poražena nestvůra: ' + m.name + '  (+' + m.xp + ' XP)', 2600);
         monsters = monsters.filter(x => x !== m);
         closeMob();
         if (player) ensureMonsters(player);
+      } else if (Math.random() < DODGE_CHANCE) {
+        // uhneš protiútoku – bez ztráty HP
+        if (player) spawnFloat(player, '✨ Úhyb!', 'dodge');
+        updateMobPanel();
       } else {
         // přeživší nestvůra ti vrátí úder (silnější)
         const back = m.tier * 2 + 2 + Math.floor(Math.random() * 3);

@@ -731,6 +731,11 @@
     function metersPerPixel(lat) {
       return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
     }
+    // dosah interakce – aktivovatelné už jakmile se kolečko věci dotkne dosahového kolečku hráče
+    // (ne až když je jeho střed uvnitř), proto se k REACH_M přičítá poloměr ikony v metrech
+    function reachLimit(iconRadiusPx) {
+      return player ? REACH_M + iconRadiusPx * metersPerPixel(player.lat) : REACH_M;
+    }
 
     // cache načtených dlaždic (klíč včetně úrovně zoomu)
     const tileCache = new Map();
@@ -1201,11 +1206,11 @@
         const sec = Math.ceil((p.cooldownUntil - Date.now()) / 1000);
         collectBtn.textContent = '⏳ Regeneruje se… ' + sec + ' s';
         collectBtn.disabled = true;
-      } else if (d <= REACH_M) {
+      } else if (d <= reachLimit(16)) {
         collectBtn.textContent = 'Prozkoumat (+' + gain + ' XP' + firstLabel + ')';
         collectBtn.disabled = false;
       } else {
-        collectBtn.textContent = 'Přijdi blíž (do ' + REACH_M + ' m)';
+        collectBtn.textContent = 'Přijdi blíž (do ' + Math.round(reachLimit(16)) + ' m)';
         collectBtn.disabled = true;
       }
     }
@@ -1243,7 +1248,7 @@
       const p = selected;
       if (!p || !isReady(p)) return;
       const d = player ? metersBetween(player, p) : Infinity;
-      if (d > REACH_M) return;
+      if (d > reachLimit(16)) return;
       const first = !isVisited(p);
       const gain = rewardFor(p);
       gainXp(gain);
@@ -1273,12 +1278,12 @@
       if (playerHp <= 0) {
         mobAttackBtn.disabled = true;
         mobAttackBtn.textContent = '💀 Vyčerpaný – počkej na regeneraci';
-      } else if (d <= REACH_M) {
+      } else if (d <= reachLimit(16)) {
         mobAttackBtn.disabled = false;
         mobAttackBtn.textContent = '⚔️ Zaútočit (+' + m.xp + ' XP)';
       } else {
         mobAttackBtn.disabled = true;
-        mobAttackBtn.textContent = 'Přijdi blíž (do ' + REACH_M + ' m)';
+        mobAttackBtn.textContent = 'Přijdi blíž (do ' + Math.round(reachLimit(16)) + ' m)';
       }
     }
     function openMob(m) {
@@ -1301,7 +1306,7 @@
       if (!m) return;
       if (playerHp <= 0) return;                 // vyčerpaný – nelze bojovat
       const d = player ? metersBetween(player, m) : Infinity;
-      if (d > REACH_M) return;
+      if (d > reachLimit(16)) return;
       const atk = playerAttack();
       m.hp -= atk.dmg;
       if (atk.crit) {
@@ -1345,12 +1350,12 @@
       const d = player ? Math.round(metersBetween(player, h)) : null;
       if (d === null) { herbDistEl.textContent = ''; herbCollectBtn.disabled = true; herbCollectBtn.textContent = '🧺 Sebrat'; return; }
       herbDistEl.textContent = '📏 Vzdálenost: ' + d + ' m';
-      if (d <= REACH_M) {
+      if (d <= reachLimit(13)) {
         herbCollectBtn.disabled = false;
         herbCollectBtn.textContent = '🧺 Sebrat (+' + h.xp + ' XP)';
       } else {
         herbCollectBtn.disabled = true;
-        herbCollectBtn.textContent = 'Přijdi blíž (do ' + REACH_M + ' m)';
+        herbCollectBtn.textContent = 'Přijdi blíž (do ' + Math.round(reachLimit(13)) + ' m)';
       }
     }
     function openHerb(h) {
@@ -1372,7 +1377,7 @@
       const h = selectedHerb;
       if (!h) return;
       const d = player ? metersBetween(player, h) : Infinity;
-      if (d > REACH_M) return;
+      if (d > reachLimit(13)) return;
       gainXp(h.xp);
       spawnFloat(h, '+' + h.xp + ' XP', h.tier === 2 ? 'treasure' : 'herb');
       showToast((h.tier === 2 ? '💰 Nalezen poklad: ' : '🌿 Sebráno: ') + h.name + '  (+' + h.xp + ' XP)', 2600);

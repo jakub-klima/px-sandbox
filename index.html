@@ -32,22 +32,6 @@
       max-width: 720px;
     }
 
-    h1 {
-      margin: 0 0 0.4rem;
-      font-size: 2.4rem;
-      letter-spacing: -0.02em;
-      background: linear-gradient(90deg, #ffffff, #b9c4ff);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
-
-    p.tagline {
-      margin: 0 0 2.5rem;
-      color: #9aa3c7;
-      font-size: 1.05rem;
-    }
-
     ul {
       list-style: none;
       margin: 0;
@@ -64,7 +48,6 @@
       border: 1px solid rgba(255, 255, 255, 0.08);
       color: #eef1f6;
       text-decoration: none;
-      font-size: 1.05rem;
       transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
     }
 
@@ -73,21 +56,33 @@
       border-color: rgba(255, 255, 255, 0.2);
       transform: translateY(-2px);
     }
+
+    .name {
+      display: block;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .desc {
+      display: block;
+      margin-top: 0.15rem;
+      font-size: 0.9rem;
+      color: #9aa3c7;
+      font-weight: 400;
+    }
   </style>
 </head>
 <body>
   <main>
-    <h1>px-sandbox</h1>
-    <p class="tagline">Pískoviště malých her a experimentů</p>
     <ul>
-      <li><a href="kostky/index.html">🧱 Postav věž – hra se skládáním kostek</a></li>
-      <li><a href="kostky3d/index.html">🎲 Postav věž 3D – skládání kostek ve 3D</a></li>
-      <li><a href="sudoku/index.html">🦉 Sudoku pro děti – jednoduché 4×4 sudoku</a></li>
-      <li><a href="lineage/index.html">⚔️ Aden Reborn – komunitní web L2 Interlude serveru</a></li>
-      <li><a href="td/index.html">🏰 Obrana věží – tower defense na 1 kolo o nejvyšší skóre</a></li>
-      <li><a href="rpg3d/index.html">🗡️ Hrdina meče 3D – third-person RPG, bojuj proti příšerám</a></li>
-      <li><a href="pxgo/index.html">🗡️ PxGo – temné RPG s polohou a mapou, prozkoumávej místa a poraz nestvůry</a></li>
-      <li><a href="aquarium3d/index.html">🐠 Klidné akvárium 3D – relaxační akvárium s rybičkami</a></li>
+      <li><a href="kostky/index.html"><span class="name">🧱 Tower Builder</span><span class="desc">hra se skládáním kostek</span></a></li>
+      <li><a href="kostky3d/index.html"><span class="name">🎲 Tower Builder 3D</span><span class="desc">skládání kostek ve 3D</span></a></li>
+      <li><a href="sudoku/index.html"><span class="name">🦉 Kids Sudoku</span><span class="desc">jednoduché 4×4 sudoku pro děti</span></a></li>
+      <li><a href="lineage/index.html"><span class="name">⚔️ Aden Reborn</span><span class="desc">komunitní web L2 Interlude serveru</span></a></li>
+      <li><a href="td/index.html"><span class="name">🏰 Tower Defense</span><span class="desc">tower defense na 1 kolo o nejvyšší skóre</span></a></li>
+      <li><a href="rpg3d/index.html"><span class="name">🗡️ Sword Hero 3D</span><span class="desc">third-person RPG, bojuj proti příšerám</span></a></li>
+      <li><a href="pxgo/index.html"><span class="name">🗡️ PxGo</span><span class="desc">temné RPG s polohou a mapou, prozkoumávej místa a poraz nestvůry</span></a></li>
+      <li><a href="aquarium3d/index.html"><span class="name">🐠 Calm Aquarium 3D</span><span class="desc">relaxační akvárium s rybičkami</span></a></li>
     </ul>
   </main>
 </body>

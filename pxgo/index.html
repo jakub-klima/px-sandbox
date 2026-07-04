@@ -958,12 +958,14 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(m.icon, s.x, cy);
-      // proužek HP pod nestvůrou
-      const bw = r * 1.9, bh = 4 * DPR, bx = s.x - bw / 2, by = s.y + r * 0.95;
-      ctx.fillStyle = 'rgba(0,0,0,.6)';
-      ctx.fillRect(bx, by, bw, bh);
-      ctx.fillStyle = '#c0402f';
-      ctx.fillRect(bx, by, bw * Math.max(0, m.hp / m.maxHp), bh);
+      // proužek HP pod nestvůrou – jen pokud už je poškozená
+      if (m.hp < m.maxHp) {
+        const bw = r * 1.9, bh = 4 * DPR, bx = s.x - bw / 2, by = s.y + r * 0.95;
+        ctx.fillStyle = 'rgba(0,0,0,.6)';
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = '#c0402f';
+        ctx.fillRect(bx, by, bw * Math.max(0, m.hp / m.maxHp), bh);
+      }
     }
 
     function drawHerb(h) {

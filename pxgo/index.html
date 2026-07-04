@@ -1544,7 +1544,7 @@
       showToast('🧭 Cestovní bonus! +' + TRAVEL_BONUS_XP + ' XP a plné HP', 3000);
       updateTravelButton();
     }
-    travelBtn.addEventListener('click', function () { closeHudMenu(); claimTravel(); });
+    travelBtn.addEventListener('click', claimTravel);
     setInterval(updateTravelButton, 5000);
 
     // --- kronika navštívených míst (přehled: seznam + mapa) ---

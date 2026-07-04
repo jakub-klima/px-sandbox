@@ -261,7 +261,8 @@
     #log-card { width: min(94vw,520px); max-height: 86vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); overflow: hidden; }
     .log-head { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid #4a3f29; }
     .log-title { font-family: Georgia, serif; font-size: 19px; color: #e8d8b0; font-weight: 700; }
-    .log-x { margin-left: auto; width: 36px; height: 36px; border: 1px solid #6b5836; border-radius: 8px; background: #2a241d; color: #d9c7a3; font-size: 16px; cursor: pointer; }
+    .log-head-actions { margin-left: auto; display: flex; gap: 8px; }
+    .log-x { width: 36px; height: 36px; border: 1px solid #6b5836; border-radius: 8px; background: #2a241d; color: #d9c7a3; font-size: 16px; cursor: pointer; }
     .log-tabs { display: flex; gap: 8px; padding: 12px 16px 0; }
     .log-tabs button { flex: 1; padding: 9px; border: 1px solid #6b5836; border-bottom: none; border-radius: 8px 8px 0 0; background: #1c1712; color: #a08c6a; font-weight: 700; cursor: pointer; }
     .log-tabs button.active { background: #2a231b; color: #e8d8b0; }
@@ -440,7 +441,10 @@
       <div id="log-card">
         <div class="log-head">
           <div class="log-title">📜 Kronika míst</div>
-          <button id="log-close" class="log-x">✕</button>
+          <div class="log-head-actions">
+            <button id="log-reset" class="log-x" title="Resetovat postup (XP, HP, cestovní bonus) – navštívená místa zůstanou zachována">♻️</button>
+            <button id="log-close" class="log-x">✕</button>
+          </div>
         </div>
         <div class="log-tabs">
           <button id="log-tab-list" class="active">Seznam</button>
@@ -1617,7 +1621,20 @@
       logOverlay.classList.add('hidden');
       clearInterval(logMapTimer); logMapTimer = null;
     }
+    // reset veškerého postupu (XP, úroveň, HP, cestovní bonus) – navštívená místa v kronice zůstávají
+    function resetProgress() {
+      const ok = confirm('Opravdu resetovat veškerý postup?\n\nXP, úroveň, HP a cestovní bonus se vynulují. Navštívená místa v kronice zůstanou zachována.');
+      if (!ok) return;
+      xp = 0; saveXp();
+      playerHp = playerMaxHp(); saveHp();
+      travelDist = 0; lastTravelClaim = 0; saveTravel();
+      updateXpBadge();
+      updateHpHud();
+      updateTravelButton();
+      showToast('♻️ Postup byl resetován, navštívená místa zůstala zachována', 3000);
+    }
     document.getElementById('log').addEventListener('click', openLog);
+    document.getElementById('log-reset').addEventListener('click', resetProgress);
     document.getElementById('log-close').addEventListener('click', closeLog);
     logTabList.addEventListener('click', () => showLogTab('list'));
     logTabMap.addEventListener('click', () => showLogTab('map'));

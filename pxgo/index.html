@@ -248,6 +248,7 @@
     #hud-menu-actions { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
     #hud-menu-actions button { padding: 14px; border: 1px solid #6b5836; border-radius: 10px; background: #2a231b; color: #e8d8b0; font-size: 15px; font-weight: 700; cursor: pointer; text-align: left; }
     #hud-menu-actions button:active { transform: scale(.97); }
+    .hud-menu-info { padding: 2px 4px; font-size: 13px; color: #caa84a; font-weight: 600; text-align: center; }
     /* cestovní bonus v menu – tlačítko s vlastním výplňovým pruhem */
     #hud-menu-travel { position: relative; padding: 0; height: 46px; overflow: hidden; }
     #hud-menu-travel > i { display: block; position: absolute; inset: 0; width: 0; background: linear-gradient(180deg,#2a9d9a,#1a6663); transition: width .3s; }
@@ -439,6 +440,7 @@
           <button id="hud-menu-close" class="log-x">✕</button>
         </div>
         <div id="hud-menu-actions">
+          <div id="hud-menu-hp-info" class="hud-menu-info"></div>
           <button id="hud-menu-travel"><i id="travel-menu-fill"></i><span id="travel-menu-text"></span></button>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
@@ -513,7 +515,7 @@
     // --- hráčovo HP (regeneruje se v čase, i mezi spuštěními) ---
     const HP_KEY = 'pxgo.hp';
     const REGEN_MS = 16000;  // +1 HP každých 16 s (pomalá regenerace)
-    function playerMaxHp() { return 18 + (levelOf(xp) - 1) * 4; }
+    function playerMaxHp() { return 36 + (levelOf(xp) - 1) * 8; }
     let playerHp = loadHp();
     function loadHp() {
       try {
@@ -551,13 +553,7 @@
       const m = new Map();
       try {
         const raw = JSON.parse(localStorage.getItem(VISIT_KEY) || 'null');
-        if (Array.isArray(raw)) {
-          // migrace starého formátu (pole id "lat,lng")
-          for (const id of raw) {
-            const [la, ln] = String(id).split(',').map(Number);
-            m.set(id, { id, name: 'Navštívené místo', type: '', icon: '📍', color: '#caa84a', lat: la, lng: ln, firstAt: null, lastAt: null, count: 1 });
-          }
-        } else if (raw && typeof raw === 'object') {
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
           for (const k of Object.keys(raw)) m.set(k, raw[k]);
         }
       } catch (e) {}
@@ -1126,6 +1122,17 @@
     const hpEl = document.getElementById('hp');
     const hpFillEl = document.getElementById('hp-fill');
     const hpTextEl = document.getElementById('hp-text');
+    const hpMenuInfoEl = document.getElementById('hud-menu-hp-info');
+    function updateHpMenuInfo() {
+      const max = playerMaxHp();
+      if (playerHp >= max) {
+        hpMenuInfoEl.textContent = '❤️ Máš plné zdraví';
+        return;
+      }
+      const ms = (max - playerHp) * REGEN_MS;
+      const sec = Math.ceil(ms / 1000);
+      hpMenuInfoEl.textContent = '❤️ Plné zdraví za ' + (sec < 60 ? sec + ' s' : Math.ceil(sec / 60) + ' min');
+    }
     function updateHpHud() {
       const max = playerMaxHp();
       if (playerHp > max) playerHp = max;
@@ -1133,6 +1140,7 @@
       hpTextEl.textContent = '❤️ ' + playerHp + '/' + max;
       hpEl.classList.toggle('low', playerHp > 0 && playerHp <= Math.max(1, Math.floor(max * 0.25)));
       hpEl.classList.toggle('empty', playerHp <= 0);
+      updateHpMenuInfo();
     }
     // pomalá regenerace HP (funguje i jako podklad pro „počkat na regen")
     setInterval(function () {
@@ -1680,7 +1688,11 @@
 
     // --- menu otevřené klepnutím na HUD (HP/XP) ---
     const hudMenuOverlay = document.getElementById('hud-menu-overlay');
-    function openHudMenu() { hudMenuOverlay.classList.remove('hidden'); }
+    function openHudMenu() {
+      updateHpMenuInfo();
+      updateTravelButton();
+      hudMenuOverlay.classList.remove('hidden');
+    }
     function closeHudMenu() { hudMenuOverlay.classList.add('hidden'); }
     document.getElementById('hud').addEventListener('click', openHudMenu);
     document.getElementById('hud-menu-close').addEventListener('click', closeHudMenu);

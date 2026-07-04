@@ -416,10 +416,14 @@
   const eyeL = solid(new THREE.SphereGeometry(0.05, 8, 8), eyeMat); eyeL.position.set(-0.11, 1.94, 0.26); hero.add(eyeL);
   const eyeR = solid(new THREE.SphereGeometry(0.05, 8, 8), eyeMat); eyeR.position.set(0.11, 1.94, 0.26); hero.add(eyeR);
 
-  const legL = solid(new THREE.CapsuleGeometry(0.15, 0.5, 5, 10), legMat); legL.position.set(-0.2, 0.42, 0); hero.add(legL);
-  const legR = solid(new THREE.CapsuleGeometry(0.15, 0.5, 5, 10), legMat); legR.position.set(0.2, 0.42, 0); hero.add(legR);
-  const bootL = solid(new THREE.SphereGeometry(0.18, 10, 8), beltMat); bootL.position.set(-0.2, 0.1, 0.06); bootL.scale.z = 1.4; hero.add(bootL);
-  const bootR = solid(new THREE.SphereGeometry(0.18, 10, 8), beltMat); bootR.position.set(0.2, 0.1, 0.06); bootR.scale.z = 1.4; hero.add(bootR);
+  // Nohy visí z kyčelního pivotu (u pasu), aby se při chůzi houpaly celé včetně bot.
+  const HIP_Y = 0.82;
+  const legPivotL = new THREE.Group(); legPivotL.position.set(-0.2, HIP_Y, 0); hero.add(legPivotL);
+  const legPivotR = new THREE.Group(); legPivotR.position.set(0.2, HIP_Y, 0); hero.add(legPivotR);
+  const legL = solid(new THREE.CapsuleGeometry(0.15, 0.5, 5, 10), legMat); legL.position.set(0, 0.42 - HIP_Y, 0); legPivotL.add(legL);
+  const legR = solid(new THREE.CapsuleGeometry(0.15, 0.5, 5, 10), legMat); legR.position.set(0, 0.42 - HIP_Y, 0); legPivotR.add(legR);
+  const bootL = solid(new THREE.SphereGeometry(0.18, 10, 8), beltMat); bootL.position.set(0, 0.1 - HIP_Y, 0.06); bootL.scale.z = 1.4; legPivotL.add(bootL);
+  const bootR = solid(new THREE.SphereGeometry(0.18, 10, 8), beltMat); bootR.position.set(0, 0.1 - HIP_Y, 0.06); bootR.scale.z = 1.4; legPivotR.add(bootR);
 
   // Levá paže + štít
   const armL = solid(new THREE.CapsuleGeometry(0.12, 0.5, 5, 10), skinMat); armL.position.set(-0.5, 1.2, 0); hero.add(armL);
@@ -814,13 +818,13 @@
     while (da < -Math.PI) da += Math.PI * 2;
     hero.rotation.y += da * Math.min(1, dt * 12);
 
-    // Animace nohou při chůzi
+    // Animace nohou při chůzi – houpání z kyčelního pivotu (noha + bota jako jeden celek)
     const t = performance.now() / 1000;
     if (moving) {
       const sw = Math.sin(t * 10) * 0.5;
-      legL.rotation.x = sw; legR.rotation.x = -sw;
+      legPivotL.rotation.x = sw; legPivotR.rotation.x = -sw;
     } else {
-      legL.rotation.x *= 0.8; legR.rotation.x *= 0.8;
+      legPivotL.rotation.x *= 0.8; legPivotR.rotation.x *= 0.8;
     }
 
     // --- Útok / animace meče ---

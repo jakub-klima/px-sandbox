@@ -37,15 +37,6 @@
       color: #fff;
       pointer-events: none;
     }
-    #topbar .badge {
-      margin-left: auto;
-      background: rgba(255,255,255,.12);
-      border-radius: 20px;
-      padding: 6px 12px;
-      font-size: 13px;
-      font-weight: 600;
-      backdrop-filter: blur(4px);
-    }
     /* tlačítka vpravo dole */
     #buttons {
       position: absolute;
@@ -234,7 +225,6 @@
     /* UI nad vinětu */
     #topbar, #buttons, #status, #poi-panel, #mob-panel, #herb-panel, #toast, #attribution { z-index: 2; }
     #topbar { background: linear-gradient(180deg, rgba(16,13,11,.92), rgba(16,13,11,0)); }
-    #topbar .badge { background: rgba(30,24,18,.85); border: 1px solid #6b5836; border-radius: 6px; color: #e8d8b0; backdrop-filter: none; }
     #topbar #hp { background: rgba(40,18,16,.85); border: 1px solid #7a3a30; border-radius: 6px; padding: 6px 12px; font-size: 13px; font-weight: 700; color: #f0b0a0; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
     #topbar #hp.low { color: #ff9a7a; border-color: #b3402f; }
     #topbar #hp.empty { color: #ff6b6b; border-color: #ff6b6b; animation: hppulse 1s infinite; }
@@ -360,7 +350,6 @@
 
     <div id="topbar">
       <div id="hp">❤️ 18/18</div>
-      <div class="badge" id="score">⚔️ 0 XP</div>
     </div>
 
     <div id="xpbar"><i id="xpbar-fill"></i><span id="xpbar-text"></span></div>
@@ -455,7 +444,6 @@
     const statusEl = document.getElementById('status');
     const statusText = document.getElementById('status-text');
     const statusBtn = document.getElementById('status-btn');
-    const scoreEl = document.getElementById('score');
 
     // --- stav hry ---
     let player = null;        // {lat, lng} reálná poloha
@@ -1097,9 +1085,8 @@
     const xpTextEl = document.getElementById('xpbar-text');
     function updateXpBadge() {
       const p = levelProgress(xp);
-      scoreEl.textContent = '⚔️ ' + xp + ' XP';
       xpFillEl.style.width = (p.frac * 100) + '%';
-      xpTextEl.textContent = 'Lv ' + p.level + ' · ' + p.cur + ' / ' + p.need + ' XP';
+      xpTextEl.textContent = '⚔️ Lv ' + p.level + ' · ' + p.cur + ' / ' + p.need + ' XP';
     }
 
     const hpEl = document.getElementById('hp');

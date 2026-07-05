@@ -426,6 +426,7 @@
         <div id="hud-menu-actions">
           <div id="hud-menu-xp-info" class="hud-menu-info"></div>
           <div id="hud-menu-hp-info" class="hud-menu-info"></div>
+          <div id="hud-menu-combat-info" class="hud-menu-info"></div>
           <button id="hud-menu-shop">🎒 Obchod a výbava</button>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
@@ -1219,6 +1220,15 @@
       hpEl.classList.toggle('empty', playerHp <= 0);
       updateHpMenuInfo();
     }
+
+    // ukáže aktuální útok/obranu podle vybavení, ať je vidět, kolik přesně přidá lepší zbraň/zbroj
+    const combatMenuInfoEl = document.getElementById('hud-menu-combat-info');
+    function updateCombatMenuInfo() {
+      const lo = 2 + Math.floor(xp / 40) + equippedWeapon().atk;
+      const hi = lo + 2;
+      combatMenuInfoEl.textContent = '⚔️ Útok ' + lo + '–' + hi + ' (zbraň +' + equippedWeapon().atk + ')'
+        + '   🛡️ Obrana -' + equippedArmor().def + ' zranění';
+    }
     // pomalá regenerace HP (funguje i jako podklad pro „počkat na regen")
     setInterval(function () {
       const max = playerMaxHp();
@@ -1785,6 +1795,7 @@
     function openHudMenu() {
       updateXpMenuInfo();
       updateHpMenuInfo();
+      updateCombatMenuInfo();
       hudMenuOverlay.classList.remove('hidden');
     }
     function closeHudMenu() { hudMenuOverlay.classList.add('hidden'); }

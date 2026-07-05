@@ -579,6 +579,16 @@
     function equippedWeapon() { return WEAPONS.find(w => w.id === inventory.weapon) || WEAPONS[0]; }
     function equippedArmor() { return ARMORS.find(a => a.id === inventory.armor) || ARMORS[0]; }
 
+    // --- uložení nestvůr a bylin, aby obnovení stránky nevyspawnovalo čerstvé cíle znovu ---
+    const MOBS_KEY = 'pxgo.mobs';
+    const HERBS_KEY = 'pxgo.herbs';
+    function loadStoredArray(key) {
+      try { const raw = JSON.parse(localStorage.getItem(key) || 'null'); return Array.isArray(raw) ? raw : []; }
+      catch (e) { return []; }
+    }
+    function saveMonsters() { try { localStorage.setItem(MOBS_KEY, JSON.stringify(monsters)); } catch (e) {} }
+    function saveHerbsState() { try { localStorage.setItem(HERBS_KEY, JSON.stringify(herbs)); } catch (e) {} }
+
     // --- cestovní bonus (ujdi ≥ 1 km, cooldown 1 h) ---
     const TRAVEL_DIST_KEY = 'pxgo.travelDist';
     const TRAVEL_CLAIM_KEY = 'pxgo.travelClaim';
@@ -666,6 +676,8 @@
     const MOB_MIN = 16, MOB_MAX = 180;     // vzdálenost spawnu (m) – úměrně většímu dosahu
     const RELOCATE_MIN = 90000, RELOCATE_MAX = 180000; // za jak dlouho se nezabitá nestvůra přesune
     let mobSeq = 0;
+    monsters = loadStoredArray(MOBS_KEY);
+    mobSeq = monsters.reduce((mx, m) => Math.max(mx, m.id || 0), 0);
     function relocateTime() { return Date.now() + RELOCATE_MIN + Math.random() * (RELOCATE_MAX - RELOCATE_MIN); }
 
     // náhodný geo bod v okolí (m)
@@ -700,6 +712,7 @@
       if (now - lastSpawnAt < SPAWN_INTERVAL) return;
       monsters.push(makeMob(center));
       lastSpawnAt = now;
+      saveMonsters();
     }
     // síla útoku hráče roste postupně se získaným XP; občas padne kritický zásah za dvojnásobek
     const CRIT_CHANCE = 0.18;
@@ -722,6 +735,8 @@
     const HERB_TARGET = 3;                 // kolik bylin/pokladů držet kolem hráče (méně než nestvůr)
     const TREASURE_CHANCE = 0.12;          // jak vzácně je nález poklad místo obyčejné byliny
     let herbSeq = 0;
+    herbs = loadStoredArray(HERBS_KEY);
+    herbSeq = herbs.reduce((mx, h) => Math.max(mx, h.id || 0), 0);
     function makeHerb(center) {
       const tier = Math.random() < TREASURE_CHANCE ? 2 : 1;
       const pool = HERB_TYPES.filter(h => h.tier === tier);
@@ -738,6 +753,7 @@
       if (now - lastHerbSpawnAt < HERB_SPAWN_INTERVAL) return;
       herbs.push(makeHerb(center));
       lastHerbSpawnAt = now;
+      saveHerbsState();
     }
 
     // nestvůry stojí; když je delší dobu nikdo nezabije, přesunou se jinam
@@ -745,6 +761,7 @@
     setInterval(function () {
       if (!player) return;
       const now = Date.now();
+      let mobsChanged = false, herbsChanged = false;
       for (const m of monsters) {
         if (m === selectedMob) continue;          // s vybranou právě bojuješ
         if (now >= m.relocateAt || metersBetween(player, m) > 350) {
@@ -752,6 +769,7 @@
           m.lat = pos.lat; m.lng = pos.lng;
           m.hp = m.maxHp;                          // objeví se svěží na novém místě
           m.relocateAt = relocateTime();
+          mobsChanged = true;
         }
       }
       ensureMonsters(player);
@@ -761,9 +779,12 @@
           const pos = randomPointNear(player, MOB_MIN, MOB_MAX);
           h.lat = pos.lat; h.lng = pos.lng;
           h.relocateAt = relocateTime();
+          herbsChanged = true;
         }
       }
       ensureHerbs(player);
+      if (mobsChanged) saveMonsters();
+      if (herbsChanged) saveHerbsState();
     }, 1000);
 
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -1413,6 +1434,7 @@
         if (playerHp <= 0) showToast('💀 Jsi vyčerpaný! Počkej, než se zregeneruješ.', 3200);
         updateMobPanel();
       }
+      saveMonsters();
     });
 
     // --- panel byliny / pokladu ---
@@ -1465,6 +1487,7 @@
       herbs = herbs.filter(x => x !== h);
       closeHerb();
       if (player) ensureHerbs(player);
+      saveHerbsState();
     });
 
     // průběžně obnovuj odpočet regenerace / vzdálenost v otevřených panelech
@@ -1862,11 +1885,17 @@
         view = { lat, lng };
         hideStatus();
         loadPois(player);        // načti reálná místa z OpenStreetMap
-        // pár nestvůr hned na start, další pak přibývají pomalu
-        for (let i = 0; i < 3; i++) monsters.push(makeMob(player));
+        // nestvůry a byliny se obnoví z uloženého stavu (aby obnovení stránky nevyspawnovalo nové) –
+        // jen když ještě žádné nejsou (opravdu první spuštění), vytvoř počáteční sadu
+        if (monsters.length === 0) {
+          for (let i = 0; i < 3; i++) monsters.push(makeMob(player));
+          saveMonsters();
+        }
         lastSpawnAt = Date.now();
-        // jedna bylina hned na start, další (a vzácně poklad) přibývají pomalu
-        herbs.push(makeHerb(player));
+        if (herbs.length === 0) {
+          herbs.push(makeHerb(player));
+          saveHerbsState();
+        }
         lastHerbSpawnAt = Date.now();
       } else if (following) {
         view = { lat: player.lat, lng: player.lng };

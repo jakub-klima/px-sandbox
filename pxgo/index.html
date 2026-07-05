@@ -605,6 +605,12 @@
       { icon: '🗿', name: 'Kamenný golem',      color: '#9a9a9a', tier: 3, desc: 'Pradávný strážce z živé skály.' },
       { icon: '🔥', name: 'Plamenný démon',     color: '#d4622a', tier: 3, desc: 'Pekelná bytost sálající žárem.' },
     ];
+    // barevné rámečky/aury podle tieru nestvůry (1 = slabá, 3 = nejsilnější)
+    const TIER_STYLE = {
+      1: { ring: '#c9d3d8', aura: 'rgba(180,190,195,.22)', badge: '#c9d3d8', badgeText: '#25313a', label: 'I' },
+      2: { ring: '#e0932e', aura: 'rgba(224,147,46,.28)', badge: '#e0932e', badgeText: '#3a2308', label: 'II' },
+      3: { ring: '#c23bdb', aura: 'rgba(194,59,219,.32)', badge: '#c23bdb', badgeText: '#2e0a36', label: 'III' },
+    };
     const MOB_TARGET = 8;                  // kolik nestvůr držet kolem hráče
     const MOB_MIN = 16, MOB_MAX = 180;     // vzdálenost spawnu (m) – úměrně většímu dosahu
     const RELOCATE_MIN = 90000, RELOCATE_MAX = 180000; // za jak dlouho se nezabitá nestvůra přesune
@@ -935,10 +941,11 @@
       if (s.x < -40 || s.x > canvas.width + 40 || s.y < -40 || s.y > canvas.height + 40) return;
       const r = 16 * DPR;
       const cy = s.y - r * .2;
-      // rudá aura
+      const style = TIER_STYLE[m.tier] || TIER_STYLE[1];
+      // aura podle tieru
       ctx.beginPath();
       ctx.arc(s.x, cy, r + 5 * DPR, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(150,40,35,.20)';
+      ctx.fillStyle = style.aura;
       ctx.fill();
       // stín
       ctx.beginPath();
@@ -950,21 +957,34 @@
       ctx.arc(s.x, cy, r, 0, Math.PI * 2);
       ctx.fillStyle = m.color;
       ctx.fill();
+      // rámeček podle tieru nestvůry
       ctx.lineWidth = 3 * DPR;
-      ctx.strokeStyle = selectedMob === m ? '#fff' : '#7a2a26';
+      ctx.strokeStyle = selectedMob === m ? '#fff' : style.ring;
       ctx.stroke();
       // ikona
       ctx.font = (18 * DPR) + 'px system-ui';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(m.icon, s.x, cy);
+      // odznáček tieru (roh)
+      const bx = s.x - r * .72, by = cy - r * .72;
+      ctx.beginPath();
+      ctx.arc(bx, by, 7.5 * DPR, 0, Math.PI * 2);
+      ctx.fillStyle = style.badge;
+      ctx.fill();
+      ctx.lineWidth = 2 * DPR;
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+      ctx.fillStyle = style.badgeText;
+      ctx.font = 'bold ' + (9.5 * DPR) + 'px system-ui';
+      ctx.fillText(style.label, bx, by + DPR * .5);
       // proužek HP pod nestvůrou – jen pokud už je poškozená
       if (m.hp < m.maxHp) {
-        const bw = r * 1.9, bh = 4 * DPR, bx = s.x - bw / 2, by = s.y + r * 0.95;
+        const bw = r * 1.9, bh = 4 * DPR, bx2 = s.x - bw / 2, by2 = s.y + r * 0.95;
         ctx.fillStyle = 'rgba(0,0,0,.6)';
-        ctx.fillRect(bx, by, bw, bh);
+        ctx.fillRect(bx2, by2, bw, bh);
         ctx.fillStyle = '#c0402f';
-        ctx.fillRect(bx, by, bw * Math.max(0, m.hp / m.maxHp), bh);
+        ctx.fillRect(bx2, by2, bw * Math.max(0, m.hp / m.maxHp), bh);
       }
     }
 
@@ -1298,7 +1318,7 @@
       selectedMob = m;
       document.getElementById('mob-icon').textContent = m.icon;
       document.getElementById('mob-title').textContent = m.name;
-      document.getElementById('mob-type').textContent = 'Nestvůra · úroveň ' + m.tier;
+      document.getElementById('mob-type').textContent = 'Nestvůra · Tier ' + (TIER_STYLE[m.tier] ? TIER_STYLE[m.tier].label : m.tier);
       document.getElementById('mob-desc').textContent = m.desc;
       updateMobPanel();
       mobPanel.classList.add('open');

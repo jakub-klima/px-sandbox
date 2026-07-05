@@ -268,6 +268,25 @@
     .log-name { color: #e8d8b0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .log-meta { font-size: 12px; color: #a08c6a; margin-top: 2px; }
     .log-empty { padding: 28px 16px; text-align: center; color: #a08c6a; line-height: 1.5; }
+    /* obchod – nákup a výbava zbraní a zbroje za zlaťáky */
+    #shop-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
+    #shop-overlay.hidden { display: none; }
+    #shop-card { width: min(94vw,520px); max-height: 86vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); overflow: hidden; }
+    .shop-head { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid #4a3f29; }
+    .shop-title { font-family: Georgia, serif; font-size: 19px; color: #e8d8b0; font-weight: 700; }
+    .shop-gold { margin-left: auto; margin-right: 10px; font-size: 14px; color: #ffd166; font-weight: 700; }
+    .shop-tabs { display: flex; gap: 8px; padding: 12px 16px 0; }
+    .shop-tabs button { flex: 1; padding: 9px; border: 1px solid #6b5836; border-bottom: none; border-radius: 8px 8px 0 0; background: #1c1712; color: #a08c6a; font-weight: 700; cursor: pointer; }
+    .shop-tabs button.active { background: #2a231b; color: #e8d8b0; }
+    #shop-list { padding: 4px 12px 14px; overflow: auto; }
+    .shop-row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid #332b1d; }
+    .shop-ic { font-size: 26px; width: 40px; text-align: center; flex-shrink: 0; }
+    .shop-info { flex: 1; min-width: 0; }
+    .shop-name { color: #e8d8b0; font-weight: 600; }
+    .shop-stat { font-size: 12px; color: #a08c6a; margin-top: 2px; }
+    .shop-action { flex-shrink: 0; border: 1px solid #6b5836; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer; background: #2a231b; color: #e8d8b0; }
+    .shop-action.equipped { background: #3a5a2e; color: #f2e6c8; cursor: default; border-color: #4a6b30; }
+    .shop-action:disabled { background: #241d17; color: #6a5f4a; cursor: default; }
     #buttons button { background: linear-gradient(180deg,#2a231b,#1c1712); border: 1px solid #6b5836; border-radius: 10px; color: #e8d8b0; }
     #status { background: #1c1712; border: 1px solid #6b5836; color: #d9c7a3; border-radius: 12px; }
     #status button { background: #2a231b; border: 1px solid #6b5836; color: #e8d8b0; border-radius: 8px; }
@@ -435,6 +454,7 @@
           <div id="hud-menu-xp-info" class="hud-menu-info"></div>
           <div id="hud-menu-hp-info" class="hud-menu-info"></div>
           <div id="hud-menu-travel"><i id="travel-menu-fill"></i><span id="travel-menu-text"></span></div>
+          <button id="hud-menu-shop">🎒 Obchod a výbava</button>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
         </div>
@@ -453,6 +473,21 @@
         </div>
         <div id="log-list"></div>
         <div id="log-map-wrap" style="display:none"><canvas id="log-map"></canvas></div>
+      </div>
+    </div>
+
+    <div id="shop-overlay" class="hidden">
+      <div id="shop-card">
+        <div class="shop-head">
+          <div class="shop-title">🎒 Obchod a výbava</div>
+          <div class="shop-gold" id="shop-gold-text">💰 0</div>
+          <button id="shop-close" class="log-x">✕</button>
+        </div>
+        <div class="shop-tabs">
+          <button id="shop-tab-weapons" class="active">⚔️ Zbraně</button>
+          <button id="shop-tab-armor">🛡️ Zbroj</button>
+        </div>
+        <div id="shop-list"></div>
       </div>
     </div>
   </div>
@@ -526,6 +561,40 @@
     function mobGoldReward(m) { return m.tier * 4 + Math.floor(Math.random() * (m.tier * 6 + 1)); }
     // odměna zlaťáků za nalezený poklad (jen vzácnější byliny tieru 2, ne obyčejné byliny)
     function treasureGoldReward() { return 20 + Math.floor(Math.random() * 41); }
+
+    // --- obchod: zbraně a zbroj kupované za zlaťáky ---
+    const WEAPONS = [
+      { id: 'w0', icon: '🗡️', name: 'Rezavá dýka',        cost: 0,   atk: 0,  desc: 'Základní zbraň – žádný bonus.' },
+      { id: 'w1', icon: '⚔️', name: 'Ocelový meč',         cost: 80,  atk: 4,  desc: '+4 síla útoku' },
+      { id: 'w2', icon: '🪓', name: 'Válečná sekera',      cost: 180, atk: 8,  desc: '+8 síla útoku' },
+      { id: 'w3', icon: '🔱', name: 'Trojzubec stínů',     cost: 350, atk: 14, desc: '+14 síla útoku' },
+    ];
+    const ARMORS = [
+      { id: 'a0', icon: '👕', name: 'Otrhaný hábit',       cost: 0,   def: 0, desc: 'Základní oděv – žádná obrana.' },
+      { id: 'a1', icon: '🥋', name: 'Kožená zbroj',        cost: 70,  def: 2, desc: '-2 přijaté zranění' },
+      { id: 'a2', icon: '🛡️', name: 'Kroužková zbroj',     cost: 160, def: 5, desc: '-5 přijaté zranění' },
+      { id: 'a3', icon: '🦾', name: 'Runová plátová zbroj', cost: 320, def: 9, desc: '-9 přijaté zranění' },
+    ];
+    const INV_KEY = 'pxgo.inventory';
+    function loadInventory() {
+      const def = { ownedWeapons: ['w0'], ownedArmors: ['a0'], weapon: 'w0', armor: 'a0' };
+      try {
+        const raw = JSON.parse(localStorage.getItem(INV_KEY) || 'null');
+        if (raw && typeof raw === 'object') {
+          return {
+            ownedWeapons: (Array.isArray(raw.ownedWeapons) && raw.ownedWeapons.length) ? raw.ownedWeapons : def.ownedWeapons,
+            ownedArmors: (Array.isArray(raw.ownedArmors) && raw.ownedArmors.length) ? raw.ownedArmors : def.ownedArmors,
+            weapon: raw.weapon || def.weapon,
+            armor: raw.armor || def.armor,
+          };
+        }
+      } catch (e) {}
+      return def;
+    }
+    let inventory = loadInventory();
+    function saveInventory() { try { localStorage.setItem(INV_KEY, JSON.stringify(inventory)); } catch (e) {} }
+    function equippedWeapon() { return WEAPONS.find(w => w.id === inventory.weapon) || WEAPONS[0]; }
+    function equippedArmor() { return ARMORS.find(a => a.id === inventory.armor) || ARMORS[0]; }
 
     // --- cestovní bonus (ujdi ≥ 1 km, cooldown 1 h) ---
     const TRAVEL_DIST_KEY = 'pxgo.travelDist';
@@ -651,7 +720,7 @@
     const CRIT_CHANCE = 0.18;
     const DODGE_CHANCE = 0.15;
     function playerAttack() {
-      const base = 2 + Math.floor(xp / 40) + Math.floor(Math.random() * 3);
+      const base = 2 + Math.floor(xp / 40) + Math.floor(Math.random() * 3) + equippedWeapon().atk;
       const crit = Math.random() < CRIT_CHANCE;
       return { dmg: crit ? base * 2 : base, crit };
     }
@@ -1137,7 +1206,13 @@
     }
 
     const goldTextEl = document.getElementById('gold-text');
-    function updateGoldHud() { goldTextEl.textContent = '💰 ' + gold; }
+    function updateGoldHud() {
+      goldTextEl.textContent = '💰 ' + gold;
+      if (!shopOverlay.classList.contains('hidden')) {
+        shopGoldTextEl.textContent = '💰 ' + gold;
+        renderShopList();
+      }
+    }
 
     const hpEl = document.getElementById('hp');
     const hpFillEl = document.getElementById('hp-fill');
@@ -1336,8 +1411,9 @@
         if (player) spawnFloat(player, '✨ Úhyb!', 'dodge');
         updateMobPanel();
       } else {
-        // přeživší nestvůra ti vrátí úder (silnější)
-        const back = m.tier * 2 + 2 + Math.floor(Math.random() * 3);
+        // přeživší nestvůra ti vrátí úder (silnější), zbroj část zranění pohltí
+        const rawBack = m.tier * 2 + 2 + Math.floor(Math.random() * 3);
+        const back = Math.max(1, rawBack - equippedArmor().def);
         playerHp = Math.max(0, playerHp - back);
         saveHp();
         updateHpHud();
@@ -1691,6 +1767,77 @@
     logTabMap.addEventListener('click', () => showLogTab('map'));
     logOverlay.addEventListener('click', e => { if (e.target === logOverlay) closeLog(); });
 
+    // --- obchod: nákup a výbava zbraní/zbroje za zlaťáky ---
+    const shopOverlay = document.getElementById('shop-overlay');
+    const shopListEl = document.getElementById('shop-list');
+    const shopGoldTextEl = document.getElementById('shop-gold-text');
+    const shopTabWeapons = document.getElementById('shop-tab-weapons');
+    const shopTabArmor = document.getElementById('shop-tab-armor');
+    let shopTab = 'weapons';
+    function buyOrEquip(item, kind) {
+      const ownedList = kind === 'weapon' ? inventory.ownedWeapons : inventory.ownedArmors;
+      const owned = ownedList.includes(item.id);
+      if (!owned) {
+        if (!spendGold(item.cost)) {
+          showToast('💰 Nedostatek zlata na ' + item.name, 2400);
+          return;
+        }
+        ownedList.push(item.id);
+      }
+      if (kind === 'weapon') inventory.weapon = item.id; else inventory.armor = item.id;
+      saveInventory();
+      showToast((owned ? '✅ Vybaveno: ' : '🎉 Koupeno a vybaveno: ') + item.name, 2400);
+      renderShopList();
+    }
+    function renderShopList() {
+      const isWeapons = shopTab === 'weapons';
+      const list = isWeapons ? WEAPONS : ARMORS;
+      const kind = isWeapons ? 'weapon' : 'armor';
+      const ownedList = isWeapons ? inventory.ownedWeapons : inventory.ownedArmors;
+      const equippedId = isWeapons ? inventory.weapon : inventory.armor;
+      shopListEl.innerHTML = '';
+      for (const item of list) {
+        const owned = ownedList.includes(item.id);
+        const equipped = equippedId === item.id;
+        const row = document.createElement('div');
+        row.className = 'shop-row';
+        row.innerHTML = '<div class="shop-ic"></div><div class="shop-info"><div class="shop-name"></div><div class="shop-stat"></div></div><button class="shop-action"></button>';
+        row.querySelector('.shop-ic').textContent = item.icon;
+        row.querySelector('.shop-name').textContent = item.name;
+        row.querySelector('.shop-stat').textContent = item.desc + (owned ? '' : ' · cena ' + item.cost + ' 💰');
+        const btn = row.querySelector('.shop-action');
+        if (equipped) {
+          btn.textContent = '✅ Vybaveno';
+          btn.classList.add('equipped');
+          btn.disabled = true;
+        } else if (owned) {
+          btn.textContent = 'Vybavit';
+          btn.addEventListener('click', () => buyOrEquip(item, kind));
+        } else {
+          btn.textContent = 'Koupit (' + item.cost + ' 💰)';
+          btn.disabled = gold < item.cost;
+          btn.addEventListener('click', () => buyOrEquip(item, kind));
+        }
+        shopListEl.appendChild(row);
+      }
+    }
+    function showShopTab(which) {
+      shopTab = which;
+      shopTabWeapons.classList.toggle('active', which === 'weapons');
+      shopTabArmor.classList.toggle('active', which === 'armor');
+      renderShopList();
+    }
+    function openShop() {
+      shopGoldTextEl.textContent = '💰 ' + gold;
+      showShopTab(shopTab);
+      shopOverlay.classList.remove('hidden');
+    }
+    function closeShop() { shopOverlay.classList.add('hidden'); }
+    document.getElementById('shop-close').addEventListener('click', closeShop);
+    shopTabWeapons.addEventListener('click', () => showShopTab('weapons'));
+    shopTabArmor.addEventListener('click', () => showShopTab('armor'));
+    shopOverlay.addEventListener('click', e => { if (e.target === shopOverlay) closeShop(); });
+
     // --- menu otevřené klepnutím na HUD (HP/XP) ---
     const hudMenuOverlay = document.getElementById('hud-menu-overlay');
     function openHudMenu() {
@@ -1702,6 +1849,7 @@
     function closeHudMenu() { hudMenuOverlay.classList.add('hidden'); }
     document.getElementById('hud').addEventListener('click', openHudMenu);
     document.getElementById('hud-menu-close').addEventListener('click', closeHudMenu);
+    document.getElementById('hud-menu-shop').addEventListener('click', () => { closeHudMenu(); openShop(); });
     document.getElementById('hud-menu-log').addEventListener('click', () => { closeHudMenu(); openLog(); });
     document.getElementById('hud-menu-reset').addEventListener('click', () => { closeHudMenu(); resetProgress(); });
     hudMenuOverlay.addEventListener('click', e => { if (e.target === hudMenuOverlay) closeHudMenu(); });

@@ -511,8 +511,8 @@
     // --- hráčovo HP (regeneruje se v čase, i mezi spuštěními) ---
     const HP_KEY = 'pxgo.hp';
     const REGEN_MS = 16000;  // +1 HP každých 16 s (pomalá regenerace)
-    const HP_BASE = 36;
-    const HP_PER_XP = 0.12;  // získané XP postupně (bez skoků na "úroveň") zvyšují max. HP
+    const HP_BASE = 40;
+    const HP_PER_XP = 0.06;  // získané XP postupně (bez skoků na "úroveň") zvyšují max. HP
     function playerMaxHp() { return Math.round(HP_BASE + xp * HP_PER_XP); }
     let playerHp = loadHp();
     function loadHp() {
@@ -1733,15 +1733,17 @@
       logOverlay.classList.add('hidden');
       clearInterval(logMapTimer); logMapTimer = null;
     }
-    // reset veškerého postupu (XP, HP, cestovní bonus) – navštívená místa v kronice zůstávají
+    // reset veškerého postupu (XP, HP, zlaťáky, cestovní bonus) – navštívená místa v kronice zůstávají
     function resetProgress() {
-      const ok = confirm('Opravdu resetovat veškerý postup?\n\nXP, HP a cestovní bonus se vynulují. Navštívená místa v kronice zůstanou zachována.');
+      const ok = confirm('Opravdu resetovat veškerý postup?\n\nXP, HP, zlaťáky a cestovní bonus se vynulují. Navštívená místa v kronice zůstanou zachována.');
       if (!ok) return;
       xp = 0; saveXp();
       playerHp = playerMaxHp(); saveHp();
+      gold = 0; saveGold();
       travelDist = 0; lastTravelClaim = 0; saveTravel();
       updateXpMenuInfo();
       updateHpHud();
+      updateGoldHud();
       updateTravelButton();
       showToast('♻️ Postup byl resetován, navštívená místa zůstala zachována', 3000);
     }

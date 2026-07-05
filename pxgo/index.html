@@ -577,6 +577,11 @@
     }
     function saveMonsters() { try { localStorage.setItem(MOBS_KEY, JSON.stringify(monsters)); } catch (e) {} }
     function saveHerbsState() { try { localStorage.setItem(HERBS_KEY, JSON.stringify(herbs)); } catch (e) {} }
+    // odlišuje "opravdu první spuštění" od "hráč všechno pozabíjel/posbíral" – bez toho by
+    // vynulování pole refreshem znovu nahodilo počáteční sadu (stejný cheat, jen jinou cestou)
+    const WORLD_INIT_KEY = 'pxgo.worldInit';
+    function worldInitialized() { try { return localStorage.getItem(WORLD_INIT_KEY) === '1'; } catch (e) { return false; } }
+    function markWorldInitialized() { try { localStorage.setItem(WORLD_INIT_KEY, '1'); } catch (e) {} }
 
     // navštívená místa – kronika: id -> { name, type, icon, color, lat, lng, firstAt, lastAt, count }
     const VISIT_KEY = 'pxgo.visited';
@@ -1799,16 +1804,16 @@
         hideStatus();
         loadPois(player);        // načti reálná místa z OpenStreetMap
         // nestvůry a byliny se obnoví z uloženého stavu (aby obnovení stránky nevyspawnovalo nové) –
-        // jen když ještě žádné nejsou (opravdu první spuštění), vytvoř počáteční sadu
-        if (monsters.length === 0) {
+        // počáteční sada se vytvoří jen při opravdu prvním spuštění, ne pokaždé, když je pole
+        // prázdné (to by šlo obejít vyzabíjením/posbíráním všeho a refreshem)
+        if (!worldInitialized()) {
           for (let i = 0; i < 3; i++) monsters.push(makeMob(player));
           saveMonsters();
-        }
-        lastSpawnAt = Date.now();
-        if (herbs.length === 0) {
           herbs.push(makeHerb(player));
           saveHerbsState();
+          markWorldInitialized();
         }
+        lastSpawnAt = Date.now();
         lastHerbSpawnAt = Date.now();
       } else if (following) {
         view = { lat: player.lat, lng: player.lng };

@@ -541,7 +541,7 @@
       return true;
     }
     // odměna zlaťáků za poražení nestvůry – dle jejího tieru
-    function mobGoldReward(m) { return m.tier * 4 + Math.floor(Math.random() * (m.tier * 6 + 1)); }
+    function mobGoldReward(m) { const t2 = m.tier * m.tier; return t2 * 6 + Math.floor(Math.random() * (t2 * 8 + 1)); }
     // odměna zlaťáků za nalezený poklad (jen vzácnější byliny tieru 2, ne obyčejné byliny)
     function treasureGoldReward() { return 20 + Math.floor(Math.random() * 41); }
 
@@ -680,14 +680,16 @@
       };
     }
     // síla nestvůr je daná jen jejich tierem (1–3) – nezávisí na úrovni hráče
+    // růst je kvadratický (tier²), aby byl mezi tiery výrazně větší rozdíl ve výzvě i odměně
     function makeMob(center) {
       const r = Math.random();
       const tier = r < 0.55 ? 1 : (r < 0.85 ? 2 : 3);   // silnější nestvůry vzácnější
       const pool = MOB_TYPES.filter(m => m.tier === tier);
       const t = pool[Math.floor(Math.random() * pool.length)];
-      const maxHp = tier * 5 + 2 + Math.floor(Math.random() * tier * 3);
+      const t2 = tier * tier;
+      const maxHp = t2 * 8 + 2 + Math.floor(Math.random() * t2 * 4);
       const pos = randomPointNear(center, MOB_MIN, MOB_MAX);
-      return { id: ++mobSeq, ...t, ...pos, maxHp, hp: maxHp, xp: tier * 15, relocateAt: relocateTime() };
+      return { id: ++mobSeq, ...t, ...pos, maxHp, hp: maxHp, xp: t2 * 15, relocateAt: relocateTime() };
     }
     const SPAWN_INTERVAL = 30000;  // jak rychle přibývají nové nestvůry (ms)
     let lastSpawnAt = 0;
@@ -1395,7 +1397,7 @@
         updateMobPanel();
       } else {
         // přeživší nestvůra ti vrátí úder (silnější), zbroj část zranění pohltí
-        const rawBack = m.tier * 2 + 2 + Math.floor(Math.random() * 3);
+        const rawBack = m.tier * m.tier * 3 + 2 + Math.floor(Math.random() * m.tier * 3);
         const back = Math.max(1, rawBack - equippedArmor().def);
         playerHp = Math.max(0, playerHp - back);
         saveHp();

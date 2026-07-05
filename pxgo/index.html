@@ -380,7 +380,7 @@
         <div id="hp" class="bar"><i id="hp-fill"></i><span id="hp-text">❤️ 18/18</span></div>
         <div id="travel" class="bar"><i id="travel-fill"></i><span id="travel-text"></span></div>
       </div>
-      <div id="gold-badge" title="Zlaťáky"><span id="gold-text">💰 0</span></div>
+      <div id="gold-badge" title="Zlaťáky"><span id="gold-text">🪙 0</span></div>
     </div>
 
     <div id="toast"></div>
@@ -480,7 +480,7 @@
       <div id="shop-card">
         <div class="shop-head">
           <div class="shop-title">🎒 Obchod a výbava</div>
-          <div class="shop-gold" id="shop-gold-text">💰 0</div>
+          <div class="shop-gold" id="shop-gold-text">🪙 0</div>
           <button id="shop-close" class="log-x">✕</button>
         </div>
         <div class="shop-tabs">
@@ -731,7 +731,7 @@
       { icon: '🍄', name: 'Lesní hřib',    color: '#8a6a3a', tier: 1, desc: 'Pevná hlíva schovaná pod spadaným listím.' },
       { icon: '🍀', name: 'Čtyřlístek',    color: '#4a9e5a', tier: 1, desc: 'Vzácný symbol štěstí ukrytý v trávě.' },
       { icon: '🌼', name: 'Polní kvítek',  color: '#e0c040', tier: 1, desc: 'Drobný kvítek hřející barvou.' },
-      { icon: '💰', name: 'Skrytý poklad',  color: '#f0c040', tier: 2, desc: 'Váček plný lesklých mincí zapomenutý v trávě.' },
+      { icon: '🪙', name: 'Skrytý poklad',  color: '#f0c040', tier: 2, desc: 'Váček plný lesklých mincí zapomenutý v trávě.' },
       { icon: '💎', name: 'Zářící drahokam', color: '#40c0e0', tier: 2, desc: 'Drahokam, který právě zachytil paprsek slunce.' },
     ];
     const HERB_TARGET = 3;                 // kolik bylin/pokladů držet kolem hráče (méně než nestvůr)
@@ -1207,9 +1207,9 @@
 
     const goldTextEl = document.getElementById('gold-text');
     function updateGoldHud() {
-      goldTextEl.textContent = '💰 ' + gold;
+      goldTextEl.textContent = '🪙 ' + gold;
       if (!shopOverlay.classList.contains('hidden')) {
-        shopGoldTextEl.textContent = '💰 ' + gold;
+        shopGoldTextEl.textContent = '🪙 ' + gold;
         renderShopList();
       }
     }
@@ -1402,7 +1402,7 @@
         const goldDrop = mobGoldReward(m);
         gainGold(goldDrop);
         spawnFloat(m, '+' + m.xp + ' XP', 'kill');
-        showToast((atk.crit ? '💥 Kritický zásah! ' : '☠️ ') + 'Poražena nestvůra: ' + m.name + '  (+' + m.xp + ' XP, +' + goldDrop + ' 💰)', 2600);
+        showToast((atk.crit ? '💥 Kritický zásah! ' : '☠️ ') + 'Poražena nestvůra: ' + m.name + '  (+' + m.xp + ' XP, +' + goldDrop + ' 🪙)', 2600);
         monsters = monsters.filter(x => x !== m);
         closeMob();
         if (player) ensureMonsters(player);
@@ -1466,7 +1466,7 @@
       if (h.tier === 2) {
         const goldDrop = treasureGoldReward();
         gainGold(goldDrop);
-        showToast('💰 Nalezen poklad: ' + h.name + '  (+' + h.xp + ' XP, +' + goldDrop + ' 💰)', 2600);
+        showToast('🪙 Nalezen poklad: ' + h.name + '  (+' + h.xp + ' XP, +' + goldDrop + ' 🪙)', 2600);
       } else {
         showToast('🌿 Sebráno: ' + h.name + '  (+' + h.xp + ' XP)', 2600);
       }
@@ -1779,7 +1779,7 @@
       const owned = ownedList.includes(item.id);
       if (!owned) {
         if (!spendGold(item.cost)) {
-          showToast('💰 Nedostatek zlata na ' + item.name, 2400);
+          showToast('🪙 Nedostatek zlata na ' + item.name, 2400);
           return;
         }
         ownedList.push(item.id);
@@ -1804,7 +1804,7 @@
         row.innerHTML = '<div class="shop-ic"></div><div class="shop-info"><div class="shop-name"></div><div class="shop-stat"></div></div><button class="shop-action"></button>';
         row.querySelector('.shop-ic').textContent = item.icon;
         row.querySelector('.shop-name').textContent = item.name;
-        row.querySelector('.shop-stat').textContent = item.desc + (owned ? '' : ' · cena ' + item.cost + ' 💰');
+        row.querySelector('.shop-stat').textContent = item.desc + (owned ? '' : ' · cena ' + item.cost + ' 🪙');
         const btn = row.querySelector('.shop-action');
         if (equipped) {
           btn.textContent = '✅ Vybaveno';
@@ -1814,7 +1814,7 @@
           btn.textContent = 'Vybavit';
           btn.addEventListener('click', () => buyOrEquip(item, kind));
         } else {
-          btn.textContent = 'Koupit (' + item.cost + ' 💰)';
+          btn.textContent = 'Koupit (' + item.cost + ' 🪙)';
           btn.disabled = gold < item.cost;
           btn.addEventListener('click', () => buyOrEquip(item, kind));
         }
@@ -1828,7 +1828,7 @@
       renderShopList();
     }
     function openShop() {
-      shopGoldTextEl.textContent = '💰 ' + gold;
+      shopGoldTextEl.textContent = '🪙 ' + gold;
       showShopTab(shopTab);
       shopOverlay.classList.remove('hidden');
     }

@@ -1332,6 +1332,8 @@
     const mobDistEl = document.getElementById('mob-dist');
     const mobHpFill = document.getElementById('mob-hp-fill');
     const mobHpText = document.getElementById('mob-hp-text');
+    // silnější nestvůry vyžadují víc HP na to, aby se na ně hráč vůbec odvážil zaútočit
+    function tierMinHp(tier) { return tier === 3 ? 10 : (tier === 2 ? 5 : 0); }
     function updateMobPanel() {
       const m = selectedMob;
       if (!m) return;
@@ -1340,9 +1342,13 @@
       const d = player ? Math.round(metersBetween(player, m)) : null;
       if (d === null) { mobDistEl.textContent = ''; mobAttackBtn.disabled = true; mobAttackBtn.textContent = '⚔️ Zaútočit'; return; }
       mobDistEl.textContent = '📏 Vzdálenost: ' + d + ' m';
+      const minHp = tierMinHp(m.tier);
       if (playerHp <= 0) {
         mobAttackBtn.disabled = true;
         mobAttackBtn.textContent = '💀 Vyčerpaný – počkej na regeneraci';
+      } else if (playerHp < minHp) {
+        mobAttackBtn.disabled = true;
+        mobAttackBtn.textContent = '❤️ Potřebuješ aspoň ' + minHp + ' HP';
       } else if (d <= reachLimit(16)) {
         mobAttackBtn.disabled = false;
         mobAttackBtn.textContent = '⚔️ Zaútočit (+' + m.xp + ' XP)';
@@ -1370,6 +1376,7 @@
       const m = selectedMob;
       if (!m) return;
       if (playerHp <= 0) return;                 // vyčerpaný – nelze bojovat
+      if (playerHp < tierMinHp(m.tier)) return;   // na silnější nestvůry potřebuješ víc HP
       const d = player ? metersBetween(player, m) : Infinity;
       if (d > reachLimit(16)) return;
       const atk = playerAttack();

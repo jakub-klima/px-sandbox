@@ -30,11 +30,29 @@
       position: absolute;
       top: 0; left: 0; right: 0;
       display: flex;
+      align-items: flex-start;
+      gap: 10px;
       justify-content: flex-start;
       padding: 12px 16px;
       background: linear-gradient(180deg, rgba(13,27,42,.9), rgba(13,27,42,0));
       color: #fff;
       pointer-events: none;
+    }
+    /* ukazatel zlaťáků */
+    #gold-badge {
+      display: flex;
+      align-items: center;
+      height: 30px;
+      padding: 0 12px;
+      border: 1px solid #6b5836;
+      border-radius: 15px;
+      background: rgba(20,16,12,.78);
+      box-shadow: 0 2px 10px rgba(0,0,0,.5);
+      color: #ffd166;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      pointer-events: auto;
     }
     /* HP a XP jako jeden svázaný HUD blok */
     #hud {
@@ -343,6 +361,7 @@
         <div id="hp" class="bar"><i id="hp-fill"></i><span id="hp-text">❤️ 18/18</span></div>
         <div id="travel" class="bar"><i id="travel-fill"></i><span id="travel-text"></span></div>
       </div>
+      <div id="gold-badge" title="Zlaťáky"><span id="gold-text">💰 0</span></div>
     </div>
 
     <div id="toast"></div>
@@ -488,6 +507,25 @@
       } catch (e) { return playerMaxHp(); }
     }
     function saveHp() { try { localStorage.setItem(HP_KEY, JSON.stringify({ hp: playerHp, t: Date.now() })); } catch (e) {} }
+
+    // --- zlaťáky (padají z nestvůr a z pokladů, dají se utratit v obchodě) ---
+    const GOLD_KEY = 'pxgo.gold';
+    let gold = loadGold();
+    function loadGold() {
+      try { const v = parseInt(localStorage.getItem(GOLD_KEY) || '0', 10); return isNaN(v) ? 0 : v; }
+      catch (e) { return 0; }
+    }
+    function saveGold() { try { localStorage.setItem(GOLD_KEY, String(gold)); } catch (e) {} }
+    function gainGold(amount) { gold += amount; saveGold(); updateGoldHud(); }
+    function spendGold(amount) {
+      if (gold < amount) return false;
+      gold -= amount; saveGold(); updateGoldHud();
+      return true;
+    }
+    // odměna zlaťáků za poražení nestvůry – dle jejího tieru
+    function mobGoldReward(m) { return m.tier * 4 + Math.floor(Math.random() * (m.tier * 6 + 1)); }
+    // odměna zlaťáků za nalezený poklad (jen vzácnější byliny tieru 2, ne obyčejné byliny)
+    function treasureGoldReward() { return 20 + Math.floor(Math.random() * 41); }
 
     // --- cestovní bonus (ujdi ≥ 1 km, cooldown 1 h) ---
     const TRAVEL_DIST_KEY = 'pxgo.travelDist';
@@ -1098,6 +1136,9 @@
       xpMenuInfoEl.textContent = '✨ XP: ' + xp + ' (postupně zvyšuje max. HP)';
     }
 
+    const goldTextEl = document.getElementById('gold-text');
+    function updateGoldHud() { goldTextEl.textContent = '💰 ' + gold; }
+
     const hpEl = document.getElementById('hp');
     const hpFillEl = document.getElementById('hp-fill');
     const hpTextEl = document.getElementById('hp-text');
@@ -1281,10 +1322,12 @@
         spawnFloat(m, '-' + atk.dmg, 'hit');
       }
       if (m.hp <= 0) {
-        // nestvůra padla – bez protiútoku
+        // nestvůra padla – bez protiútoku, upustí i zlaťáky
         gainXp(m.xp);
+        const goldDrop = mobGoldReward(m);
+        gainGold(goldDrop);
         spawnFloat(m, '+' + m.xp + ' XP', 'kill');
-        showToast((atk.crit ? '💥 Kritický zásah! ' : '☠️ ') + 'Poražena nestvůra: ' + m.name + '  (+' + m.xp + ' XP)', 2600);
+        showToast((atk.crit ? '💥 Kritický zásah! ' : '☠️ ') + 'Poražena nestvůra: ' + m.name + '  (+' + m.xp + ' XP, +' + goldDrop + ' 💰)', 2600);
         monsters = monsters.filter(x => x !== m);
         closeMob();
         if (player) ensureMonsters(player);
@@ -1344,7 +1387,13 @@
       if (d > reachLimit(13)) return;
       gainXp(h.xp);
       spawnFloat(h, '+' + h.xp + ' XP', h.tier === 2 ? 'treasure' : 'herb');
-      showToast((h.tier === 2 ? '💰 Nalezen poklad: ' : '🌿 Sebráno: ') + h.name + '  (+' + h.xp + ' XP)', 2600);
+      if (h.tier === 2) {
+        const goldDrop = treasureGoldReward();
+        gainGold(goldDrop);
+        showToast('💰 Nalezen poklad: ' + h.name + '  (+' + h.xp + ' XP, +' + goldDrop + ' 💰)', 2600);
+      } else {
+        showToast('🌿 Sebráno: ' + h.name + '  (+' + h.xp + ' XP)', 2600);
+      }
       herbs = herbs.filter(x => x !== h);
       closeHerb();
       if (player) ensureHerbs(player);
@@ -1717,6 +1766,7 @@
     // --- start ---
     updateXpMenuInfo();
     updateHpHud();
+    updateGoldHud();
     updateTravelButton();
     window.addEventListener('resize', resize);
     resize();

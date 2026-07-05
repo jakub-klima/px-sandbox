@@ -161,7 +161,6 @@
     #attribution a { color: #1b6fa8; }
     /* barvy výplně HP a XP pruhů v HUDu */
     #hp > i { background: linear-gradient(180deg,#d94a3a,#8a1f16); }
-    #xpbar > i { background: linear-gradient(180deg,#e8c34a,#b8902a); }
     #travel > i { background: linear-gradient(180deg,#2a9d9a,#1a6663); }
     #travel.ready > i { background: linear-gradient(180deg,#ffd166,#caa84a); }
     #travel.ready { animation: hppulse 1.2s infinite; }
@@ -201,31 +200,6 @@
       20%  { opacity: 1; }
       100% { opacity: 0; transform: translate(-50%, -180%) scale(1.1); }
     }
-    /* oslava při postupu na novou úroveň */
-    .levelup {
-      position: absolute; top: 38%; left: 50%; transform: translate(-50%, -50%);
-      z-index: 20; text-align: center; pointer-events: none;
-      animation: lupop 2.2s ease forwards;
-    }
-    .levelup .lu-main { font-family: Georgia, serif; font-size: 34px; font-weight: 900; color: #ffd166; text-shadow: 0 3px 12px rgba(0,0,0,.8), 0 0 22px rgba(255,209,102,.6); }
-    .levelup .lu-sub { margin-top: 6px; font-size: 16px; font-weight: 700; color: #e8d8b0; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
-    @keyframes lupop {
-      0%   { opacity: 0; transform: translate(-50%, -50%) scale(.5); }
-      15%  { opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
-      30%  { transform: translate(-50%, -50%) scale(1); }
-      80%  { opacity: 1; }
-      100% { opacity: 0; transform: translate(-50%, -68%) scale(1); }
-    }
-    .confetti {
-      position: absolute; top: -20px; width: 10px; height: 14px; z-index: 19;
-      border-radius: 2px; pointer-events: none; opacity: .95;
-      animation-name: confall; animation-timing-function: ease-in; animation-fill-mode: forwards;
-    }
-    @keyframes confall {
-      0%   { transform: translateY(-12vh) translateX(0) rotate(0); opacity: 1; }
-      100% { transform: translateY(108vh) translateX(var(--x)) rotate(var(--r)); opacity: .9; }
-    }
-
     /* ===== temný RPG motiv (à la Gloomhaven) ===== */
     html, body { background: #100d0b; color: #d9c7a3; }
     /* ponuré ztmavení okrajů mapy (dungeon vibe) */
@@ -367,7 +341,6 @@
     <div id="topbar">
       <div id="hud">
         <div id="hp" class="bar"><i id="hp-fill"></i><span id="hp-text">❤️ 18/18</span></div>
-        <div id="xpbar" class="bar"><i id="xpbar-fill"></i><span id="xpbar-text"></span></div>
         <div id="travel" class="bar"><i id="travel-fill"></i><span id="travel-text"></span></div>
       </div>
     </div>
@@ -440,6 +413,7 @@
           <button id="hud-menu-close" class="log-x">✕</button>
         </div>
         <div id="hud-menu-actions">
+          <div id="hud-menu-xp-info" class="hud-menu-info"></div>
           <div id="hud-menu-hp-info" class="hud-menu-info"></div>
           <div id="hud-menu-travel"><i id="travel-menu-fill"></i><span id="travel-menu-text"></span></div>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
@@ -496,26 +470,13 @@
       catch (e) { return 0; }
     }
     function saveXp() { try { localStorage.setItem(SAVE_KEY, String(xp)); } catch (e) {} }
-    // pomalejší, rostoucí leveling: každá další úroveň stojí víc XP
-    function xpToNext(L) { return 150 + (L - 1) * 100; }   // XP z úrovně L na L+1
-    function levelOf(x) {
-      let L = 1, acc = 0, need = xpToNext(1);
-      while (x >= acc + need) { acc += need; L++; need = xpToNext(L); }
-      return L;
-    }
-    // postup v rámci aktuální úrovně: { level, cur, need, frac }
-    function levelProgress(x) {
-      const L = levelOf(x);
-      let base = 0;
-      for (let k = 1; k < L; k++) base += xpToNext(k);
-      const need = xpToNext(L);
-      return { level: L, cur: x - base, need, frac: Math.min(1, (x - base) / need) };
-    }
 
     // --- hráčovo HP (regeneruje se v čase, i mezi spuštěními) ---
     const HP_KEY = 'pxgo.hp';
     const REGEN_MS = 16000;  // +1 HP každých 16 s (pomalá regenerace)
-    function playerMaxHp() { return 36 + (levelOf(xp) - 1) * 8; }
+    const HP_BASE = 36;
+    const HP_PER_XP = 0.12;  // získané XP postupně (bez skoků na "úroveň") zvyšují max. HP
+    function playerMaxHp() { return Math.round(HP_BASE + xp * HP_PER_XP); }
     let playerHp = loadHp();
     function loadHp() {
       try {
@@ -648,11 +609,11 @@
       monsters.push(makeMob(center));
       lastSpawnAt = now;
     }
-    // síla útoku hráče roste s úrovní; občas padne kritický zásah za dvojnásobek
+    // síla útoku hráče roste postupně se získaným XP; občas padne kritický zásah za dvojnásobek
     const CRIT_CHANCE = 0.18;
     const DODGE_CHANCE = 0.15;
     function playerAttack() {
-      const base = 2 + levelOf(xp) + Math.floor(Math.random() * 3);
+      const base = 2 + Math.floor(xp / 40) + Math.floor(Math.random() * 3);
       const crit = Math.random() < CRIT_CHANCE;
       return { dmg: crit ? base * 2 : base, crit };
     }
@@ -1131,12 +1092,10 @@
       if (hideAfter) toastTimer = setTimeout(() => toastEl.classList.remove('show'), hideAfter);
     }
 
-    const xpFillEl = document.getElementById('xpbar-fill');
-    const xpTextEl = document.getElementById('xpbar-text');
-    function updateXpBadge() {
-      const p = levelProgress(xp);
-      xpFillEl.style.width = (p.frac * 100) + '%';
-      xpTextEl.textContent = 'Lv ' + p.level + ' · ' + p.cur + ' / ' + p.need + ' XP';
+    // XP se v hlavním HUDu nezobrazuje – vidíš ho jen po otevření menu (klepnutím na HUD)
+    const xpMenuInfoEl = document.getElementById('hud-menu-xp-info');
+    function updateXpMenuInfo() {
+      xpMenuInfoEl.textContent = '✨ XP: ' + xp + ' (postupně zvyšuje max. HP)';
     }
 
     const hpEl = document.getElementById('hp');
@@ -1173,43 +1132,20 @@
       }
     }, REGEN_MS);
 
-    // centrální přičtení XP – pohlídá si i postup na novou úroveň a oslavu
+    // centrální přičtení XP – žádné skokové "levely", XP jen postupně zvedá max. HP a zároveň o stejný kus doléčí
     function gainXp(amount) {
-      const before = levelOf(xp);
+      const maxBefore = playerMaxHp();
       xp += amount;
       saveXp();
-      updateXpBadge();
-      const after = levelOf(xp);
-      if (after > before) celebrateLevelUp(after);
-    }
-    function celebrateLevelUp(level) {
-      // odměna: plné HP
-      playerHp = playerMaxHp();
-      saveHp();
+      const maxAfter = playerMaxHp();
+      const hpGain = maxAfter - maxBefore;
+      if (hpGain > 0) {
+        playerHp = Math.min(maxAfter, playerHp + hpGain);
+        saveHp();
+      }
+      updateXpMenuInfo();
       updateHpHud();
       if (selectedMob) updateMobPanel();
-      // banner
-      const b = document.createElement('div');
-      b.className = 'levelup';
-      b.innerHTML = '<div class="lu-main">✨ LEVEL UP! ✨</div><div class="lu-sub">Úroveň ' + level + ' · plné HP</div>';
-      document.getElementById('app').appendChild(b);
-      setTimeout(() => b.remove(), 2200);
-      // konfety
-      const app = document.getElementById('app');
-      const colors = ['#e8c34a', '#e07a5f', '#2a9d8f', '#48b5d4', '#f4a261', '#caa84a', '#ff6b6b'];
-      for (let i = 0; i < 80; i++) {
-        const c = document.createElement('div');
-        c.className = 'confetti';
-        c.style.left = (8 + Math.random() * 84) + 'vw';
-        c.style.background = colors[i % colors.length];
-        c.style.animationDelay = (Math.random() * 0.3) + 's';
-        c.style.animationDuration = (1.2 + Math.random() * 0.9) + 's';
-        c.style.setProperty('--x', (Math.random() * 200 - 100) + 'px');
-        c.style.setProperty('--r', (Math.random() * 720 - 360) + 'deg');
-        app.appendChild(c);
-        setTimeout(() => c.remove(), 2500);
-      }
-      showToast('🎉 Postup na úroveň ' + level + '!', 2600);
     }
 
     const panel = document.getElementById('poi-panel');
@@ -1689,14 +1625,14 @@
       logOverlay.classList.add('hidden');
       clearInterval(logMapTimer); logMapTimer = null;
     }
-    // reset veškerého postupu (XP, úroveň, HP, cestovní bonus) – navštívená místa v kronice zůstávají
+    // reset veškerého postupu (XP, HP, cestovní bonus) – navštívená místa v kronice zůstávají
     function resetProgress() {
-      const ok = confirm('Opravdu resetovat veškerý postup?\n\nXP, úroveň, HP a cestovní bonus se vynulují. Navštívená místa v kronice zůstanou zachována.');
+      const ok = confirm('Opravdu resetovat veškerý postup?\n\nXP, HP a cestovní bonus se vynulují. Navštívená místa v kronice zůstanou zachována.');
       if (!ok) return;
       xp = 0; saveXp();
       playerHp = playerMaxHp(); saveHp();
       travelDist = 0; lastTravelClaim = 0; saveTravel();
-      updateXpBadge();
+      updateXpMenuInfo();
       updateHpHud();
       updateTravelButton();
       showToast('♻️ Postup byl resetován, navštívená místa zůstala zachována', 3000);
@@ -1709,6 +1645,7 @@
     // --- menu otevřené klepnutím na HUD (HP/XP) ---
     const hudMenuOverlay = document.getElementById('hud-menu-overlay');
     function openHudMenu() {
+      updateXpMenuInfo();
       updateHpMenuInfo();
       updateTravelButton();
       hudMenuOverlay.classList.remove('hidden');
@@ -1778,7 +1715,7 @@
     statusBtn.addEventListener('click', startGeo);
 
     // --- start ---
-    updateXpBadge();
+    updateXpMenuInfo();
     updateHpHud();
     updateTravelButton();
     window.addEventListener('resize', resize);

@@ -366,6 +366,16 @@
     .quest-offer .ds { font-size: 12px; color: #a08c6a; margin-top: 2px; }
     .quest-offer button { flex-shrink: 0; border: 1px solid #6b5836; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer; background: #2a231b; color: #e8d8b0; }
     .quest-note { padding: 12px 4px; font-size: 13px; color: #a08c6a; line-height: 1.5; text-align: center; }
+    /* potvrzení resetu postupu – tématický dialog místo nativního confirm() */
+    #reset-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; }
+    #reset-overlay.hidden { display: none; }
+    #reset-card { width: min(86vw,340px); background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); padding: 22px 20px; }
+    #reset-card .ttl { font-family: Georgia, serif; font-size: 20px; color: #e8d8b0; font-weight: 700; text-align: center; }
+    #reset-card .txt { margin-top: 12px; font-size: 14px; line-height: 1.55; color: #c2b18d; text-align: center; }
+    #reset-card .btns { margin-top: 18px; display: flex; gap: 10px; }
+    #reset-card .btns button { flex: 1; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; }
+    #reset-cancel { background: #2a231b; border: 1px solid #6b5836; color: #e8d8b0; }
+    #reset-confirm { background: linear-gradient(180deg,#8c2f2a,#5c1e1b); border: 1px solid #7a3a30; color: #f2e6c8; }
     /* slavnostní overlay získání/posílení amuletu */
     #amulet-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; }
     #amulet-overlay.hidden { display: none; }
@@ -458,6 +468,7 @@
     <div id="hud-menu-overlay" class="hidden">
       <div id="hud-menu-card">
         <div class="log-head">
+          <div class="log-title">⚔️ Postava</div>
           <button id="hud-menu-close" class="log-x">✕</button>
         </div>
         <div id="hud-menu-actions">
@@ -510,6 +521,17 @@
           <button id="quest-close" class="log-x">✕</button>
         </div>
         <div id="quest-body"></div>
+      </div>
+    </div>
+
+    <div id="reset-overlay" class="hidden">
+      <div id="reset-card">
+        <div class="ttl">♻️ Resetovat postup?</div>
+        <div class="txt">XP, HP, zlaťáky, koupená výbava, amulet i úkoly se vynulují. Navštívená místa v kronice zůstanou zachována.</div>
+        <div class="btns">
+          <button id="reset-cancel">Zrušit</button>
+          <button id="reset-confirm">♻️ Resetovat</button>
+        </div>
       </div>
     </div>
 
@@ -1795,9 +1817,11 @@
       clearInterval(logMapTimer); logMapTimer = null;
     }
     // úplný reset postupu – jedinou výjimkou jsou navštívená místa v kronice
-    function resetProgress() {
-      const ok = confirm('Opravdu resetovat veškerý postup?\n\nXP, HP, zlaťáky, koupená výbava, amulet i úkoly se vynulují. Navštívená místa v kronice zůstanou zachována.');
-      if (!ok) return;
+    const resetOverlay = document.getElementById('reset-overlay');
+    function resetProgress() { resetOverlay.classList.remove('hidden'); }
+    function closeResetDialog() { resetOverlay.classList.add('hidden'); }
+    function performReset() {
+      closeResetDialog();
       xp = 0; saveXp();
       playerHp = playerMaxHp(); saveHp();
       gold = 0; saveGold();
@@ -1817,6 +1841,9 @@
     logTabList.addEventListener('click', () => showLogTab('list'));
     logTabMap.addEventListener('click', () => showLogTab('map'));
     logOverlay.addEventListener('click', e => { if (e.target === logOverlay) closeLog(); });
+    document.getElementById('reset-confirm').addEventListener('click', performReset);
+    document.getElementById('reset-cancel').addEventListener('click', closeResetDialog);
+    resetOverlay.addEventListener('click', e => { if (e.target === resetOverlay) closeResetDialog(); });
 
     // --- obchod: nákup a výbava zbraní/zbroje za zlaťáky ---
     const shopOverlay = document.getElementById('shop-overlay');

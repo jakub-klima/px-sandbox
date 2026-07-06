@@ -851,6 +851,7 @@
 
     // cache načtených dlaždic (klíč včetně úrovně zoomu)
     const tileCache = new Map();
+    const TILE_RETRY_MS = 8000;  // po chybě stažení zkusit dlaždici znovu až po pauze
     function getTile(z, x, y) {
       const key = z + '/' + x + '/' + y;
       let img = tileCache.get(key);
@@ -859,6 +860,9 @@
         // subdomény a.b.c pro rovnoměrné rozložení požadavků
         const sub = 'abc'[(x + y) % 3];
         img.src = 'https://' + sub + '.tile.openstreetmap.org/' + z + '/' + x + '/' + y + '.png';
+        // neúspěšnou dlaždici nenechávat v cache navždy (mapa by v tom místě zůstala
+        // prázdná až do reloadu stránky) – po pauze ji vyhodit, ať se stáhne znovu
+        img.onerror = () => setTimeout(() => tileCache.delete(key), TILE_RETRY_MS);
         tileCache.set(key, img);
       }
       return img;
@@ -1013,8 +1017,8 @@
 
     function drawTiles() {
       const w = canvas.width, h = canvas.height;
-      // podklad, než se dlaždice načtou (barva vody OSM)
-      ctx.fillStyle = '#aadaff';
+      // podklad, než se dlaždice načtou – tmavý, ať drží ponurou atmosféru hry
+      ctx.fillStyle = '#141a20';
       ctx.fillRect(0, 0, w, h);
 
       const tz = Math.max(0, Math.min(19, Math.round(zoom)));  // celočíselná úroveň dlaždic

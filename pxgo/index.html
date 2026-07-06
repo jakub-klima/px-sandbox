@@ -1534,7 +1534,6 @@
         gainXp(m.xp);
         const goldDrop = mobGoldReward(m);
         gainGold(goldDrop);
-        spawnFloat(m, '+' + m.xp + ' XP', 'kill');
         monsters = monsters.filter(x => x !== m);
         closeMob();
         showVictory(m, goldDrop, atk.crit);
@@ -1561,6 +1560,7 @@
 
     // karta odměny po vyhraném souboji – odměna už je připsaná, karta ji jen ukazuje
     const victoryOverlay = document.getElementById('victory-overlay');
+    let victoryLoot = null;   // odměna k vypsání na mapě po zavření karty (kartu by přeletěla schovaná pod ní)
     function showVictory(m, goldDrop, crit) {
       document.getElementById('victory-icon').textContent = m.icon;
       document.getElementById('victory-title').textContent = crit ? '💥 Kritické vítězství!' : '⚔️ Vítězství!';
@@ -1568,9 +1568,18 @@
       document.getElementById('victory-name').textContent = m.name + ' · Tier ' + tier + ' poražen';
       document.getElementById('victory-xp').textContent = '✨ +' + m.xp + ' XP';
       document.getElementById('victory-gold').textContent = '🪙 +' + goldDrop;
+      victoryLoot = { lat: m.lat, lng: m.lng, xp: m.xp, gold: goldDrop };
       victoryOverlay.classList.remove('hidden');
     }
-    function closeVictory() { victoryOverlay.classList.add('hidden'); }
+    function closeVictory() {
+      victoryOverlay.classList.add('hidden');
+      if (victoryLoot) {
+        const loot = victoryLoot;
+        victoryLoot = null;
+        spawnFloat(loot, '+' + loot.xp + ' XP', 'kill');
+        setTimeout(() => spawnFloat(loot, '+' + loot.gold + ' 🪙', 'treasure'), 450);
+      }
+    }
     document.getElementById('victory-ok').addEventListener('click', closeVictory);
     victoryOverlay.addEventListener('click', e => { if (e.target === victoryOverlay) closeVictory(); });
 

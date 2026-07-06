@@ -2192,30 +2192,37 @@
       if (selectedHerb) updateHerbPanel();
     }
 
-    function startDemo() {
-      // záložní režim bez GPS – Praha, Staroměstské náměstí
-      onPosition(50.0875, 14.4213);
-      showStatus('Nepodařilo se získat tvoji polohu, hraješ v ukázkovém režimu (Praha). Mapou můžeš posouvat tažením.', true);
-      setTimeout(hideStatus, 3500);
+    // bez polohy se hrát nedá – místo hry řekni hráči, co potřebuje udělat
+    function geoErrorText(err) {
+      if (err && err.code === 1) {
+        return 'Hra se hraje pohybem ve skutečném světě, a potřebuje proto přístup k tvojí poloze. Povol polohu v prohlížeči a zkus to znovu.';
+      }
+      return 'Nepodařilo se zjistit tvoji polohu. Zkontroluj, že máš zapnuté polohové služby a signál, a zkus to znovu.';
     }
 
+    let geoWatchId = null;
     function startGeo() {
-      if (!('geolocation' in navigator)) { startDemo(); return; }
+      if (!('geolocation' in navigator)) {
+        showStatus('Tvůj prohlížeč neumí zjišťovat polohu, takže v něm hru nejde spustit. Otevři ji v prohlížeči s podporou GPS (např. na mobilu).');
+        return;
+      }
       showStatus('Zjišťuji tvoji polohu…');
       navigator.geolocation.getCurrentPosition(
         pos => onPosition(pos.coords.latitude, pos.coords.longitude),
         err => {
           console.warn('geo error', err);
-          startDemo();
+          if (!player) showStatus(geoErrorText(err), true);
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
       );
-      // průběžné sledování polohy
-      navigator.geolocation.watchPosition(
-        pos => onPosition(pos.coords.latitude, pos.coords.longitude),
-        () => {},
-        { enableHighAccuracy: true, maximumAge: 3000 }
-      );
+      // průběžné sledování polohy (jen jednou – opakované „Zkusit znovu" nesmí vršit watchery)
+      if (geoWatchId === null) {
+        geoWatchId = navigator.geolocation.watchPosition(
+          pos => onPosition(pos.coords.latitude, pos.coords.longitude),
+          () => {},
+          { enableHighAccuracy: true, maximumAge: 3000 }
+        );
+      }
     }
 
     statusBtn.addEventListener('click', startGeo);

@@ -340,6 +340,39 @@
     #herb-panel .collect { background: linear-gradient(180deg,#3a6b2a,#26401d); }
     #herb-panel .actions button:disabled { background: #202a1d; color: #7a8a5a; border-color: #2e4a26; cursor: default; }
     #herb-panel .close { background: #202a1d; color: #d9e0c8; flex: 0 0 56px; }
+
+    /* úkoly a amulet poutníka */
+    #quest-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
+    #quest-overlay.hidden { display: none; }
+    #quest-card { width: min(94vw,520px); max-height: 86vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); overflow: hidden; }
+    #quest-body { padding: 14px 16px 16px; overflow: auto; }
+    .quest-amulet { display: flex; align-items: center; gap: 12px; padding: 12px; margin-bottom: 12px; border: 1px solid #3a5a7a; border-radius: 10px; background: rgba(40,70,100,.18); }
+    .quest-amulet .ic { font-size: 30px; flex-shrink: 0; }
+    .quest-amulet .nm { color: #a8d0f0; font-weight: 700; }
+    .quest-amulet .fx { font-size: 12px; color: #7aa8c8; margin-top: 2px; }
+    .quest-head-note { font-family: Georgia, serif; font-size: 16px; color: #e8d8b0; font-weight: 700; margin: 4px 0 2px; }
+    .quest-story { font-style: italic; color: #c2b18d; font-size: 14px; line-height: 1.55; margin: 8px 0 12px; }
+    .quest-progress-label { font-size: 13px; color: #caa84a; font-weight: 600; margin-bottom: 6px; }
+    .quest-bar { height: 16px; border: 1px solid #6b5836; border-radius: 8px; background: #140d0b; overflow: hidden; position: relative; }
+    .quest-bar > i { display: block; height: 100%; width: 0; background: linear-gradient(180deg,#caa84a,#8a6d1a); transition: width .3s; }
+    .quest-bar > span { position: absolute; inset: 0; text-align: center; font-size: 11px; font-weight: 700; color: #f2e6c8; line-height: 16px; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+    .quest-offer { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid #332b1d; }
+    .quest-offer .ic { font-size: 26px; width: 40px; text-align: center; flex-shrink: 0; }
+    .quest-offer .info { flex: 1; min-width: 0; }
+    .quest-offer .nm { color: #e8d8b0; font-weight: 600; }
+    .quest-offer .ds { font-size: 12px; color: #a08c6a; margin-top: 2px; }
+    .quest-offer button { flex-shrink: 0; border: 1px solid #6b5836; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer; background: #2a231b; color: #e8d8b0; }
+    .quest-note { padding: 12px 4px; font-size: 13px; color: #a08c6a; line-height: 1.5; text-align: center; }
+    /* slavnostní overlay získání/posílení amuletu */
+    #amulet-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; }
+    #amulet-overlay.hidden { display: none; }
+    #amulet-card { width: min(86vw,340px); background: linear-gradient(180deg,#1a2230,#12161f); border: 1px solid #3a5a7a; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7), 0 0 40px rgba(80,140,200,.25); padding: 24px 20px; text-align: center; }
+    #amulet-card .big { font-size: 52px; animation: amuletglow 2s infinite; }
+    @keyframes amuletglow { 0%,100% { text-shadow: 0 0 8px rgba(120,180,240,.5); } 50% { text-shadow: 0 0 24px rgba(120,180,240,.95); } }
+    #amulet-card .ttl { font-family: Georgia, serif; font-size: 21px; color: #a8d0f0; font-weight: 700; margin-top: 8px; }
+    #amulet-card .stry { font-style: italic; color: #c2b18d; font-size: 14px; line-height: 1.55; margin-top: 12px; }
+    #amulet-card .fx { font-size: 13px; color: #7ad1ff; font-weight: 700; margin-top: 12px; }
+    #amulet-card button { margin-top: 18px; width: 100%; padding: 12px; border: 1px solid #3a5a7a; border-radius: 8px; background: #223246; color: #cde4f5; font-size: 15px; font-weight: 700; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -427,6 +460,8 @@
           <div id="hud-menu-xp-info" class="hud-menu-info"></div>
           <div id="hud-menu-hp-info" class="hud-menu-info"></div>
           <div id="hud-menu-combat-info" class="hud-menu-info"></div>
+          <div id="hud-menu-amulet-info" class="hud-menu-info" style="display:none"></div>
+          <button id="hud-menu-quests">🗒️ Úkoly a amulet</button>
           <button id="hud-menu-shop">🎒 Obchod a výbava</button>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
@@ -461,6 +496,26 @@
           <button id="shop-tab-armor">🛡️ Zbroj</button>
         </div>
         <div id="shop-list"></div>
+      </div>
+    </div>
+
+    <div id="quest-overlay" class="hidden">
+      <div id="quest-card">
+        <div class="log-head">
+          <div class="log-title">🗒️ Úkoly</div>
+          <button id="quest-close" class="log-x">✕</button>
+        </div>
+        <div id="quest-body"></div>
+      </div>
+    </div>
+
+    <div id="amulet-overlay" class="hidden">
+      <div id="amulet-card">
+        <div class="big">🧿</div>
+        <div class="ttl" id="amulet-title">Amulet poutníka</div>
+        <div class="stry" id="amulet-story"></div>
+        <div class="fx" id="amulet-fx"></div>
+        <button id="amulet-ok">Vzít amulet</button>
       </div>
     </div>
   </div>
@@ -1037,6 +1092,31 @@
         ctx.fillStyle = '#c0402f';
         ctx.fillRect(bx2, by2, bw * Math.max(0, m.hp / m.maxHp), bh);
       }
+      // cíl aktivního loveckého úkolu – pulzující zlatý prstenec + vykřičník
+      if (activeQuest && activeQuest.type === 'hunt') drawQuestMark(s.x, cy, r);
+    }
+
+    // označení cíle úkolu na mapě (zlatý pulzující prstenec a vykřičník v rohu)
+    function drawQuestMark(x, cy, r) {
+      const qp = (Math.sin(heading * 1.5) + 1) / 2;
+      ctx.beginPath();
+      ctx.arc(x, cy, r + (5 + qp * 4) * DPR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,209,102,' + (0.9 - qp * 0.55).toFixed(2) + ')';
+      ctx.lineWidth = 2.5 * DPR;
+      ctx.stroke();
+      const qx = x + r * .72, qy = cy - r * .72;
+      ctx.beginPath();
+      ctx.arc(qx, qy, 7.5 * DPR, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffd166';
+      ctx.fill();
+      ctx.lineWidth = 2 * DPR;
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+      ctx.fillStyle = '#5a3e00';
+      ctx.font = 'bold ' + (11 * DPR) + 'px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('!', qx, qy + DPR * .5);
     }
 
     function drawHerb(h) {
@@ -1068,6 +1148,8 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(h.icon, s.x, cy);
+      // cíl aktivního sběračského úkolu
+      if (activeQuest && activeQuest.type === 'herbs') drawQuestMark(s.x, cy, r);
     }
 
     function drawPoi(p) {
@@ -1405,6 +1487,7 @@
         monsters = monsters.filter(x => x !== m);
         closeMob();
         if (player) ensureMonsters(player);
+        questProgress('hunt', 1);
       } else if (Math.random() < DODGE_CHANCE) {
         // uhneš protiútoku – bez ztráty HP
         if (player) spawnFloat(player, '✨ Úhyb!', 'dodge');
@@ -1474,6 +1557,7 @@
       closeHerb();
       if (player) ensureHerbs(player);
       saveHerbsState();
+      questProgress('herbs', 1);
     });
 
     // průběžně obnovuj odpočet regenerace / vzdálenost v otevřených panelech
@@ -1704,11 +1788,14 @@
     }
     // reset veškerého postupu (XP, HP, zlaťáky) – navštívená místa v kronice zůstávají
     function resetProgress() {
-      const ok = confirm('Opravdu resetovat veškerý postup?\n\nXP, HP a zlaťáky se vynulují. Navštívená místa v kronice zůstanou zachována.');
+      const ok = confirm('Opravdu resetovat veškerý postup?\n\nXP, HP, zlaťáky, amulet i úkoly se vynulují. Navštívená místa v kronice zůstanou zachována.');
       if (!ok) return;
       xp = 0; saveXp();
       playerHp = playerMaxHp(); saveHp();
       gold = 0; saveGold();
+      amuletLevel = 0; saveAmulet();
+      activeQuest = null; saveQuest();
+      questTakenAt = 0; saveQuestTakenAt();
       updateXpMenuInfo();
       updateHpHud();
       updateGoldHud();
@@ -1790,17 +1877,236 @@
     shopTabArmor.addEventListener('click', () => showShopTab('armor'));
     shopOverlay.addEventListener('click', e => { if (e.target === shopOverlay) closeShop(); });
 
+    // --- úkoly a amulet poutníka ---
+    // 3 druhy úkolů (10 nestvůr / 10 bylin / 1 km cesty); první splněný úkol odmění
+    // amuletem, každý další ho posílí o úroveň – každá úroveň = +1 % max. HP regenerace za minutu
+    const QUEST_KEY = 'pxgo.quest';              // aktivní úkol {type, progress, takenAt}
+    const AMULET_KEY = 'pxgo.amulet';            // úroveň amuletu (0 = zatím nezískán)
+    const QUEST_TAKEN_KEY = 'pxgo.questTakenAt'; // kdy byl naposledy přijat úkol
+    const QUEST_COOLDOWN_MS = 86400000;          // nový úkol lze vzít jednou za 24 h
+    const QUEST_TYPES = [
+      { id: 'hunt', icon: '⚔️', name: 'Vyčisti stezky', target: 10, unit: 'nestvůr',
+        offer: 'Poraz 10 nestvůr.',
+        story: 'Stařec u milníku ti vtiskne do dlaně zmuchlaný lístek: „Stíny houstnou a nestvůry se stahují k lidským stezkám. Poraz jich deset, poutníku – označil jsem ti je na mapě."' },
+      { id: 'herbs', icon: '🌿', name: 'Bylinářčina prosba', target: 10, unit: 'bylin',
+        offer: 'Nasbírej 10 bylin či pokladů.',
+        story: '„Zásoby došly a nemocní čekají," šeptá bylinářka nad prázdným hmoždířem. „Přines mi deset bylin z divočiny a odměna tě nemine."' },
+      { id: 'travel', icon: '🥾', name: 'Poutníkova cesta', target: 1000, unit: 'm',
+        offer: 'Ujdi 1 kilometr.',
+        story: '„Kdo stojí, ten rezaví," hlásá nápis vyrytý do starého milníku. „Ujdi tisíc kroků světem a cesta sama ti ukáže, co jsi měl najít."' },
+    ];
+    const AMULET_STORY = 'Za splněný úkol ti do dlaně padá matně zářící kámen na koženém řemínku – Amulet poutníka. Prastarý artefakt, který tiše hojí rány svého nositele a sílí s každým dalším splněným úkolem. Najdeš ho v menu po klepnutí na HP lištu.';
+    function loadQuest() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(QUEST_KEY) || 'null');
+        if (raw && QUEST_TYPES.some(t => t.id === raw.type) && typeof raw.progress === 'number') return raw;
+      } catch (e) {}
+      return null;
+    }
+    let activeQuest = loadQuest();
+    function saveQuest() { try { localStorage.setItem(QUEST_KEY, JSON.stringify(activeQuest)); } catch (e) {} }
+    function loadAmulet() {
+      try { const v = parseInt(localStorage.getItem(AMULET_KEY) || '0', 10); return isNaN(v) ? 0 : v; }
+      catch (e) { return 0; }
+    }
+    let amuletLevel = loadAmulet();
+    function saveAmulet() { try { localStorage.setItem(AMULET_KEY, String(amuletLevel)); } catch (e) {} }
+    function loadQuestTakenAt() {
+      try { const v = parseInt(localStorage.getItem(QUEST_TAKEN_KEY) || '0', 10); return isNaN(v) ? 0 : v; }
+      catch (e) { return 0; }
+    }
+    let questTakenAt = loadQuestTakenAt();
+    function saveQuestTakenAt() { try { localStorage.setItem(QUEST_TAKEN_KEY, String(questTakenAt)); } catch (e) {} }
+
+    function questDef(q) { return QUEST_TYPES.find(t => t.id === q.type); }
+    function questProgressText(q) {
+      const def = questDef(q);
+      const cur = q.type === 'travel' ? Math.round(q.progress) : q.progress;
+      return cur + ' / ' + def.target + ' ' + def.unit;
+    }
+    function fmtRemaining(ms) {
+      const min = Math.ceil(ms / 60000);
+      if (min < 60) return min + ' min';
+      const h = Math.floor(min / 60), m = min % 60;
+      return h + ' h' + (m ? ' ' + m + ' min' : '');
+    }
+
+    // sledování ušlé vzdálenosti pro úkol „Poutníkova cesta"
+    let lastTravelPos = null;
+    function questTravel(pos) {
+      if (!lastTravelPos) { lastTravelPos = pos; return; }
+      const d = metersBetween(lastTravelPos, pos);
+      if (d > 500) { lastTravelPos = pos; return; }  // GPS skok/teleport – nepočítat
+      if (d < 2) return;                             // šum polohy – čekej na skutečný posun
+      lastTravelPos = pos;
+      questProgress('travel', d);
+    }
+
+    function questProgress(type, amount) {
+      const q = activeQuest;
+      if (!q || q.type !== type) return;
+      const def = questDef(q);
+      q.progress = Math.min(def.target, q.progress + amount);
+      saveQuest();
+      if (q.progress >= def.target) {
+        completeQuest(def);
+      } else if (type !== 'travel') {
+        // toast s postupem až po chvíli, ať nepřepíše hlášku o zabití/sběru
+        const txt = def.icon + ' Úkol: ' + questProgressText(q);
+        setTimeout(() => showToast(txt, 2000), 1400);
+      }
+      if (!questOverlay.classList.contains('hidden')) renderQuestBody();
+    }
+    function completeQuest(def) {
+      activeQuest = null;
+      saveQuest();
+      amuletLevel += 1;
+      saveAmulet();
+      showAmuletOverlay(amuletLevel === 1, def);
+    }
+
+    // amulet pomalu hojí nositele – každá úroveň obnoví navíc 1 % max. HP za minutu
+    let amuletRegenAcc = 0;
+    setInterval(function () {
+      if (amuletLevel <= 0) return;
+      const max = playerMaxHp();
+      if (playerHp >= max) { amuletRegenAcc = 0; return; }
+      amuletRegenAcc += max * amuletLevel / 100 / 60;
+      if (amuletRegenAcc < 1) return;
+      const heal = Math.floor(amuletRegenAcc);
+      amuletRegenAcc -= heal;
+      playerHp = Math.min(max, playerHp + heal);
+      saveHp();
+      updateHpHud();
+      if (selectedMob) updateMobPanel();
+    }, 1000);
+
+    // panel úkolů (otevírá se z menu)
+    const questOverlay = document.getElementById('quest-overlay');
+    const questBodyEl = document.getElementById('quest-body');
+    function takeQuest(id) {
+      if (activeQuest) return;
+      if (Date.now() - questTakenAt < QUEST_COOLDOWN_MS) return;
+      const def = QUEST_TYPES.find(t => t.id === id);
+      if (!def) return;
+      activeQuest = { type: id, progress: 0, takenAt: Date.now() };
+      questTakenAt = Date.now();
+      saveQuest();
+      saveQuestTakenAt();
+      if (id === 'travel') lastTravelPos = player ? { lat: player.lat, lng: player.lng } : null;
+      renderQuestBody();
+      showToast(def.icon + ' Úkol přijat: ' + def.name, 2600);
+    }
+    function renderQuestBody() {
+      questBodyEl.innerHTML = '';
+      if (amuletLevel > 0) {
+        const a = document.createElement('div');
+        a.className = 'quest-amulet';
+        a.innerHTML = '<div class="ic">🧿</div><div><div class="nm"></div><div class="fx"></div></div>';
+        a.querySelector('.nm').textContent = 'Amulet poutníka · úroveň ' + amuletLevel;
+        a.querySelector('.fx').textContent = 'Obnovuje navíc ' + amuletLevel + ' % max. HP za minutu';
+        questBodyEl.appendChild(a);
+      }
+      if (activeQuest) {
+        const def = questDef(activeQuest);
+        const h = document.createElement('div');
+        h.className = 'quest-head-note';
+        h.textContent = def.icon + ' ' + def.name;
+        questBodyEl.appendChild(h);
+        const st = document.createElement('div');
+        st.className = 'quest-story';
+        st.textContent = def.story;
+        questBodyEl.appendChild(st);
+        const lbl = document.createElement('div');
+        lbl.className = 'quest-progress-label';
+        lbl.textContent = '📈 Postup úkolu';
+        questBodyEl.appendChild(lbl);
+        const bar = document.createElement('div');
+        bar.className = 'quest-bar';
+        bar.innerHTML = '<i></i><span></span>';
+        bar.querySelector('i').style.width = Math.min(100, activeQuest.progress / def.target * 100) + '%';
+        bar.querySelector('span').textContent = questProgressText(activeQuest);
+        questBodyEl.appendChild(bar);
+        if (def.id !== 'travel') {
+          const note = document.createElement('div');
+          note.className = 'quest-note';
+          note.textContent = def.id === 'hunt'
+            ? '❗ Nestvůry úkolu jsou označené na mapě zlatým vykřičníkem.'
+            : '❗ Byliny úkolu jsou označené na mapě zlatým vykřičníkem.';
+          questBodyEl.appendChild(note);
+        }
+      } else {
+        const waitMs = questTakenAt + QUEST_COOLDOWN_MS - Date.now();
+        if (waitMs <= 0) {
+          const h = document.createElement('div');
+          h.className = 'quest-head-note';
+          h.textContent = 'Vyber si nový úkol';
+          questBodyEl.appendChild(h);
+          for (const def of QUEST_TYPES) {
+            const row = document.createElement('div');
+            row.className = 'quest-offer';
+            row.innerHTML = '<div class="ic"></div><div class="info"><div class="nm"></div><div class="ds"></div></div><button>Přijmout</button>';
+            row.querySelector('.ic').textContent = def.icon;
+            row.querySelector('.nm').textContent = def.name;
+            row.querySelector('.ds').textContent = def.offer;
+            row.querySelector('button').addEventListener('click', () => takeQuest(def.id));
+            questBodyEl.appendChild(row);
+          }
+          const note = document.createElement('div');
+          note.className = 'quest-note';
+          note.textContent = 'Nový úkol si můžeš vzít jednou za 24 hodin. Každý splněný úkol '
+            + (amuletLevel > 0 ? 'posílí amulet o úroveň' : 'tě odmění amuletem')
+            + ' – každá úroveň = +1 % max. HP regenerace za minutu.';
+          questBodyEl.appendChild(note);
+        } else {
+          const note = document.createElement('div');
+          note.className = 'quest-note';
+          note.textContent = '⏳ Další úkol si můžeš vzít za ' + fmtRemaining(waitMs) + '.';
+          questBodyEl.appendChild(note);
+        }
+      }
+    }
+    function openQuests() { renderQuestBody(); questOverlay.classList.remove('hidden'); }
+    function closeQuests() { questOverlay.classList.add('hidden'); }
+    document.getElementById('quest-close').addEventListener('click', closeQuests);
+    questOverlay.addEventListener('click', e => { if (e.target === questOverlay) closeQuests(); });
+
+    // slavnostní karta – první získání amuletu (intro příběh) / posílení na další úroveň
+    const amuletOverlay = document.getElementById('amulet-overlay');
+    function showAmuletOverlay(first, def) {
+      document.getElementById('amulet-title').textContent = first ? 'Amulet poutníka' : 'Amulet posílil!';
+      document.getElementById('amulet-story').textContent = first
+        ? AMULET_STORY
+        : 'Úkol „' + def.name + '" je splněn. Kámen amuletu se rozzáří jasněji a jeho hojivá moc roste.';
+      document.getElementById('amulet-fx').textContent = '🧿 Úroveň ' + amuletLevel + ' · obnovuje navíc ' + amuletLevel + ' % max. HP za minutu';
+      document.getElementById('amulet-ok').textContent = first ? '🧿 Vzít amulet' : 'Pokračovat';
+      amuletOverlay.classList.remove('hidden');
+    }
+    document.getElementById('amulet-ok').addEventListener('click', () => amuletOverlay.classList.add('hidden'));
+
     // --- menu otevřené klepnutím na HUD (HP/XP) ---
     const hudMenuOverlay = document.getElementById('hud-menu-overlay');
+    // řádek s amuletem v menu – objeví se až po jeho získání
+    const amuletMenuInfoEl = document.getElementById('hud-menu-amulet-info');
+    function updateAmuletMenuInfo() {
+      if (amuletLevel > 0) {
+        amuletMenuInfoEl.style.display = '';
+        amuletMenuInfoEl.textContent = '🧿 Amulet úr. ' + amuletLevel + ' – navíc +' + amuletLevel + ' % max. HP/min';
+      } else {
+        amuletMenuInfoEl.style.display = 'none';
+      }
+    }
     function openHudMenu() {
       updateXpMenuInfo();
       updateHpMenuInfo();
       updateCombatMenuInfo();
+      updateAmuletMenuInfo();
       hudMenuOverlay.classList.remove('hidden');
     }
     function closeHudMenu() { hudMenuOverlay.classList.add('hidden'); }
     document.getElementById('hud').addEventListener('click', openHudMenu);
     document.getElementById('hud-menu-close').addEventListener('click', closeHudMenu);
+    document.getElementById('hud-menu-quests').addEventListener('click', () => { closeHudMenu(); openQuests(); });
     document.getElementById('hud-menu-shop').addEventListener('click', () => { closeHudMenu(); openShop(); });
     document.getElementById('hud-menu-log').addEventListener('click', () => { closeHudMenu(); openLog(); });
     document.getElementById('hud-menu-reset').addEventListener('click', () => { closeHudMenu(); resetProgress(); });
@@ -1829,6 +2135,7 @@
       } else if (following) {
         view = { lat: player.lat, lng: player.lng };
       }
+      questTravel({ lat, lng });   // ušlá vzdálenost pro úkol „Poutníkova cesta"
       // pokud je panel otevřený, aktualizuj vzdálenost/tlačítko
       if (selected) updatePoiButtons();
       if (selectedMob) updateMobPanel();

@@ -1794,13 +1794,15 @@
       logOverlay.classList.add('hidden');
       clearInterval(logMapTimer); logMapTimer = null;
     }
-    // reset veškerého postupu (XP, HP, zlaťáky) – navštívená místa v kronice zůstávají
+    // úplný reset postupu – jedinou výjimkou jsou navštívená místa v kronice
     function resetProgress() {
-      const ok = confirm('Opravdu resetovat veškerý postup?\n\nXP, HP, zlaťáky, amulet i úkoly se vynulují. Navštívená místa v kronice zůstanou zachována.');
+      const ok = confirm('Opravdu resetovat veškerý postup?\n\nXP, HP, zlaťáky, koupená výbava, amulet i úkoly se vynulují. Navštívená místa v kronice zůstanou zachována.');
       if (!ok) return;
       xp = 0; saveXp();
       playerHp = playerMaxHp(); saveHp();
       gold = 0; saveGold();
+      inventory = { ownedWeapons: ['w0'], ownedArmors: ['a0'], weapon: 'w0', armor: 'a0' };
+      saveInventory();
       amuletLevel = 0; saveAmulet();
       activeQuest = null; saveQuest();
       questTakenAt = 0; saveQuestTakenAt();

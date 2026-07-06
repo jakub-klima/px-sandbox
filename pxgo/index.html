@@ -604,7 +604,7 @@
     const HP_KEY = 'pxgo.hp';
     const REGEN_MS = 16000;  // +1 HP každých 16 s (pomalá regenerace)
     const HP_BASE = 40;
-    const HP_PER_XP = 0.06;  // získané XP postupně (bez skoků na "úroveň") zvyšují max. HP
+    const HP_PER_XP = 0.03;  // získané XP postupně (bez skoků na "úroveň") zvyšují max. HP
     function playerMaxHp() { return Math.round(HP_BASE + xp * HP_PER_XP); }
     let playerHp = loadHp();
     function loadHp() {
@@ -633,7 +633,7 @@
       return true;
     }
     // odměna zlaťáků za poražení nestvůry – dle jejího tieru
-    function mobGoldReward(m) { const t2 = m.tier * m.tier; return t2 * 6 + Math.floor(Math.random() * (t2 * 8 + 1)); }
+    function mobGoldReward(m) { const t2 = m.tier * m.tier; return t2 * 3 + Math.floor(Math.random() * (t2 * 4 + 1)); }
     // odměna zlaťáků za nalezený poklad (jen vzácnější byliny tieru 2, ne obyčejné byliny)
     function treasureGoldReward() { return 20 + Math.floor(Math.random() * 41); }
 

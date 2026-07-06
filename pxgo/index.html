@@ -642,13 +642,13 @@
       { id: 'w0', icon: '🗡️', name: 'Rezavá dýka',        cost: 0,   atk: 0,  desc: 'Základní zbraň – žádný bonus.' },
       { id: 'w1', icon: '⚔️', name: 'Ocelový meč',         cost: 80,  atk: 4,  desc: '+4 síla útoku' },
       { id: 'w2', icon: '🪓', name: 'Válečná sekera',      cost: 180, atk: 8,  desc: '+8 síla útoku' },
-      { id: 'w3', icon: '🔱', name: 'Trojzubec stínů',     cost: 350, atk: 14, desc: '+14 síla útoku' },
+      { id: 'w3', icon: '🔱', name: 'Trojzubec stínů',     cost: 400, atk: 14, desc: '+14 síla útoku' },
     ];
     const ARMORS = [
       { id: 'a0', icon: '👕', name: 'Otrhaný hábit',       cost: 0,   def: 0, desc: 'Základní oděv – žádná obrana.' },
       { id: 'a1', icon: '🥋', name: 'Kožená zbroj',        cost: 70,  def: 2, desc: '-2 přijaté zranění' },
       { id: 'a2', icon: '🛡️', name: 'Kroužková zbroj',     cost: 160, def: 5, desc: '-5 přijaté zranění' },
-      { id: 'a3', icon: '🦾', name: 'Runová plátová zbroj', cost: 320, def: 9, desc: '-9 přijaté zranění' },
+      { id: 'a3', icon: '🦾', name: 'Runová plátová zbroj', cost: 370, def: 9, desc: '-9 přijaté zranění' },
     ];
     const INV_KEY = 'pxgo.inventory';
     function loadInventory() {
@@ -778,7 +778,8 @@
       const pool = MOB_TYPES.filter(m => m.tier === tier);
       const t = pool[Math.floor(Math.random() * pool.length)];
       const t2 = tier * tier;
-      const maxHp = t2 * 8 + 2 + Math.floor(Math.random() * t2 * 4);
+      const eliteHp = tier === 3 ? 14 : 0;   // tier 3 je o kus tužší než by odpovídalo křivce
+      const maxHp = t2 * 8 + 2 + eliteHp + Math.floor(Math.random() * t2 * 4);
       const pos = randomPointNear(center, MOB_MIN, MOB_MAX);
       return { id: ++mobSeq, ...t, ...pos, maxHp, hp: maxHp, xp: t2 * 15, relocateAt: relocateTime() };
     }
@@ -1545,7 +1546,8 @@
         updateMobPanel();
       } else {
         // přeživší nestvůra ti vrátí úder (silnější), zbroj část zranění pohltí
-        const rawBack = m.tier * m.tier * 3 + 2 + Math.floor(Math.random() * m.tier * 3);
+        const eliteDmg = m.tier === 3 ? 4 : 0;   // tier 3 udeří o kus tvrději
+        const rawBack = m.tier * m.tier * 3 + 2 + eliteDmg + Math.floor(Math.random() * m.tier * 3);
         const back = Math.max(1, rawBack - equippedArmor().def);
         playerHp = Math.max(0, playerHp - back);
         saveHp();

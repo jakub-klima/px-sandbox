@@ -1,0 +1,2317 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Pxplore – temné RPG s polohou a mapou</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      background: #0d1b2a;
+      font-family: system-ui, -apple-system, sans-serif;
+      -webkit-user-select: none;
+      user-select: none;
+      overflow: hidden;
+    }
+    #app {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    #map {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+    /* horní lišta */
+    #topbar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      display: flex;
+      justify-content: flex-start;
+      padding: 12px 16px;
+      background: linear-gradient(180deg, rgba(13,27,42,.9), rgba(13,27,42,0));
+      color: #fff;
+      pointer-events: none;
+    }
+    /* HP a XP jako jeden svázaný HUD blok */
+    #hud {
+      display: flex;
+      flex-direction: column;
+      width: min(42vw, 150px);
+      border: 1px solid #6b5836;
+      border-radius: 10px;
+      background: rgba(20,16,12,.78);
+      box-shadow: 0 2px 10px rgba(0,0,0,.5);
+      overflow: hidden;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+    #hud .bar { position: relative; height: 18px; }
+    #hud .bar + .bar { border-top: 1px solid rgba(0,0,0,.4); }
+    #hud .bar > i { display: block; height: 100%; width: 0; transition: width .3s; }
+    #hud .bar > span { position: absolute; inset: 0; text-align: center; font-size: 11px; font-weight: 700; color: #fff; line-height: 18px; text-shadow: 0 1px 2px rgba(0,0,0,.85); }
+    /* tlačítka vpravo dole */
+    #buttons {
+      position: absolute;
+      right: 16px;
+      bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    #buttons button {
+      position: relative;
+      width: 51px;
+      height: 51px;
+      border: none;
+      border-radius: 50%;
+      background: #1b9aaa;
+      color: #fff;
+      font-size: 22px;
+      cursor: pointer;
+      box-shadow: 0 6px 16px rgba(0,0,0,.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #buttons button:active { transform: scale(.92); }
+    /* stavová hláška uprostřed (např. čekání na GPS) */
+    #status {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(13,27,42,.92);
+      color: #e0e1dd;
+      padding: 22px 26px;
+      border-radius: 16px;
+      max-width: 80%;
+      text-align: center;
+      font-size: 15px;
+      line-height: 1.5;
+      box-shadow: 0 10px 30px rgba(0,0,0,.5);
+    }
+    #status button {
+      margin-top: 16px;
+      border: none;
+      background: #1b9aaa;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 22px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    #status.hidden { display: none; }
+    /* spodní panel s detailem PoI */
+    #poi-panel {
+      position: absolute;
+      left: 12px; right: 12px;
+      bottom: 24px;
+      background: #1b263b;
+      color: #e0e1dd;
+      border-radius: 18px;
+      padding: 18px 20px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.55);
+      transform: translateY(160%);
+      transition: transform .28s cubic-bezier(.2,.8,.2,1);
+    }
+    #poi-panel.open { transform: translateY(0); }
+    #poi-panel .head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    #poi-panel .icon {
+      font-size: 34px;
+      width: 54px; height: 54px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,.08);
+      border-radius: 14px;
+      flex-shrink: 0;
+    }
+    #poi-panel .title { font-size: 19px; font-weight: 700; }
+    #poi-panel .type { font-size: 13px; color: #9fb3c8; margin-top: 2px; }
+    #poi-panel .desc { margin-top: 12px; font-size: 14px; line-height: 1.55; }
+    #poi-panel .dist { margin-top: 10px; font-size: 13px; color: #1b9aaa; font-weight: 600; }
+    #poi-panel .actions { margin-top: 16px; display: flex; gap: 10px; }
+    #poi-panel .actions button {
+      flex: 1;
+      border: none;
+      border-radius: 22px;
+      padding: 12px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    #poi-panel .collect { background: #1b9aaa; color: #fff; }
+    #poi-panel .collect:disabled { background: #3a4a5a; color: #8a99a8; cursor: default; }
+    #poi-panel .close { background: rgba(255,255,255,.1); color: #e0e1dd; flex: 0 0 56px; }
+    .hint { font-size: 13px; color: #9fb3c8; }
+    /* atribuce dlaždic (vyžaduje OpenStreetMap) */
+    #attribution {
+      position: absolute;
+      left: 0; bottom: 0;
+      background: rgba(255,255,255,.7);
+      color: #333;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-top-right-radius: 6px;
+      pointer-events: auto;
+    }
+    #attribution a { color: #1b6fa8; }
+    /* barvy výplně HP a XP pruhů v HUDu */
+    #hp > i { background: linear-gradient(180deg,#d94a3a,#8a1f16); }
+    #gold > i { width: 100%; background: linear-gradient(180deg,#e8c34a,#a8780a); }
+    /* informační bublina (načítání míst apod.) */
+    #toast {
+      position: absolute;
+      top: 80px; left: 50%;
+      transform: translateX(-50%) translateY(-12px);
+      background: rgba(13,27,42,.92);
+      color: #e0e1dd;
+      padding: 9px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      box-shadow: 0 6px 18px rgba(0,0,0,.4);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s, transform .25s;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    /* vyskakující "+XP" po prozkoumání místa */
+    .xp-float {
+      position: absolute;
+      color: #ffd166;
+      font-weight: 800;
+      font-size: 22px;
+      text-shadow: 0 2px 6px rgba(0,0,0,.6);
+      pointer-events: none;
+      z-index: 5;  /* nad mapou a panely, ale pod overlay kartami (z-index 10+) */
+      white-space: nowrap;
+      animation: xpfloat 1.2s ease-out forwards;
+    }
+    .xp-float.first { color: #ffe08a; font-size: 26px; }
+    @keyframes xpfloat {
+      0%   { opacity: 0; transform: translate(-50%, -50%) scale(.6); }
+      20%  { opacity: 1; }
+      100% { opacity: 0; transform: translate(-50%, -180%) scale(1.1); }
+    }
+    /* ===== temný RPG motiv (à la Gloomhaven) ===== */
+    html, body { background: #100d0b; color: #d9c7a3; }
+    /* ponuré ztmavení okrajů mapy (dungeon vibe) */
+    #vignette {
+      position: absolute; inset: 0; pointer-events: none; z-index: 1;
+      background: radial-gradient(135% 105% at 50% 45%,
+        rgba(20,15,10,0) 62%, rgba(24,17,11,.22) 88%, rgba(18,12,8,.4) 100%);
+    }
+    /* UI nad vinětu */
+    #topbar, #buttons, #status, #poi-panel, #mob-panel, #herb-panel, #toast, #attribution { z-index: 2; }
+    #topbar { background: linear-gradient(180deg, rgba(16,13,11,.92), rgba(16,13,11,0)); }
+    #hp.low > i { background: linear-gradient(180deg,#ff7a5a,#b3402f); }
+    #hp.empty { animation: hppulse 1s infinite; }
+    #hp.empty > i { background: #ff6b6b; }
+    @keyframes hppulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+    /* menu otevřené klepnutím na HUD (HP/XP) – kronika a reset postupu */
+    #hud-menu-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
+    #hud-menu-overlay.hidden { display: none; }
+    #hud-menu-card { width: min(84vw,300px); background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); overflow: hidden; }
+    #hud-menu-actions { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+    #hud-menu-actions button { padding: 14px; border: 1px solid #6b5836; border-radius: 10px; background: #2a231b; color: #e8d8b0; font-size: 15px; font-weight: 700; cursor: pointer; text-align: left; }
+    #hud-menu-actions button:active { transform: scale(.97); }
+    .hud-menu-info { padding: 2px 4px; font-size: 13px; color: #caa84a; font-weight: 600; text-align: center; }
+    /* kronika navštívených míst (přehled: seznam + mapa) */
+    #log-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
+    #log-overlay.hidden { display: none; }
+    #log-card { width: min(94vw,520px); max-height: 86vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); overflow: hidden; }
+    .log-head { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid #4a3f29; }
+    .log-title { font-family: Georgia, serif; font-size: 19px; color: #e8d8b0; font-weight: 700; }
+    .log-x { margin-left: auto; width: 36px; height: 36px; border: 1px solid #6b5836; border-radius: 8px; background: #2a241d; color: #d9c7a3; font-size: 16px; cursor: pointer; }
+    .log-tabs { display: flex; gap: 8px; padding: 12px 16px 0; }
+    .log-tabs button { flex: 1; padding: 9px; border: 1px solid #6b5836; border-bottom: none; border-radius: 8px 8px 0 0; background: #1c1712; color: #a08c6a; font-weight: 700; cursor: pointer; }
+    .log-tabs button.active { background: #2a231b; color: #e8d8b0; }
+    #log-list { padding: 4px 12px 14px; overflow: auto; }
+    #log-map-wrap { padding: 12px 16px 16px; }
+    #log-map { width: 100%; height: min(60vh,420px); border: 1px solid #6b5836; border-radius: 10px; display: block; background: #16324a; }
+    .log-count { padding: 10px 6px 6px; font-size: 13px; color: #caa84a; font-weight: 600; }
+    .log-row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid #332b1d; cursor: pointer; }
+    .log-row:active { background: rgba(255,255,255,.05); }
+    .log-ic { font-size: 24px; width: 40px; text-align: center; flex-shrink: 0; }
+    .log-info { flex: 1; min-width: 0; }
+    .log-name { color: #e8d8b0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .log-meta { font-size: 12px; color: #a08c6a; margin-top: 2px; }
+    .log-empty { padding: 28px 16px; text-align: center; color: #a08c6a; line-height: 1.5; }
+    /* obchod – nákup a výbava zbraní a zbroje za zlaťáky */
+    #shop-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
+    #shop-overlay.hidden { display: none; }
+    #shop-card { width: min(94vw,520px); max-height: 86vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); overflow: hidden; }
+    .shop-head { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid #4a3f29; }
+    .shop-title { font-family: Georgia, serif; font-size: 19px; color: #e8d8b0; font-weight: 700; }
+    .shop-gold { margin-left: auto; margin-right: 10px; font-size: 14px; color: #ffd166; font-weight: 700; }
+    .shop-tabs { display: flex; gap: 8px; padding: 12px 16px 0; }
+    .shop-tabs button { flex: 1; padding: 9px; border: 1px solid #6b5836; border-bottom: none; border-radius: 8px 8px 0 0; background: #1c1712; color: #a08c6a; font-weight: 700; cursor: pointer; }
+    .shop-tabs button.active { background: #2a231b; color: #e8d8b0; }
+    #shop-list { padding: 4px 12px 14px; overflow: auto; }
+    .shop-row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid #332b1d; }
+    .shop-ic { font-size: 26px; width: 40px; text-align: center; flex-shrink: 0; }
+    .shop-info { flex: 1; min-width: 0; }
+    .shop-name { color: #e8d8b0; font-weight: 600; }
+    .shop-stat { font-size: 12px; color: #a08c6a; margin-top: 2px; }
+    .shop-action { flex-shrink: 0; border: 1px solid #6b5836; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer; background: #2a231b; color: #e8d8b0; }
+    .shop-action.equipped { background: #3a5a2e; color: #f2e6c8; cursor: default; border-color: #4a6b30; }
+    .shop-action:disabled { background: #241d17; color: #6a5f4a; cursor: default; }
+    #buttons button { background: linear-gradient(180deg,#2a231b,#1c1712); border: 1px solid #6b5836; border-radius: 10px; color: #e8d8b0; }
+    #status { background: #1c1712; border: 1px solid #6b5836; color: #d9c7a3; border-radius: 12px; }
+    #status button { background: #2a231b; border: 1px solid #6b5836; color: #e8d8b0; border-radius: 8px; }
+    #toast { background: #1c1712; border: 1px solid #6b5836; color: #e8d8b0; border-radius: 8px; }
+    #attribution { background: rgba(20,16,12,.7); color: #bbb; }
+    #attribution a { color: #caa84a; }
+    .hint { color: #a08c6a; }
+    .xp-float { color: #e8c34a; }
+    .xp-float.kill { color: #e07a5f; }
+    .xp-float.hit { color: #f08a6a; font-size: 18px; }
+    .xp-float.crit { color: #ff4d4d; font-size: 30px; }
+    .xp-float.dodge { color: #7ad1ff; font-style: italic; }
+    .xp-float.herb { color: #8bd17a; }
+    .xp-float.treasure { color: #ffd54a; font-size: 26px; }
+
+    /* panel místa – temná „parchment" varianta */
+    #poi-panel { background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; color: #d9c7a3; border-radius: 14px; }
+    #poi-panel .icon { background: rgba(0,0,0,.35); border: 1px solid #6b5836; border-radius: 10px; }
+    #poi-panel .title { font-family: Georgia, serif; color: #e8d8b0; }
+    #poi-panel .type { color: #a08c6a; }
+    #poi-panel .desc { font-style: italic; color: #c2b18d; }
+    #poi-panel .dist { color: #caa84a; }
+    #poi-panel .collect { background: linear-gradient(180deg,#3a5a2e,#26401d); color: #f2e6c8; border: 1px solid #6b5836; border-radius: 8px; }
+    #poi-panel .collect:disabled { background: #2a241d; color: #7a6f5a; border-color: #473a26; }
+    #poi-panel .close { background: #2a241d; color: #d9c7a3; border: 1px solid #6b5836; border-radius: 8px; }
+
+    /* panel nestvůry (krvavější tón) */
+    #mob-panel {
+      position: absolute; left: 12px; right: 12px; bottom: 24px;
+      background: linear-gradient(180deg,#2a1916,#1a100e);
+      border: 1px solid #7a3a30; color: #d9c7a3; border-radius: 14px;
+      padding: 18px 20px; box-shadow: 0 12px 30px rgba(0,0,0,.7);
+      transform: translateY(180%); transition: transform .28s cubic-bezier(.2,.8,.2,1);
+    }
+    #mob-panel.open { transform: translateY(0); }
+    #mob-panel .head { display: flex; align-items: center; gap: 12px; }
+    #mob-panel .icon { font-size: 34px; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.4); border: 1px solid #7a3a30; border-radius: 10px; flex-shrink: 0; }
+    #mob-panel .icon.shake { animation: mobshake .35s; }
+    @keyframes mobshake {
+      0%, 100% { transform: translate(0, 0); }
+      20% { transform: translate(-4px, 2px); }
+      40% { transform: translate(4px, -2px); }
+      60% { transform: translate(-3px, 1px); }
+      80% { transform: translate(3px, -1px); }
+    }
+    #mob-panel .title { font-family: Georgia, serif; font-size: 20px; font-weight: 700; color: #f0c9a0; }
+    #mob-panel .type { font-size: 13px; color: #bf8a6a; margin-top: 2px; }
+    #mob-panel .desc { margin-top: 12px; font-size: 14px; line-height: 1.5; font-style: italic; color: #c8a98f; }
+    #mob-panel .dist { margin-top: 10px; font-size: 13px; color: #caa84a; font-weight: 600; }
+    #mob-panel .actions { margin-top: 14px; display: flex; gap: 10px; }
+    #mob-panel .actions button { flex: 1; border: 1px solid #7a3a30; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 700; cursor: pointer; color: #f2e6c8; }
+    #mob-panel .attack { background: linear-gradient(180deg,#8c2f2a,#5c1e1b); }
+    #mob-panel .actions button:disabled { background: #2a201d; color: #7a6f5a; border-color: #4a2e28; cursor: default; }
+    #mob-panel .close { background: #2a201d; color: #d9c7a3; flex: 0 0 56px; }
+    /* HP lišta nestvůry */
+    .hpbar { margin-top: 12px; height: 16px; border: 1px solid #7a3a30; border-radius: 8px; background: #140d0b; overflow: hidden; position: relative; }
+    .hpbar > i { display: block; height: 100%; width: 100%; background: linear-gradient(180deg,#c0402f,#7a201c); transition: width .2s; }
+    .hpbar > span { position: absolute; inset: 0; text-align: center; font-size: 11px; font-weight: 700; color: #f2e6c8; line-height: 16px; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+
+    /* panel byliny / pokladu (přírodní zelenozlatý tón) */
+    #herb-panel {
+      position: absolute; left: 12px; right: 12px; bottom: 24px;
+      background: linear-gradient(180deg,#1c2417,#12160e);
+      border: 1px solid #4a6b30; color: #d9e0c8; border-radius: 14px;
+      padding: 18px 20px; box-shadow: 0 12px 30px rgba(0,0,0,.7);
+      transform: translateY(180%); transition: transform .28s cubic-bezier(.2,.8,.2,1);
+    }
+    #herb-panel.open { transform: translateY(0); }
+    #herb-panel .head { display: flex; align-items: center; gap: 12px; }
+    #herb-panel .icon { font-size: 34px; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.4); border: 1px solid #4a6b30; border-radius: 10px; flex-shrink: 0; }
+    #herb-panel .title { font-family: Georgia, serif; font-size: 20px; font-weight: 700; color: #d8e8a0; }
+    #herb-panel .type { font-size: 13px; color: #9ab87a; margin-top: 2px; }
+    #herb-panel .desc { margin-top: 12px; font-size: 14px; line-height: 1.5; font-style: italic; color: #b8c8a0; }
+    #herb-panel .dist { margin-top: 10px; font-size: 13px; color: #caa84a; font-weight: 600; }
+    #herb-panel .actions { margin-top: 14px; display: flex; gap: 10px; }
+    #herb-panel .actions button { flex: 1; border: 1px solid #4a6b30; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 700; cursor: pointer; color: #f2e6c8; }
+    #herb-panel .collect { background: linear-gradient(180deg,#3a6b2a,#26401d); }
+    #herb-panel .actions button:disabled { background: #202a1d; color: #7a8a5a; border-color: #2e4a26; cursor: default; }
+    #herb-panel .close { background: #202a1d; color: #d9e0c8; flex: 0 0 56px; }
+
+    /* úkoly a amulet poutníka */
+    #quests-badge { position: absolute; top: -5px; right: -5px; background: #ffd166; color: #5a3e00; font-size: 10px; font-weight: 800; padding: 3px 5px; border-radius: 9px; border: 1px solid #fff; line-height: 1; }
+    #quests-badge.hidden { display: none; }
+    #quest-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
+    #quest-overlay.hidden { display: none; }
+    #quest-card { width: min(94vw,520px); max-height: 86vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); overflow: hidden; }
+    #quest-body { padding: 14px 16px 16px; overflow: auto; }
+    .quest-amulet { display: flex; align-items: center; gap: 12px; padding: 12px; margin-bottom: 12px; border: 1px solid #3a5a7a; border-radius: 10px; background: rgba(40,70,100,.18); }
+    .quest-amulet .ic { font-size: 30px; flex-shrink: 0; }
+    .quest-amulet .nm { color: #a8d0f0; font-weight: 700; }
+    .quest-amulet .fx { font-size: 12px; color: #7aa8c8; margin-top: 2px; }
+    .quest-head-note { font-family: Georgia, serif; font-size: 16px; color: #e8d8b0; font-weight: 700; margin: 4px 0 2px; }
+    .quest-story { font-style: italic; color: #c2b18d; font-size: 14px; line-height: 1.55; margin: 8px 0 12px; }
+    .quest-progress-label { font-size: 13px; color: #caa84a; font-weight: 600; margin-bottom: 6px; }
+    .quest-bar { height: 16px; border: 1px solid #6b5836; border-radius: 8px; background: #140d0b; overflow: hidden; position: relative; }
+    .quest-bar > i { display: block; height: 100%; width: 0; background: linear-gradient(180deg,#caa84a,#8a6d1a); transition: width .3s; }
+    .quest-bar > span { position: absolute; inset: 0; text-align: center; font-size: 11px; font-weight: 700; color: #f2e6c8; line-height: 16px; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+    .quest-offer { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid #332b1d; }
+    .quest-offer .ic { font-size: 26px; width: 40px; text-align: center; flex-shrink: 0; }
+    .quest-offer .info { flex: 1; min-width: 0; }
+    .quest-offer .nm { color: #e8d8b0; font-weight: 600; }
+    .quest-offer .ds { font-size: 12px; color: #a08c6a; margin-top: 2px; }
+    .quest-offer button { flex-shrink: 0; border: 1px solid #6b5836; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer; background: #2a231b; color: #e8d8b0; }
+    .quest-note { padding: 12px 4px; font-size: 13px; color: #a08c6a; line-height: 1.5; text-align: center; }
+    /* karta odměny po vyhraném souboji */
+    #victory-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; }
+    #victory-overlay.hidden { display: none; }
+    #victory-card { width: min(86vw,340px); background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7), 0 0 40px rgba(202,168,74,.22); padding: 24px 20px; text-align: center; }
+    #victory-card .big { font-size: 52px; filter: grayscale(.4) brightness(.85); }
+    #victory-card .ttl { font-family: Georgia, serif; font-size: 21px; color: #e8d8b0; font-weight: 700; margin-top: 8px; }
+    #victory-card .sub { font-size: 13px; color: #a08c6a; margin-top: 4px; }
+    #victory-card .loot { display: flex; justify-content: center; gap: 20px; margin-top: 14px; font-size: 17px; font-weight: 800; }
+    #victory-card .loot .xp { color: #e8c34a; }
+    #victory-card .loot .gold { color: #ffd166; }
+    #victory-card button { margin-top: 18px; width: 100%; padding: 12px; border: 1px solid #6b5836; border-radius: 8px; background: linear-gradient(180deg,#3a5a2e,#26401d); color: #f2e6c8; font-size: 15px; font-weight: 700; cursor: pointer; }
+    /* potvrzení resetu postupu – tématický dialog místo nativního confirm() */
+    #reset-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; }
+    #reset-overlay.hidden { display: none; }
+    #reset-card { width: min(86vw,340px); background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); padding: 22px 20px; }
+    #reset-card .ttl { font-family: Georgia, serif; font-size: 20px; color: #e8d8b0; font-weight: 700; text-align: center; }
+    #reset-card .txt { margin-top: 12px; font-size: 14px; line-height: 1.55; color: #c2b18d; text-align: center; }
+    #reset-card .btns { margin-top: 18px; display: flex; gap: 10px; }
+    #reset-card .btns button { flex: 1; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; }
+    #reset-cancel { background: #2a231b; border: 1px solid #6b5836; color: #e8d8b0; }
+    #reset-confirm { background: linear-gradient(180deg,#8c2f2a,#5c1e1b); border: 1px solid #7a3a30; color: #f2e6c8; }
+    /* slavnostní overlay získání/posílení amuletu */
+    #amulet-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; }
+    #amulet-overlay.hidden { display: none; }
+    #amulet-card { width: min(86vw,340px); background: linear-gradient(180deg,#1a2230,#12161f); border: 1px solid #3a5a7a; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7), 0 0 40px rgba(80,140,200,.25); padding: 24px 20px; text-align: center; }
+    #amulet-card .big { font-size: 52px; animation: amuletglow 2s infinite; }
+    @keyframes amuletglow { 0%,100% { text-shadow: 0 0 8px rgba(120,180,240,.5); } 50% { text-shadow: 0 0 24px rgba(120,180,240,.95); } }
+    #amulet-card .ttl { font-family: Georgia, serif; font-size: 21px; color: #a8d0f0; font-weight: 700; margin-top: 8px; }
+    #amulet-card .stry { font-style: italic; color: #c2b18d; font-size: 14px; line-height: 1.55; margin-top: 12px; }
+    #amulet-card .fx { font-size: 13px; color: #7ad1ff; font-weight: 700; margin-top: 12px; }
+    #amulet-card button { margin-top: 18px; width: 100%; padding: 12px; border: 1px solid #3a5a7a; border-radius: 8px; background: #223246; color: #cde4f5; font-size: 15px; font-weight: 700; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="map"></canvas>
+    <div id="vignette"></div>
+
+    <div id="attribution">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>
+
+    <div id="topbar">
+      <div id="hud">
+        <div id="hp" class="bar"><i id="hp-fill"></i><span id="hp-text">❤️ 18/18</span></div>
+        <div id="gold" class="bar" title="Zlaťáky"><i id="gold-fill"></i><span id="gold-text">🪙 0</span></div>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <div id="buttons">
+      <button id="quests-btn" title="Úkoly a amulet"><span id="quests-btn-ic">🗒️</span><span id="quests-badge" class="hidden">!</span></button>
+      <button id="rescan" title="Najít místa v tomto výřezu">🔄</button>
+      <button id="recenter" title="Vycentrovat na mě">🎯</button>
+    </div>
+
+    <div id="status">
+      <div id="status-text">Zjišťuji tvoji polohu…</div>
+      <button id="status-btn" style="display:none">Zkusit znovu</button>
+    </div>
+
+    <div id="poi-panel">
+      <div class="head">
+        <div class="icon" id="poi-icon">📍</div>
+        <div>
+          <div class="title" id="poi-title">Místo</div>
+          <div class="type" id="poi-type">Point of interest</div>
+        </div>
+      </div>
+      <div class="desc" id="poi-desc"></div>
+      <div class="dist" id="poi-dist"></div>
+      <div class="dist" id="poi-badge"></div>
+      <div class="actions">
+        <button class="collect" id="poi-collect">Prozkoumat</button>
+        <button class="close" id="poi-close">✕</button>
+      </div>
+    </div>
+
+    <div id="mob-panel">
+      <div class="head">
+        <div class="icon" id="mob-icon">👹</div>
+        <div>
+          <div class="title" id="mob-title">Nestvůra</div>
+          <div class="type" id="mob-type">Nestvůra</div>
+        </div>
+      </div>
+      <div class="desc" id="mob-desc"></div>
+      <div class="hpbar"><i id="mob-hp-fill"></i><span id="mob-hp-text"></span></div>
+      <div class="dist" id="mob-dist"></div>
+      <div class="actions">
+        <button class="attack" id="mob-attack">⚔️ Zaútočit</button>
+        <button class="close" id="mob-close">✕</button>
+      </div>
+    </div>
+
+    <div id="herb-panel">
+      <div class="head">
+        <div class="icon" id="herb-icon">🌿</div>
+        <div>
+          <div class="title" id="herb-title">Bylina</div>
+          <div class="type" id="herb-type">Bylina</div>
+        </div>
+      </div>
+      <div class="desc" id="herb-desc"></div>
+      <div class="dist" id="herb-dist"></div>
+      <div class="actions">
+        <button class="collect" id="herb-collect">🧺 Sebrat</button>
+        <button class="close" id="herb-close">✕</button>
+      </div>
+    </div>
+
+    <div id="hud-menu-overlay" class="hidden">
+      <div id="hud-menu-card">
+        <div class="log-head">
+          <div class="log-title">⚔️ Postava</div>
+          <button id="hud-menu-close" class="log-x">✕</button>
+        </div>
+        <div id="hud-menu-actions">
+          <div id="hud-menu-xp-info" class="hud-menu-info"></div>
+          <div id="hud-menu-hp-info" class="hud-menu-info"></div>
+          <div id="hud-menu-combat-info" class="hud-menu-info"></div>
+          <div id="hud-menu-amulet-info" class="hud-menu-info" style="display:none"></div>
+          <button id="hud-menu-quests">🗒️ Úkoly a amulet</button>
+          <button id="hud-menu-shop">🎒 Obchod a výbava</button>
+          <button id="hud-menu-log">📜 Kronika navštívených míst</button>
+          <button id="hud-menu-reset">♻️ Resetovat postup</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="log-overlay" class="hidden">
+      <div id="log-card">
+        <div class="log-head">
+          <div class="log-title">📜 Kronika míst</div>
+          <button id="log-close" class="log-x">✕</button>
+        </div>
+        <div class="log-tabs">
+          <button id="log-tab-list" class="active">Seznam</button>
+          <button id="log-tab-map">Mapa</button>
+        </div>
+        <div id="log-list"></div>
+        <div id="log-map-wrap" style="display:none"><canvas id="log-map"></canvas></div>
+      </div>
+    </div>
+
+    <div id="shop-overlay" class="hidden">
+      <div id="shop-card">
+        <div class="shop-head">
+          <div class="shop-title">🎒 Obchod a výbava</div>
+          <div class="shop-gold" id="shop-gold-text">🪙 0</div>
+          <button id="shop-close" class="log-x">✕</button>
+        </div>
+        <div class="shop-tabs">
+          <button id="shop-tab-weapons" class="active">⚔️ Zbraně</button>
+          <button id="shop-tab-armor">🛡️ Zbroj</button>
+        </div>
+        <div id="shop-list"></div>
+      </div>
+    </div>
+
+    <div id="quest-overlay" class="hidden">
+      <div id="quest-card">
+        <div class="log-head">
+          <div class="log-title">🗒️ Úkoly</div>
+          <button id="quest-close" class="log-x">✕</button>
+        </div>
+        <div id="quest-body"></div>
+      </div>
+    </div>
+
+    <div id="victory-overlay" class="hidden">
+      <div id="victory-card">
+        <div class="big" id="victory-icon">👹</div>
+        <div class="ttl" id="victory-title">⚔️ Vítězství!</div>
+        <div class="sub" id="victory-name"></div>
+        <div class="loot"><span class="xp" id="victory-xp"></span><span class="gold" id="victory-gold"></span></div>
+        <button id="victory-ok">🎒 Sebrat kořist</button>
+      </div>
+    </div>
+
+    <div id="reset-overlay" class="hidden">
+      <div id="reset-card">
+        <div class="ttl">♻️ Resetovat postup?</div>
+        <div class="txt">XP, HP, zlaťáky, koupená výbava, amulet i úkoly se vynulují. Navštívená místa v kronice zůstanou zachována.</div>
+        <div class="btns">
+          <button id="reset-cancel">Zrušit</button>
+          <button id="reset-confirm">♻️ Resetovat</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="amulet-overlay" class="hidden">
+      <div id="amulet-card">
+        <div class="big">🧿</div>
+        <div class="ttl" id="amulet-title">Amulet poutníka</div>
+        <div class="stry" id="amulet-story"></div>
+        <div class="fx" id="amulet-fx"></div>
+        <button id="amulet-ok">Vzít amulet</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    const canvas = document.getElementById('map');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const statusText = document.getElementById('status-text');
+    const statusBtn = document.getElementById('status-btn');
+
+    // --- stav hry ---
+    let player = null;        // {lat, lng} reálná poloha
+    let view = null;          // {lat, lng} střed pohledu (kvůli posunu mapy)
+    let pois = [];            // seznam point of interest
+    let selected = null;      // právě otevřený PoI
+    let monsters = [];        // nestvůry kolem hráče
+    let selectedMob = null;   // právě otevřená nestvůra
+    let herbs = [];           // byliny a vzácné poklady kolem hráče
+    let selectedHerb = null;  // právě otevřená bylina/poklad
+    let following = true;     // mapa sleduje hráče?
+    let heading = 0;          // animovaný úhel pro pulzování
+
+    // --- XP a postup (ukládá se do localStorage) ---
+    const SAVE_KEY = 'pxplore.xp';
+    const COOLDOWN_MS = 1800000;  // jak dlouho se místo po prozkoumání regeneruje
+    const REACH_M = 70;         // dosah interakce s místy i nestvůrami (m)
+    let xp = loadXp();
+    function loadXp() {
+      try { const v = parseInt(localStorage.getItem(SAVE_KEY) || '0', 10); return isNaN(v) ? 0 : v; }
+      catch (e) { return 0; }
+    }
+    function saveXp() { try { localStorage.setItem(SAVE_KEY, String(xp)); } catch (e) {} }
+
+    // --- hráčovo HP (regeneruje se v čase, i mezi spuštěními) ---
+    const HP_KEY = 'pxplore.hp';
+    const REGEN_MS = 16000;  // +1 HP každých 16 s (pomalá regenerace)
+    const HP_BASE = 40;
+    const HP_PER_XP = 0.03;  // získané XP postupně (bez skoků na "úroveň") zvyšují max. HP
+    function playerMaxHp() { return Math.round(HP_BASE + xp * HP_PER_XP); }
+    let playerHp = loadHp();
+    function loadHp() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(HP_KEY) || 'null');
+        const max = playerMaxHp();
+        if (!raw || typeof raw.hp !== 'number') return max;
+        const regen = Math.floor(Math.max(0, Date.now() - (raw.t || Date.now())) / REGEN_MS);
+        return Math.max(0, Math.min(max, raw.hp + regen));
+      } catch (e) { return playerMaxHp(); }
+    }
+    function saveHp() { try { localStorage.setItem(HP_KEY, JSON.stringify({ hp: playerHp, t: Date.now() })); } catch (e) {} }
+
+    // --- zlaťáky (padají z nestvůr a z pokladů, dají se utratit v obchodě) ---
+    const GOLD_KEY = 'pxplore.gold';
+    let gold = loadGold();
+    function loadGold() {
+      try { const v = parseInt(localStorage.getItem(GOLD_KEY) || '0', 10); return isNaN(v) ? 0 : v; }
+      catch (e) { return 0; }
+    }
+    function saveGold() { try { localStorage.setItem(GOLD_KEY, String(gold)); } catch (e) {} }
+    function gainGold(amount) { gold += amount; saveGold(); updateGoldHud(); }
+    function spendGold(amount) {
+      if (gold < amount) return false;
+      gold -= amount; saveGold(); updateGoldHud();
+      return true;
+    }
+    // odměna zlaťáků za poražení nestvůry – dle jejího tieru
+    function mobGoldReward(m) { const t2 = m.tier * m.tier; return t2 * 3 + Math.floor(Math.random() * (t2 * 4 + 1)); }
+    // odměna zlaťáků za nalezený poklad (jen vzácnější byliny tieru 2, ne obyčejné byliny)
+    function treasureGoldReward() { return 20 + Math.floor(Math.random() * 41); }
+
+    // --- obchod: zbraně a zbroj kupované za zlaťáky ---
+    const WEAPONS = [
+      { id: 'w0', icon: '🗡️', name: 'Rezavá dýka',        cost: 0,   atk: 0,  desc: 'Základní zbraň – žádný bonus.' },
+      { id: 'w1', icon: '⚔️', name: 'Ocelový meč',         cost: 80,  atk: 4,  desc: '+4 síla útoku' },
+      { id: 'w2', icon: '🪓', name: 'Válečná sekera',      cost: 210, atk: 8,  desc: '+8 síla útoku' },
+      { id: 'w3', icon: '🔱', name: 'Trojzubec stínů',     cost: 450, atk: 14, desc: '+14 síla útoku' },
+    ];
+    const ARMORS = [
+      { id: 'a0', icon: '👕', name: 'Otrhaný hábit',       cost: 0,   def: 0, desc: 'Základní oděv – žádná obrana.' },
+      { id: 'a1', icon: '🥋', name: 'Kožená zbroj',        cost: 70,  def: 2, desc: '-2 přijaté zranění' },
+      { id: 'a2', icon: '🛡️', name: 'Kroužková zbroj',     cost: 190, def: 5, desc: '-5 přijaté zranění' },
+      { id: 'a3', icon: '🦾', name: 'Runová plátová zbroj', cost: 420, def: 9, desc: '-9 přijaté zranění' },
+    ];
+    const INV_KEY = 'pxplore.inventory';
+    function loadInventory() {
+      const def = { ownedWeapons: ['w0'], ownedArmors: ['a0'], weapon: 'w0', armor: 'a0' };
+      try {
+        const raw = JSON.parse(localStorage.getItem(INV_KEY) || 'null');
+        if (raw && typeof raw === 'object') {
+          return {
+            ownedWeapons: (Array.isArray(raw.ownedWeapons) && raw.ownedWeapons.length) ? raw.ownedWeapons : def.ownedWeapons,
+            ownedArmors: (Array.isArray(raw.ownedArmors) && raw.ownedArmors.length) ? raw.ownedArmors : def.ownedArmors,
+            weapon: raw.weapon || def.weapon,
+            armor: raw.armor || def.armor,
+          };
+        }
+      } catch (e) {}
+      return def;
+    }
+    let inventory = loadInventory();
+    function saveInventory() { try { localStorage.setItem(INV_KEY, JSON.stringify(inventory)); } catch (e) {} }
+    function equippedWeapon() { return WEAPONS.find(w => w.id === inventory.weapon) || WEAPONS[0]; }
+    function equippedArmor() { return ARMORS.find(a => a.id === inventory.armor) || ARMORS[0]; }
+
+    // --- uložení nestvůr a bylin, aby obnovení stránky nevyspawnovalo čerstvé cíle znovu ---
+    const MOBS_KEY = 'pxplore.mobs';
+    const HERBS_KEY = 'pxplore.herbs';
+    function loadStoredArray(key) {
+      try { const raw = JSON.parse(localStorage.getItem(key) || 'null'); return Array.isArray(raw) ? raw : []; }
+      catch (e) { return []; }
+    }
+    function saveMonsters() { try { localStorage.setItem(MOBS_KEY, JSON.stringify(monsters)); } catch (e) {} }
+    function saveHerbsState() { try { localStorage.setItem(HERBS_KEY, JSON.stringify(herbs)); } catch (e) {} }
+    // odlišuje "opravdu první spuštění" od "hráč všechno pozabíjel/posbíral" – bez toho by
+    // vynulování pole refreshem znovu nahodilo počáteční sadu (stejný cheat, jen jinou cestou)
+    const WORLD_INIT_KEY = 'pxplore.worldInit';
+    function worldInitialized() { try { return localStorage.getItem(WORLD_INIT_KEY) === '1'; } catch (e) { return false; } }
+    function markWorldInitialized() { try { localStorage.setItem(WORLD_INIT_KEY, '1'); } catch (e) {} }
+
+    // navštívená místa – kronika: id -> { name, type, icon, color, lat, lng, firstAt, lastAt, count }
+    const VISIT_KEY = 'pxplore.visited';
+    let visited = loadVisited();
+    function loadVisited() {
+      const m = new Map();
+      try {
+        const raw = JSON.parse(localStorage.getItem(VISIT_KEY) || 'null');
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+          for (const k of Object.keys(raw)) m.set(k, raw[k]);
+        }
+      } catch (e) {}
+      return m;
+    }
+    function saveVisited() {
+      try {
+        const obj = {};
+        for (const [k, v] of visited) obj[k] = v;
+        localStorage.setItem(VISIT_KEY, JSON.stringify(obj));
+      } catch (e) {}
+    }
+    function placeId(p) { return p.lat.toFixed(5) + ',' + p.lng.toFixed(5); }
+    function isVisited(p) { return visited.has(placeId(p)); }
+    // zaznamenej návštěvu místa (první i opakovanou)
+    function recordVisit(p) {
+      const id = placeId(p);
+      const now = Date.now();
+      const rec = visited.get(id);
+      if (rec) {
+        rec.lastAt = now;
+        rec.count = (rec.count || 1) + 1;
+      } else {
+        visited.set(id, { id, name: p.name, type: p.type, icon: p.icon, color: p.color, lat: p.lat, lng: p.lng, firstAt: now, lastAt: now, count: 1 });
+      }
+      saveVisited();
+    }
+    function xpFor(type) {
+      const big = ['Muzeum', 'Galerie', 'Památka', 'Vyhlídka', 'Atrakce', 'Divadlo', 'Svatostánek'];
+      const mid = ['Kavárna', 'Restaurace', 'Hospoda', 'Park', 'Zahrada', 'Knihovna', 'Kino', 'Hřiště', 'Fontána', 'Občerstvení', 'Škola'];
+      if (big.includes(type)) return 25;
+      if (mid.includes(type)) return 15;
+      return 10;
+    }
+    // místo je připravené k prozkoumání (není v regeneraci)
+    function isReady(p) { return !p.cooldownUntil || Date.now() >= p.cooldownUntil; }
+
+    // --- nestvůry (temné RPG) ---
+    const MOB_TYPES = [
+      { icon: '🦴', name: 'Oživlé kosti',       color: '#cdd3d6', tier: 1, desc: 'Rachotící kostra povstalá z mělkého hrobu.' },
+      { icon: '🐀', name: 'Vermlingský zloděj', color: '#8d7b5a', tier: 1, desc: 'Krysí stvůra svírající rezavou dýku.' },
+      { icon: '🕷️', name: 'Jeskynní pavouk',    color: '#7a7270', tier: 1, desc: 'Chlupatý lovec číhající ve tmě.' },
+      { icon: '🦇', name: 'Stínový netopýr',    color: '#8a7f9a', tier: 1, desc: 'Slepě se vrhá z noční oblohy.' },
+      { icon: '👺', name: 'Bandita',            color: '#9a5b3b', tier: 2, desc: 'Otrhaný lapka číhající na kořist.' },
+      { icon: '🧟', name: 'Hnijící mrtvý',      color: '#7f9a5a', tier: 2, desc: 'Pomalý, ale neúprosný nemrtvý.' },
+      { icon: '👹', name: 'Inoxí strážce',      color: '#b23b2e', tier: 2, desc: 'Statný rohatý válečník s palicí.' },
+      { icon: '🦂', name: 'Pouštní škorpion',   color: '#b08a3a', tier: 2, desc: 'Klepeta a smrtící osten plný jedu.' },
+      { icon: '☠️', name: 'Naříkající přízrak',  color: '#bcdfe0', tier: 3, desc: 'Bloudící duše plná dávné zloby.' },
+      { icon: '🗿', name: 'Kamenný golem',      color: '#9a9a9a', tier: 3, desc: 'Pradávný strážce z živé skály.' },
+      { icon: '🔥', name: 'Plamenný démon',     color: '#d4622a', tier: 3, desc: 'Pekelná bytost sálající žárem.' },
+    ];
+    // barevné rámečky/aury podle tieru nestvůry (1 = slabá, 3 = nejsilnější)
+    const TIER_STYLE = {
+      1: { ring: '#c9d3d8', aura: 'rgba(180,190,195,.22)', badge: '#c9d3d8', badgeText: '#25313a', label: 'I' },
+      2: { ring: '#e0932e', aura: 'rgba(224,147,46,.28)', badge: '#e0932e', badgeText: '#3a2308', label: 'II' },
+      3: { ring: '#c23bdb', aura: 'rgba(194,59,219,.32)', badge: '#c23bdb', badgeText: '#2e0a36', label: 'III' },
+    };
+    const MOB_TARGET = 8;                  // kolik nestvůr držet kolem hráče
+    const MOB_MIN = 16, MOB_MAX = 180;     // vzdálenost spawnu (m) – úměrně většímu dosahu
+    const RELOCATE_MIN = 90000, RELOCATE_MAX = 180000; // za jak dlouho se nezabitá nestvůra přesune
+    let mobSeq = 0;
+    monsters = loadStoredArray(MOBS_KEY);
+    mobSeq = monsters.reduce((mx, m) => Math.max(mx, m.id || 0), 0);
+    function relocateTime() { return Date.now() + RELOCATE_MIN + Math.random() * (RELOCATE_MAX - RELOCATE_MIN); }
+
+    // náhodný geo bod v okolí (m)
+    function randomPointNear(center, minM, maxM) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = minM + Math.random() * (maxM - minM);
+      const dx = Math.cos(angle) * dist, dy = Math.sin(angle) * dist;
+      const lat = center.lat * Math.PI / 180;
+      return {
+        lat: center.lat + (dy / EARTH) * 180 / Math.PI,
+        lng: center.lng + (dx / (EARTH * Math.cos(lat))) * 180 / Math.PI,
+      };
+    }
+    // síla nestvůr je daná jen jejich tierem (1–3) – nezávisí na úrovni hráče
+    // růst je kvadratický (tier²), aby byl mezi tiery výrazně větší rozdíl ve výzvě i odměně
+    function makeMob(center) {
+      const r = Math.random();
+      const tier = r < 0.55 ? 1 : (r < 0.85 ? 2 : 3);   // silnější nestvůry vzácnější
+      const pool = MOB_TYPES.filter(m => m.tier === tier);
+      const t = pool[Math.floor(Math.random() * pool.length)];
+      const t2 = tier * tier;
+      const eliteHp = tier === 3 ? 14 : 0;   // tier 3 je o kus tužší než by odpovídalo křivce
+      const maxHp = t2 * 8 + 2 + eliteHp + Math.floor(Math.random() * t2 * 4);
+      const pos = randomPointNear(center, MOB_MIN, MOB_MAX);
+      return { id: ++mobSeq, ...t, ...pos, maxHp, hp: maxHp, xp: t2 * 15, relocateAt: relocateTime() };
+    }
+    const SPAWN_INTERVAL = 30000;  // jak rychle přibývají nové nestvůry (ms)
+    let lastSpawnAt = 0;
+    // pomalé doplňování – max jedna nová nestvůra za SPAWN_INTERVAL
+    function ensureMonsters(center) {
+      if (monsters.length >= MOB_TARGET) return;
+      const now = Date.now();
+      if (now - lastSpawnAt < SPAWN_INTERVAL) return;
+      monsters.push(makeMob(center));
+      lastSpawnAt = now;
+      saveMonsters();
+    }
+    // síla útoku hráče roste postupně se získaným XP; občas padne kritický zásah za dvojnásobek
+    const CRIT_CHANCE = 0.18;
+    const DODGE_CHANCE = 0.15;
+    function playerAttack() {
+      const base = 2 + Math.floor(xp / 40) + Math.floor(Math.random() * 3) + equippedWeapon().atk;
+      const crit = Math.random() < CRIT_CHANCE;
+      return { dmg: crit ? base * 2 : base, crit };
+    }
+
+    // --- byliny a vzácné poklady (mírumilovné sběratelství mezi souboji) ---
+    const HERB_TYPES = [
+      { icon: '🌿', name: 'Léčivá bylina', color: '#5a9e4a', tier: 1, desc: 'Voňavá bylina se slabými hojivými účinky.' },
+      { icon: '🍄', name: 'Lesní hřib',    color: '#8a6a3a', tier: 1, desc: 'Pevná hlíva schovaná pod spadaným listím.' },
+      { icon: '🍀', name: 'Čtyřlístek',    color: '#4a9e5a', tier: 1, desc: 'Vzácný symbol štěstí ukrytý v trávě.' },
+      { icon: '🌼', name: 'Polní kvítek',  color: '#e0c040', tier: 1, desc: 'Drobný kvítek hřející barvou.' },
+      { icon: '🪙', name: 'Skrytý poklad',  color: '#f0c040', tier: 2, desc: 'Váček plný lesklých mincí zapomenutý v trávě.' },
+      { icon: '💎', name: 'Zářící drahokam', color: '#40c0e0', tier: 2, desc: 'Drahokam, který právě zachytil paprsek slunce.' },
+    ];
+    const HERB_TARGET = 3;                 // kolik bylin/pokladů držet kolem hráče (méně než nestvůr)
+    const TREASURE_CHANCE = 0.12;          // jak vzácně je nález poklad místo obyčejné byliny
+    let herbSeq = 0;
+    herbs = loadStoredArray(HERBS_KEY);
+    herbSeq = herbs.reduce((mx, h) => Math.max(mx, h.id || 0), 0);
+    function makeHerb(center) {
+      const tier = Math.random() < TREASURE_CHANCE ? 2 : 1;
+      const pool = HERB_TYPES.filter(h => h.tier === tier);
+      const t = pool[Math.floor(Math.random() * pool.length)];
+      const pos = randomPointNear(center, MOB_MIN, MOB_MAX);
+      const xp = tier === 1 ? (4 + Math.floor(Math.random() * 5)) : (30 + Math.floor(Math.random() * 21));
+      return { id: ++herbSeq, ...t, ...pos, xp, relocateAt: relocateTime() };
+    }
+    const HERB_SPAWN_INTERVAL = 60000;     // doplňují se pomaleji než nestvůry
+    let lastHerbSpawnAt = 0;
+    function ensureHerbs(center) {
+      if (herbs.length >= HERB_TARGET) return;
+      const now = Date.now();
+      if (now - lastHerbSpawnAt < HERB_SPAWN_INTERVAL) return;
+      herbs.push(makeHerb(center));
+      lastHerbSpawnAt = now;
+      saveHerbsState();
+    }
+
+    // nestvůry stojí; když je delší dobu nikdo nezabije, přesunou se jinam
+    // (kolem hráče) – tak se k tobě časem nějaká dostane, i když stojíš na místě
+    setInterval(function () {
+      if (!player) return;
+      const now = Date.now();
+      let mobsChanged = false, herbsChanged = false;
+      for (const m of monsters) {
+        if (m === selectedMob) continue;          // s vybranou právě bojuješ
+        if (now >= m.relocateAt || metersBetween(player, m) > 350) {
+          const pos = randomPointNear(player, MOB_MIN, MOB_MAX);
+          m.lat = pos.lat; m.lng = pos.lng;
+          m.hp = m.maxHp;                          // objeví se svěží na novém místě
+          m.relocateAt = relocateTime();
+          mobsChanged = true;
+        }
+      }
+      ensureMonsters(player);
+      for (const h of herbs) {
+        if (h === selectedHerb) continue;
+        if (now >= h.relocateAt || metersBetween(player, h) > 350) {
+          const pos = randomPointNear(player, MOB_MIN, MOB_MAX);
+          h.lat = pos.lat; h.lng = pos.lng;
+          h.relocateAt = relocateTime();
+          herbsChanged = true;
+        }
+      }
+      ensureHerbs(player);
+      if (mobsChanged) saveMonsters();
+      if (herbsChanged) saveHerbsState();
+    }, 1000);
+
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+    // --- mapové dlaždice (OpenStreetMap) + Web Mercator projekce ---
+    const TILE = 256;                       // velikost dlaždice v px
+    const ZMIN = 11, ZMAX = 19;             // meze přiblížení (OSM má dlaždice do 19)
+    let zoom = 17;                          // aktuální (klidně desetinné) přiblížení
+    function worldSize() { return TILE * Math.pow(2, zoom); } // velikost světa v px
+    function lngToWorldX(lng) { return (lng + 180) / 360 * worldSize(); }
+    function latToWorldY(lat) {
+      const s = Math.sin(lat * Math.PI / 180);
+      return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * worldSize();
+    }
+    function worldXToLng(x) { return x / worldSize() * 360 - 180; }
+    function worldYToLat(y) {
+      const n = Math.PI - 2 * Math.PI * y / worldSize();
+      return 180 / Math.PI * Math.atan(Math.sinh(n));
+    }
+    function metersPerPixel(lat) {
+      return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
+    }
+    // dosah interakce – aktivovatelné už jakmile se kolečko věci dotkne dosahového kolečku hráče
+    // (ne až když je jeho střed uvnitř), proto se k REACH_M přičítá poloměr ikony v metrech
+    function reachLimit(iconRadiusPx) {
+      return player ? REACH_M + iconRadiusPx * metersPerPixel(player.lat) : REACH_M;
+    }
+
+    // cache načtených dlaždic (klíč včetně úrovně zoomu)
+    const tileCache = new Map();
+    const TILE_RETRY_MS = 8000;  // po chybě stažení zkusit dlaždici znovu až po pauze
+    function getTile(z, x, y) {
+      const key = z + '/' + x + '/' + y;
+      let img = tileCache.get(key);
+      if (!img) {
+        img = new Image();
+        // subdomény a.b.c pro rovnoměrné rozložení požadavků
+        const sub = 'abc'[(x + y) % 3];
+        img.src = 'https://' + sub + '.tile.openstreetmap.org/' + z + '/' + x + '/' + y + '.png';
+        // neúspěšnou dlaždici nenechávat v cache navždy (mapa by v tom místě zůstala
+        // prázdná až do reloadu stránky) – po pauze ji vyhodit, ať se stáhne znovu
+        img.onerror = () => setTimeout(() => tileCache.delete(key), TILE_RETRY_MS);
+        tileCache.set(key, img);
+      }
+      return img;
+    }
+
+    // --- geo matematika ---
+    const EARTH = 6378137;
+    function metersBetween(a, b) {
+      const dLat = (b.lat - a.lat) * Math.PI / 180;
+      const dLng = (b.lng - a.lng) * Math.PI / 180;
+      const lat1 = a.lat * Math.PI / 180, lat2 = b.lat * Math.PI / 180;
+      const x = dLng * Math.cos((lat1 + lat2) / 2);
+      const y = dLat;
+      return Math.sqrt(x * x + y * y) * EARTH;
+    }
+    // posun středu pohledu o daný počet pixelů (CSS px) – tažení mapy
+    function panView(dxPx, dyPx) {
+      view.lng = worldXToLng(lngToWorldX(view.lng) - dxPx);
+      view.lat = worldYToLat(latToWorldY(view.lat) - dyPx);
+    }
+    // geo souřadnice pod bodem na obrazovce (device px)
+    function screenToLatLng(sxDev, syDev) {
+      const wx = lngToWorldX(view.lng) + (sxDev - canvas.width / 2) / DPR;
+      const wy = latToWorldY(view.lat) + (syDev - canvas.height / 2) / DPR;
+      return { lng: worldXToLng(wx), lat: worldYToLat(wy) };
+    }
+    // změna přiblížení tak, aby bod (device px) zůstal na místě
+    function setZoom(newZoom, sxDev, syDev) {
+      newZoom = Math.max(ZMIN, Math.min(ZMAX, newZoom));
+      if (newZoom === zoom) return;
+      const anchor = screenToLatLng(sxDev, syDev);
+      zoom = newZoom;
+      const vx = lngToWorldX(anchor.lng) - (sxDev - canvas.width / 2) / DPR;
+      const vy = latToWorldY(anchor.lat) - (syDev - canvas.height / 2) / DPR;
+      view.lng = worldXToLng(vx);
+      view.lat = worldYToLat(vy);
+      following = false;
+    }
+
+    // --- reálná místa z OpenStreetMap (Overpass API) ---
+    // převod OSM značek na typ PoI (ikona, název, barva, popis)
+    function classify(t) {
+      if (t.tourism === 'museum') return { icon: '🏛️', type: 'Muzeum', color: '#e9c46a', desc: 'Muzeum – nahlédni do historie nebo umění.' };
+      if (t.tourism === 'gallery') return { icon: '🖼️', type: 'Galerie', color: '#e76f51', desc: 'Galerie umění.' };
+      if (t.tourism === 'artwork') return { icon: '🎨', type: 'Umění', color: '#e76f51', desc: 'Socha nebo pouliční umění. Pokochej se.' };
+      if (t.tourism === 'viewpoint') return { icon: '🔭', type: 'Vyhlídka', color: '#48b5d4', desc: 'Místo s pěkným výhledem do okolí.' };
+      if (t.tourism === 'attraction') return { icon: '⭐', type: 'Atrakce', color: '#f4a261', desc: 'Turisticky zajímavé místo.' };
+      if (t.historic) return { icon: '🏛️', type: 'Památka', color: '#e9c46a', desc: 'Historicky zajímavé místo. Rozhlédni se kolem.' };
+      switch (t.amenity) {
+        case 'cafe': return { icon: '☕', type: 'Kavárna', color: '#c97b50', desc: 'Voňavá zastávka na cestě. Dej si pauzu.' };
+        case 'restaurant': return { icon: '🍽️', type: 'Restaurace', color: '#e76f51', desc: 'Místo na dobré jídlo.' };
+        case 'fast_food': return { icon: '🍔', type: 'Občerstvení', color: '#f4a261', desc: 'Rychlé občerstvení.' };
+        case 'bar': case 'pub': return { icon: '🍺', type: 'Hospoda', color: '#d4a017', desc: 'Místo na posezení a osvěžení.' };
+        case 'library': return { icon: '📚', type: 'Knihovna', color: '#8d99ae', desc: 'Ticho a spousta příběhů na pultech.' };
+        case 'fountain': return { icon: '⛲', type: 'Fontána', color: '#48b5d4', desc: 'Vodní prvek, oblíbené místo setkávání.' };
+        case 'pharmacy': return { icon: '💊', type: 'Lékárna', color: '#2a9d8f', desc: 'Lékárna.' };
+        case 'bank': return { icon: '🏦', type: 'Banka', color: '#90be6d', desc: 'Banka.' };
+        case 'atm': return { icon: '🏧', type: 'Bankomat', color: '#90be6d', desc: 'Bankomat.' };
+        case 'place_of_worship': return { icon: '⛪', type: 'Svatostánek', color: '#b08968', desc: 'Kostel nebo jiné místo víry.' };
+        case 'school': case 'university': case 'college': return { icon: '🏫', type: 'Škola', color: '#f4a261', desc: 'Vzdělávací instituce.' };
+        case 'cinema': return { icon: '🎬', type: 'Kino', color: '#e76f51', desc: 'Kino.' };
+        case 'theatre': return { icon: '🎭', type: 'Divadlo', color: '#e76f51', desc: 'Divadlo.' };
+      }
+      switch (t.leisure) {
+        case 'park': return { icon: '🌳', type: 'Park', color: '#2a9d8f', desc: 'Kus zeleně ve městě. Ideální na odpočinek.' };
+        case 'garden': return { icon: '🌷', type: 'Zahrada', color: '#2a9d8f', desc: 'Zahrada plná rostlin.' };
+        case 'playground': return { icon: '🛝', type: 'Hřiště', color: '#90be6d', desc: 'Místo na hraní.' };
+      }
+      if (t.shop === 'supermarket') return { icon: '🛒', type: 'Supermarket', color: '#f4a261', desc: 'Větší obchod s potravinami.' };
+      if (t.shop) return { icon: '🏪', type: 'Obchod', color: '#f4a261', desc: 'Místo, kde se dá doplnit zásoba.' };
+      return null;
+    }
+
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    let loadingPois = false;
+    async function loadPois(center, radius = 800) {
+      if (loadingPois) return;
+      loadingPois = true;
+      showToast('🔎 Hledám místa v okolí…');
+      const R = Math.round(radius);
+      const q = `[out:json][timeout:25];(`
+        + `node["tourism"](around:${R},${center.lat},${center.lng});`
+        + `node["historic"](around:${R},${center.lat},${center.lng});`
+        + `node["amenity"~"cafe|restaurant|fast_food|bar|pub|library|fountain|pharmacy|bank|atm|place_of_worship|school|university|college|cinema|theatre"](around:${R},${center.lat},${center.lng});`
+        + `node["leisure"~"park|playground|garden"](around:${R},${center.lat},${center.lng});`
+        + `node["shop"](around:${R},${center.lat},${center.lng});`
+        + `way["leisure"~"park|playground|garden"](around:${R},${center.lat},${center.lng});`
+        + `way["tourism"](around:${R},${center.lat},${center.lng});`
+        + `way["historic"](around:${R},${center.lat},${center.lng});`
+        + `);out center 120;`;
+      try {
+        const res = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          body: 'data=' + encodeURIComponent(q),
+        });
+        if (!res.ok) throw new Error('Overpass ' + res.status);
+        const json = await res.json();
+        const seen = new Set();
+        const list = [];
+        for (const el of json.elements || []) {
+          const lat = el.lat != null ? el.lat : (el.center && el.center.lat);
+          const lng = el.lon != null ? el.lon : (el.center && el.center.lon);
+          if (lat == null || lng == null) continue;
+          const cls = classify(el.tags || {});
+          if (!cls) continue;
+          const key = lat.toFixed(5) + ',' + lng.toFixed(5);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          list.push({
+            lat, lng, ...cls,
+            name: (el.tags && el.tags.name) ? el.tags.name : cls.type,
+            xp: xpFor(cls.type),
+            cooldownUntil: 0,
+          });
+        }
+        if (!list.length) throw new Error('žádná místa');
+        // promíchat a omezit počet, ať není mapa přeplněná
+        pois = shuffle(list).slice(0, 45);
+        showToast('✅ Načteno ' + pois.length + ' míst z okolí', 2200);
+      } catch (e) {
+        console.warn('Overpass selhal, žádná místa se nenačetla:', e);
+        pois = [];
+        showToast('⚠️ Místa se nenačetla. Zkus to znovu tlačítkem 🔄', 2800);
+      } finally {
+        loadingPois = false;
+      }
+    }
+
+    // --- vykreslení ---
+    function resize() {
+      canvas.width = window.innerWidth * DPR;
+      canvas.height = window.innerHeight * DPR;
+      canvas.style.width = window.innerWidth + 'px';
+      canvas.style.height = window.innerHeight + 'px';
+    }
+
+    // geo bod -> pozice na obrazovce (device px); 1 world px = 1 CSS px = DPR device px
+    function worldToScreen(p) {
+      const vx = lngToWorldX(view.lng), vy = latToWorldY(view.lat);
+      return {
+        x: (lngToWorldX(p.lng) - vx) * DPR + canvas.width / 2,
+        y: (latToWorldY(p.lat) - vy) * DPR + canvas.height / 2,
+      };
+    }
+
+    function drawTiles() {
+      const w = canvas.width, h = canvas.height;
+      // podklad, než se dlaždice načtou – tmavý, ať drží ponurou atmosféru hry
+      ctx.fillStyle = '#141a20';
+      ctx.fillRect(0, 0, w, h);
+
+      const tz = Math.max(0, Math.min(19, Math.round(zoom)));  // celočíselná úroveň dlaždic
+      const tileWorld = TILE * Math.pow(2, zoom - tz);         // velikost dlaždice ve world px
+      const n = Math.pow(2, tz);
+      const vx = lngToWorldX(view.lng), vy = latToWorldY(view.lat);
+      const halfW = (w / 2) / DPR, halfH = (h / 2) / DPR;
+      const size = tileWorld * DPR + 1;  // +1 px proti spárám mezi škálovanými dlaždicemi
+
+      const x0 = Math.floor((vx - halfW) / tileWorld);
+      const x1 = Math.floor((vx + halfW) / tileWorld);
+      const y0 = Math.floor((vy - halfH) / tileWorld);
+      const y1 = Math.floor((vy + halfH) / tileWorld);
+
+      // ztmavení a sépiový nádech mapy pro ponurou RPG atmosféru
+      ctx.filter = 'brightness(0.96) saturate(1.12) contrast(1.02)';
+      for (let tx = x0; tx <= x1; tx++) {
+        for (let ty = y0; ty <= y1; ty++) {
+          if (ty < 0 || ty >= n) continue;
+          const wrapX = ((tx % n) + n) % n;   // svět se po ose X opakuje
+          const img = getTile(tz, wrapX, ty);
+          const sx = (tx * tileWorld - vx) * DPR + w / 2;
+          const sy = (ty * tileWorld - vy) * DPR + h / 2;
+          if (img.complete && img.naturalWidth) {
+            ctx.drawImage(img, sx, sy, size, size);
+          }
+        }
+      }
+      ctx.filter = 'none';
+    }
+
+    function drawMob(m) {
+      const s = worldToScreen(m);
+      if (s.x < -40 || s.x > canvas.width + 40 || s.y < -40 || s.y > canvas.height + 40) return;
+      const r = 16 * DPR;
+      const cy = s.y - r * .2;
+      const style = TIER_STYLE[m.tier] || TIER_STYLE[1];
+      // aura podle tieru
+      ctx.beginPath();
+      ctx.arc(s.x, cy, r + 5 * DPR, 0, Math.PI * 2);
+      ctx.fillStyle = style.aura;
+      ctx.fill();
+      // stín
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y + r * .6, r * .7, r * .25, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,.45)';
+      ctx.fill();
+      // disk
+      ctx.beginPath();
+      ctx.arc(s.x, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = m.color;
+      ctx.fill();
+      // rámeček podle tieru nestvůry
+      ctx.lineWidth = 3 * DPR;
+      ctx.strokeStyle = selectedMob === m ? '#fff' : style.ring;
+      ctx.stroke();
+      // ikona
+      ctx.font = (18 * DPR) + 'px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(m.icon, s.x, cy);
+      // odznáček tieru (roh)
+      const bx = s.x - r * .72, by = cy - r * .72;
+      ctx.beginPath();
+      ctx.arc(bx, by, 7.5 * DPR, 0, Math.PI * 2);
+      ctx.fillStyle = style.badge;
+      ctx.fill();
+      ctx.lineWidth = 2 * DPR;
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+      ctx.fillStyle = style.badgeText;
+      ctx.font = 'bold ' + (9.5 * DPR) + 'px system-ui';
+      ctx.fillText(style.label, bx, by + DPR * .5);
+      // proužek HP pod nestvůrou – jen pokud už je poškozená
+      if (m.hp < m.maxHp) {
+        const bw = r * 1.9, bh = 4 * DPR, bx2 = s.x - bw / 2, by2 = s.y + r * 0.95;
+        ctx.fillStyle = 'rgba(0,0,0,.6)';
+        ctx.fillRect(bx2, by2, bw, bh);
+        ctx.fillStyle = '#c0402f';
+        ctx.fillRect(bx2, by2, bw * Math.max(0, m.hp / m.maxHp), bh);
+      }
+      // cíl aktivního loveckého úkolu – pulzující zlatý prstenec + vykřičník
+      if (activeQuest && activeQuest.type === 'hunt') drawQuestMark(s.x, cy, r);
+    }
+
+    // označení cíle úkolu na mapě (zlatý pulzující prstenec a vykřičník v rohu)
+    function drawQuestMark(x, cy, r) {
+      const qp = (Math.sin(heading * 1.5) + 1) / 2;
+      ctx.beginPath();
+      ctx.arc(x, cy, r + (5 + qp * 4) * DPR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,209,102,' + (0.9 - qp * 0.55).toFixed(2) + ')';
+      ctx.lineWidth = 2.5 * DPR;
+      ctx.stroke();
+      const qx = x + r * .72, qy = cy - r * .72;
+      ctx.beginPath();
+      ctx.arc(qx, qy, 7.5 * DPR, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffd166';
+      ctx.fill();
+      ctx.lineWidth = 2 * DPR;
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+      ctx.fillStyle = '#5a3e00';
+      ctx.font = 'bold ' + (11 * DPR) + 'px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('!', qx, qy + DPR * .5);
+    }
+
+    function drawHerb(h) {
+      const s = worldToScreen(h);
+      if (s.x < -40 || s.x > canvas.width + 40 || s.y < -40 || s.y > canvas.height + 40) return;
+      const r = 13 * DPR;
+      const cy = s.y - r * .2;
+      const treasure = h.tier === 2;
+      // aura – zelená pro bylinu, zlatá pro poklad
+      ctx.beginPath();
+      ctx.arc(s.x, cy, r + 5 * DPR, 0, Math.PI * 2);
+      ctx.fillStyle = treasure ? 'rgba(240,192,64,.28)' : 'rgba(80,160,60,.18)';
+      ctx.fill();
+      // stín
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y + r * .6, r * .7, r * .25, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,.4)';
+      ctx.fill();
+      // disk
+      ctx.beginPath();
+      ctx.arc(s.x, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = h.color;
+      ctx.fill();
+      ctx.lineWidth = 3 * DPR;
+      ctx.strokeStyle = selectedHerb === h ? '#fff' : (treasure ? '#a8780a' : '#2e5a20');
+      ctx.stroke();
+      // ikona
+      ctx.font = (16 * DPR) + 'px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(h.icon, s.x, cy);
+      // cíl aktivního sběračského úkolu
+      if (activeQuest && activeQuest.type === 'herbs') drawQuestMark(s.x, cy, r);
+    }
+
+    function drawPoi(p) {
+      const s = worldToScreen(p);
+      if (s.x < -40 || s.x > canvas.width + 40 || s.y < -40 || s.y > canvas.height + 40) return;
+      const r = 16 * DPR;
+      const ready = isReady(p);
+      const cy = s.y - r * .2;
+      // stín / podstavec
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y + r * .6, r * .7, r * .25, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,.35)';
+      ctx.fill();
+      // kolečko
+      ctx.beginPath();
+      ctx.arc(s.x, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = ready ? p.color : '#3a4a5a';
+      ctx.fill();
+      ctx.lineWidth = 3 * DPR;
+      ctx.strokeStyle = selected === p ? '#fff' : 'rgba(255,255,255,.6)';
+      ctx.stroke();
+      // při regeneraci – ubývající prstenec ukazující zbývající čas
+      if (!ready) {
+        const frac = (p.cooldownUntil - Date.now()) / COOLDOWN_MS;
+        ctx.beginPath();
+        ctx.arc(s.x, cy, r + 3 * DPR, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, frac));
+        ctx.strokeStyle = '#ffd166';
+        ctx.lineWidth = 3 * DPR;
+        ctx.stroke();
+      }
+      // ikona
+      ctx.font = (18 * DPR) + 'px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.globalAlpha = ready ? 1 : 0.45;
+      ctx.fillText(p.icon, s.x, cy);
+      ctx.globalAlpha = 1;
+      // odznáček navštíveného místa (zlatá hvězdička v rohu)
+      if (isVisited(p)) {
+        const bx = s.x + r * .72, by = cy - r * .72;
+        ctx.beginPath();
+        ctx.arc(bx, by, 8 * DPR, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffd166';
+        ctx.fill();
+        ctx.lineWidth = 2 * DPR;
+        ctx.strokeStyle = '#fff';
+        ctx.stroke();
+        ctx.fillStyle = '#5a3e00';
+        ctx.font = 'bold ' + (11 * DPR) + 'px system-ui';
+        ctx.fillText('★', bx, by + DPR);
+      }
+    }
+
+    function drawPlayer() {
+      const s = worldToScreen(player);
+      const pulse = (Math.sin(heading) + 1) / 2; // 0..1
+      // dosahový kruh (kde lze sbírat)
+      const reach = (REACH_M / metersPerPixel(player.lat)) * DPR;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, reach, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(27,154,170,.10)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(27,154,170,.35)';
+      ctx.lineWidth = 2 * DPR;
+      ctx.stroke();
+      // pulzující prstenec
+      const pr = (14 + pulse * 10) * DPR;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, pr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(27,154,170,' + (0.35 * (1 - pulse)) + ')';
+      ctx.fill();
+      // tělo hráče
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 11 * DPR, 0, Math.PI * 2);
+      ctx.fillStyle = '#1b9aaa';
+      ctx.fill();
+      ctx.lineWidth = 4 * DPR;
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+    }
+
+    function render() {
+      if (!view) return;
+      drawTiles();
+      pois.forEach(drawPoi);
+      herbs.forEach(drawHerb);
+      monsters.forEach(drawMob);
+      if (player) drawPlayer();
+    }
+
+    function loop() {
+      heading += 0.05;
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    // --- interakce ---
+    function showStatus(text, retry) {
+      statusText.textContent = text;
+      statusBtn.style.display = retry ? 'inline-block' : 'none';
+      statusEl.classList.remove('hidden');
+    }
+    function hideStatus() { statusEl.classList.add('hidden'); }
+
+    // krátká informační bublina nahoře
+    const toastEl = document.getElementById('toast');
+    let toastTimer = null;
+    function showToast(text, hideAfter) {
+      toastEl.textContent = text;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      if (hideAfter) toastTimer = setTimeout(() => toastEl.classList.remove('show'), hideAfter);
+    }
+
+    // XP se v hlavním HUDu nezobrazuje – vidíš ho jen po otevření menu (klepnutím na HUD)
+    const xpMenuInfoEl = document.getElementById('hud-menu-xp-info');
+    function updateXpMenuInfo() {
+      xpMenuInfoEl.textContent = '✨ XP: ' + xp + ' (postupně zvyšuje max. HP)';
+    }
+
+    const goldTextEl = document.getElementById('gold-text');
+    function updateGoldHud() {
+      goldTextEl.textContent = '🪙 ' + gold;
+      if (!shopOverlay.classList.contains('hidden')) {
+        shopGoldTextEl.textContent = '🪙 ' + gold;
+        renderShopList();
+      }
+    }
+
+    const hpEl = document.getElementById('hp');
+    const hpFillEl = document.getElementById('hp-fill');
+    const hpTextEl = document.getElementById('hp-text');
+    const hpMenuInfoEl = document.getElementById('hud-menu-hp-info');
+    function updateHpMenuInfo() {
+      const max = playerMaxHp();
+      if (playerHp >= max) {
+        hpMenuInfoEl.textContent = '❤️ Máš plné zdraví';
+        return;
+      }
+      const ms = (max - playerHp) * REGEN_MS;
+      const sec = Math.ceil(ms / 1000);
+      hpMenuInfoEl.textContent = '❤️ Plné zdraví za ' + (sec < 60 ? sec + ' s' : Math.ceil(sec / 60) + ' min');
+    }
+    function updateHpHud() {
+      const max = playerMaxHp();
+      if (playerHp > max) playerHp = max;
+      hpFillEl.style.width = (Math.max(0, playerHp) / max * 100) + '%';
+      hpTextEl.textContent = '❤️ ' + playerHp + '/' + max;
+      hpEl.classList.toggle('low', playerHp > 0 && playerHp <= Math.max(1, Math.floor(max * 0.25)));
+      hpEl.classList.toggle('empty', playerHp <= 0);
+      updateHpMenuInfo();
+    }
+
+    // ukáže aktuální útok/obranu podle vybavení, ať je vidět, kolik přesně přidá lepší zbraň/zbroj
+    const combatMenuInfoEl = document.getElementById('hud-menu-combat-info');
+    function updateCombatMenuInfo() {
+      const lo = 2 + Math.floor(xp / 40) + equippedWeapon().atk;
+      const hi = lo + 2;
+      combatMenuInfoEl.textContent = '⚔️ Útok ' + lo + '–' + hi + ' (zbraň +' + equippedWeapon().atk + ')'
+        + '   🛡️ Obrana -' + equippedArmor().def + ' zranění';
+    }
+    // pomalá regenerace HP (funguje i jako podklad pro „počkat na regen")
+    setInterval(function () {
+      const max = playerMaxHp();
+      if (playerHp < max) {
+        playerHp = Math.min(max, playerHp + 1);
+        saveHp();
+        updateHpHud();
+        if (selectedMob) updateMobPanel();
+      }
+    }, REGEN_MS);
+
+    // centrální přičtení XP – žádné skokové "levely", XP jen postupně zvedá max. HP a zároveň o stejný kus doléčí
+    function gainXp(amount) {
+      const maxBefore = playerMaxHp();
+      xp += amount;
+      saveXp();
+      const maxAfter = playerMaxHp();
+      const hpGain = maxAfter - maxBefore;
+      if (hpGain > 0) {
+        playerHp = Math.min(maxAfter, playerHp + hpGain);
+        saveHp();
+      }
+      updateXpMenuInfo();
+      updateHpHud();
+      if (selectedMob) updateMobPanel();
+    }
+
+    const panel = document.getElementById('poi-panel');
+    const collectBtn = document.getElementById('poi-collect');
+    const distEl = document.getElementById('poi-dist');
+    const badgeEl = document.getElementById('poi-badge');
+    // odměna za prozkoumání – při první návštěvě dvojnásobek
+    function rewardFor(p) { return isVisited(p) ? p.xp : p.xp * 2; }
+    // přepočítá dynamickou část panelu (vzdálenost + tlačítko + odznáček) podle stavu
+    function updatePoiButtons() {
+      const p = selected;
+      if (!p) return;
+      const gain = rewardFor(p);
+      const firstLabel = isVisited(p) ? '' : ' ×2!';
+      badgeEl.textContent = isVisited(p)
+        ? '🏅 Tady už jsi byl – odznáček získán'
+        : '✨ První návštěva = dvojnásobná odměna!';
+      const d = player ? Math.round(metersBetween(player, p)) : null;
+      if (d === null) { distEl.textContent = ''; collectBtn.disabled = true; collectBtn.textContent = 'Prozkoumat (+' + gain + ' XP' + firstLabel + ')'; return; }
+      distEl.textContent = '📏 Vzdálenost: ' + d + ' m';
+      if (!isReady(p)) {
+        const sec = Math.ceil((p.cooldownUntil - Date.now()) / 1000);
+        collectBtn.textContent = '⏳ Regeneruje se… ' + sec + ' s';
+        collectBtn.disabled = true;
+      } else if (d <= reachLimit(16)) {
+        collectBtn.textContent = 'Prozkoumat (+' + gain + ' XP' + firstLabel + ')';
+        collectBtn.disabled = false;
+      } else {
+        collectBtn.textContent = 'Přijdi blíž (do ' + Math.round(reachLimit(16)) + ' m)';
+        collectBtn.disabled = true;
+      }
+    }
+    function openPoi(p) {
+      selected = p;
+      document.getElementById('poi-icon').textContent = p.icon;
+      document.getElementById('poi-title').textContent = p.name;
+      document.getElementById('poi-type').textContent = p.type;
+      document.getElementById('poi-desc').textContent = p.desc;
+      updatePoiButtons();
+      panel.classList.add('open');
+    }
+    function closePoi() {
+      selected = null;
+      panel.classList.remove('open');
+    }
+    document.getElementById('poi-close').addEventListener('click', closePoi);
+
+    // vyskakující text (XP / poškození) od daného bodu na mapě
+    function spawnFloat(p, text, cls) {
+      const s = worldToScreen(p);
+      const el = document.createElement('div');
+      el.className = 'xp-float' + (cls ? ' ' + cls : '');
+      el.textContent = text;
+      el.style.left = (s.x / DPR) + 'px';
+      el.style.top = (s.y / DPR) + 'px';
+      document.getElementById('app').appendChild(el);
+      setTimeout(() => el.remove(), 1200);
+    }
+    function spawnXpPopup(p, amount, first) {
+      spawnFloat(p, '+' + amount + ' XP' + (first ? ' 🏅×2' : ''), first ? 'first' : '');
+    }
+
+    collectBtn.addEventListener('click', function () {
+      const p = selected;
+      if (!p || !isReady(p)) return;
+      const d = player ? metersBetween(player, p) : Infinity;
+      if (d > reachLimit(16)) return;
+      const first = !isVisited(p);
+      const gain = rewardFor(p);
+      gainXp(gain);
+      spawnXpPopup(p, gain, first);
+      recordVisit(p);   // zapiš do kroniky (čas, počet návštěv)
+      if (first) {
+        showToast('🏅 Nové místo objeveno! Bonus ×2 za první návštěvu', 2800);
+      }
+      p.cooldownUntil = Date.now() + COOLDOWN_MS;  // místo se začne regenerovat
+      updatePoiButtons();
+    });
+
+    // --- panel nestvůry ---
+    const mobPanel = document.getElementById('mob-panel');
+    const mobAttackBtn = document.getElementById('mob-attack');
+    const mobDistEl = document.getElementById('mob-dist');
+    const mobHpFill = document.getElementById('mob-hp-fill');
+    const mobHpText = document.getElementById('mob-hp-text');
+    // silnější nestvůry vyžadují víc HP na to, aby se na ně hráč vůbec odvážil zaútočit
+    function tierMinHp(tier) { return tier === 3 ? 10 : (tier === 2 ? 5 : 0); }
+    function updateMobPanel() {
+      const m = selectedMob;
+      if (!m) return;
+      mobHpFill.style.width = Math.max(0, m.hp / m.maxHp * 100) + '%';
+      mobHpText.textContent = Math.max(0, m.hp) + ' / ' + m.maxHp + ' HP';
+      const d = player ? Math.round(metersBetween(player, m)) : null;
+      if (d === null) { mobDistEl.textContent = ''; mobAttackBtn.disabled = true; mobAttackBtn.textContent = '⚔️ Zaútočit'; return; }
+      mobDistEl.textContent = '📏 Vzdálenost: ' + d + ' m';
+      const minHp = tierMinHp(m.tier);
+      if (playerHp <= 0) {
+        mobAttackBtn.disabled = true;
+        mobAttackBtn.textContent = '💀 Vyčerpaný – počkej na regeneraci';
+      } else if (playerHp < minHp) {
+        mobAttackBtn.disabled = true;
+        mobAttackBtn.textContent = '❤️ Potřebuješ aspoň ' + minHp + ' HP';
+      } else if (d <= reachLimit(16)) {
+        mobAttackBtn.disabled = false;
+        mobAttackBtn.textContent = '⚔️ Zaútočit (+' + m.xp + ' XP)';
+      } else {
+        mobAttackBtn.disabled = true;
+        mobAttackBtn.textContent = 'Přijdi blíž (do ' + Math.round(reachLimit(16)) + ' m)';
+      }
+    }
+    function openMob(m) {
+      selectedMob = m;
+      document.getElementById('mob-icon').textContent = m.icon;
+      document.getElementById('mob-title').textContent = m.name;
+      document.getElementById('mob-type').textContent = 'Nestvůra · Tier ' + (TIER_STYLE[m.tier] ? TIER_STYLE[m.tier].label : m.tier);
+      document.getElementById('mob-desc').textContent = m.desc;
+      updateMobPanel();
+      mobPanel.classList.add('open');
+    }
+    function closeMob() {
+      selectedMob = null;
+      mobPanel.classList.remove('open');
+    }
+    document.getElementById('mob-close').addEventListener('click', closeMob);
+
+    mobAttackBtn.addEventListener('click', function () {
+      const m = selectedMob;
+      if (!m) return;
+      if (playerHp <= 0) return;                 // vyčerpaný – nelze bojovat
+      if (playerHp < tierMinHp(m.tier)) return;   // na silnější nestvůry potřebuješ víc HP
+      const d = player ? metersBetween(player, m) : Infinity;
+      if (d > reachLimit(16)) return;
+      const atk = playerAttack();
+      m.hp -= atk.dmg;
+      if (atk.crit) {
+        spawnFloat(m, '💥 -' + atk.dmg + '!', 'crit');
+        const icon = document.getElementById('mob-icon');
+        icon.classList.remove('shake'); void icon.offsetWidth; icon.classList.add('shake');
+      } else {
+        spawnFloat(m, '-' + atk.dmg, 'hit');
+      }
+      if (m.hp <= 0) {
+        // nestvůra padla – bez protiútoku, upustí i zlaťáky
+        gainXp(m.xp);
+        const goldDrop = mobGoldReward(m);
+        gainGold(goldDrop);
+        monsters = monsters.filter(x => x !== m);
+        closeMob();
+        showVictory(m, goldDrop, atk.crit);
+        if (player) ensureMonsters(player);
+        questProgress('hunt', 1);
+      } else if (Math.random() < DODGE_CHANCE) {
+        // uhneš protiútoku – bez ztráty HP
+        if (player) spawnFloat(player, '✨ Úhyb!', 'dodge');
+        updateMobPanel();
+      } else {
+        // přeživší nestvůra ti vrátí úder (silnější), zbroj část zranění pohltí
+        const eliteDmg = m.tier === 3 ? 4 : 0;   // tier 3 udeří o kus tvrději
+        const rawBack = m.tier * m.tier * 3 + 2 + eliteDmg + Math.floor(Math.random() * m.tier * 3);
+        const back = Math.max(1, rawBack - equippedArmor().def);
+        playerHp = Math.max(0, playerHp - back);
+        saveHp();
+        updateHpHud();
+        if (player) spawnFloat(player, '-' + back, 'hit');
+        if (playerHp <= 0) showToast('💀 Jsi vyčerpaný! Počkej, než se zregeneruješ.', 3200);
+        updateMobPanel();
+      }
+      saveMonsters();
+    });
+
+    // karta odměny po vyhraném souboji – odměna už je připsaná, karta ji jen ukazuje
+    const victoryOverlay = document.getElementById('victory-overlay');
+    let victoryLoot = null;   // odměna k vypsání na mapě po zavření karty (kartu by přeletěla schovaná pod ní)
+    function showVictory(m, goldDrop, crit) {
+      document.getElementById('victory-icon').textContent = m.icon;
+      document.getElementById('victory-title').textContent = crit ? '💥 Kritické vítězství!' : '⚔️ Vítězství!';
+      const tier = TIER_STYLE[m.tier] ? TIER_STYLE[m.tier].label : m.tier;
+      document.getElementById('victory-name').textContent = m.name + ' · Tier ' + tier + ' poražen';
+      document.getElementById('victory-xp').textContent = '✨ +' + m.xp + ' XP';
+      document.getElementById('victory-gold').textContent = '🪙 +' + goldDrop;
+      victoryLoot = { lat: m.lat, lng: m.lng, xp: m.xp, gold: goldDrop };
+      victoryOverlay.classList.remove('hidden');
+    }
+    function closeVictory() {
+      victoryOverlay.classList.add('hidden');
+      if (victoryLoot) {
+        const loot = victoryLoot;
+        victoryLoot = null;
+        spawnFloat(loot, '+' + loot.xp + ' XP', 'kill');
+        setTimeout(() => spawnFloat(loot, '+' + loot.gold + ' 🪙', 'treasure'), 450);
+      }
+    }
+    document.getElementById('victory-ok').addEventListener('click', closeVictory);
+    victoryOverlay.addEventListener('click', e => { if (e.target === victoryOverlay) closeVictory(); });
+
+    // --- panel byliny / pokladu ---
+    const herbPanel = document.getElementById('herb-panel');
+    const herbCollectBtn = document.getElementById('herb-collect');
+    const herbDistEl = document.getElementById('herb-dist');
+    function updateHerbPanel() {
+      const h = selectedHerb;
+      if (!h) return;
+      const d = player ? Math.round(metersBetween(player, h)) : null;
+      if (d === null) { herbDistEl.textContent = ''; herbCollectBtn.disabled = true; herbCollectBtn.textContent = '🧺 Sebrat'; return; }
+      herbDistEl.textContent = '📏 Vzdálenost: ' + d + ' m';
+      if (d <= reachLimit(13)) {
+        herbCollectBtn.disabled = false;
+        herbCollectBtn.textContent = '🧺 Sebrat (+' + h.xp + ' XP)';
+      } else {
+        herbCollectBtn.disabled = true;
+        herbCollectBtn.textContent = 'Přijdi blíž (do ' + Math.round(reachLimit(13)) + ' m)';
+      }
+    }
+    function openHerb(h) {
+      selectedHerb = h;
+      document.getElementById('herb-icon').textContent = h.icon;
+      document.getElementById('herb-title').textContent = h.name;
+      document.getElementById('herb-type').textContent = h.tier === 2 ? 'Vzácný nález' : 'Bylina';
+      document.getElementById('herb-desc').textContent = h.desc;
+      updateHerbPanel();
+      herbPanel.classList.add('open');
+    }
+    function closeHerb() {
+      selectedHerb = null;
+      herbPanel.classList.remove('open');
+    }
+    document.getElementById('herb-close').addEventListener('click', closeHerb);
+
+    herbCollectBtn.addEventListener('click', function () {
+      const h = selectedHerb;
+      if (!h) return;
+      const d = player ? metersBetween(player, h) : Infinity;
+      if (d > reachLimit(13)) return;
+      gainXp(h.xp);
+      spawnFloat(h, '+' + h.xp + ' XP', h.tier === 2 ? 'treasure' : 'herb');
+      if (h.tier === 2) {
+        const goldDrop = treasureGoldReward();
+        gainGold(goldDrop);
+        showToast('🪙 Nalezen poklad: ' + h.name + '  (+' + h.xp + ' XP, +' + goldDrop + ' 🪙)', 2600);
+      } else {
+        showToast('🌿 Sebráno: ' + h.name + '  (+' + h.xp + ' XP)', 2600);
+      }
+      herbs = herbs.filter(x => x !== h);
+      closeHerb();
+      if (player) ensureHerbs(player);
+      saveHerbsState();
+      questProgress('herbs', 1);
+    });
+
+    // průběžně obnovuj odpočet regenerace / vzdálenost v otevřených panelech
+    setInterval(() => {
+      if (selected) updatePoiButtons();
+      if (selectedMob) updateMobPanel();
+      if (selectedHerb) updateHerbPanel();
+    }, 500);
+
+    // klik / tap na mapu – najdi nejbližší cíl (místo, nestvůru nebo bylinu) v dosahu
+    function pickAt(clientX, clientY) {
+      const px = clientX * DPR;
+      const py = clientY * DPR;
+      let best = null, bestKind = null, bestD = 30 * DPR;
+      for (const p of pois) {
+        const s = worldToScreen(p);
+        const d = Math.hypot(s.x - px, s.y - py);
+        if (d < bestD) { bestD = d; best = p; bestKind = 'poi'; }
+      }
+      for (const m of monsters) {
+        const s = worldToScreen(m);
+        const d = Math.hypot(s.x - px, s.y - py);
+        if (d < bestD) { bestD = d; best = m; bestKind = 'mob'; }
+      }
+      for (const h of herbs) {
+        const s = worldToScreen(h);
+        const d = Math.hypot(s.x - px, s.y - py);
+        if (d < bestD) { bestD = d; best = h; bestKind = 'herb'; }
+      }
+      closePoi();
+      closeMob();
+      closeHerb();
+      if (bestKind === 'poi') openPoi(best);
+      else if (bestKind === 'mob') openMob(best);
+      else if (bestKind === 'herb') openHerb(best);
+    }
+
+    // tažení mapy (myš i dotyk)
+    let dragging = false, dragMoved = false, lastX = 0, lastY = 0;
+    function onDown(x, y) { dragging = true; dragMoved = false; lastX = x; lastY = y; }
+    function onMove(x, y) {
+      if (!dragging) return;
+      const dx = x - lastX, dy = y - lastY;
+      if (Math.abs(dx) + Math.abs(dy) > 3) dragMoved = true;
+      lastX = x; lastY = y;
+      following = false;
+      panView(dx, dy);
+    }
+    function onUp(x, y) {
+      if (dragging && !dragMoved) pickAt(x, y);
+      dragging = false;
+    }
+
+    canvas.addEventListener('mousedown', e => onDown(e.clientX, e.clientY));
+    window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+    window.addEventListener('mouseup', e => onUp(e.clientX, e.clientY));
+
+    // kolečko myši = zoom k pozici kurzoru
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      setZoom(zoom - Math.sign(e.deltaY) * 0.5, e.clientX * DPR, e.clientY * DPR);
+    }, { passive: false });
+
+    // dotyk: jeden prst = posun/tap, dva prsty = pinch zoom
+    let pinchDist = 0, pinchZoom = 0;
+    const tDist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const tMid = (a, b) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 });
+    canvas.addEventListener('touchstart', e => {
+      if (e.touches.length === 2) {
+        dragging = false;
+        pinchDist = tDist(e.touches[0], e.touches[1]);
+        pinchZoom = zoom;
+      } else {
+        const t = e.touches[0]; onDown(t.clientX, t.clientY);
+      }
+    }, { passive: true });
+    canvas.addEventListener('touchmove', e => {
+      if (e.touches.length === 2 && pinchDist > 0) {
+        const d = tDist(e.touches[0], e.touches[1]);
+        const mid = tMid(e.touches[0], e.touches[1]);
+        setZoom(pinchZoom + Math.log2(d / pinchDist), mid.x * DPR, mid.y * DPR);
+      } else if (e.touches.length === 1 && !pinchDist) {
+        const t = e.touches[0]; onMove(t.clientX, t.clientY);
+      }
+    }, { passive: true });
+    canvas.addEventListener('touchend', e => {
+      if (e.touches.length === 0) {
+        const t = e.changedTouches[0];
+        if (!pinchDist) onUp(t.clientX, t.clientY);  // tap jen pokud nešlo o pinch
+        pinchDist = 0;
+      }
+    });
+
+    document.getElementById('recenter').addEventListener('click', function () {
+      if (player) {
+        view = { lat: player.lat, lng: player.lng };
+        following = true;
+      }
+    });
+
+    // znovu načti reálná místa kolem středu aktuálního výřezu
+    document.getElementById('rescan').addEventListener('click', function () {
+      if (view) loadPois({ lat: view.lat, lng: view.lng });
+    });
+
+
+    // --- kronika navštívených míst (přehled: seznam + mapa) ---
+    const logOverlay = document.getElementById('log-overlay');
+    const logListEl = document.getElementById('log-list');
+    const logMapWrap = document.getElementById('log-map-wrap');
+    const logMapCanvas = document.getElementById('log-map');
+    const logTabList = document.getElementById('log-tab-list');
+    const logTabMap = document.getElementById('log-tab-map');
+    let logMapTimer = null;
+
+    function visitedRecords() {
+      return [...visited.values()].sort((a, b) => (b.lastAt || b.firstAt || 0) - (a.lastAt || a.firstAt || 0));
+    }
+    function fmtTime(t) {
+      if (!t) return 'neznámo kdy';
+      try {
+        return new Date(t).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      } catch (e) { return new Date(t).toLocaleString(); }
+    }
+    function buildLogList() {
+      const recs = visitedRecords();
+      logListEl.innerHTML = '';
+      if (!recs.length) {
+        logListEl.innerHTML = '<div class="log-empty">Zatím jsi neprozkoumal žádné místo.<br>Najdi PoI na mapě a prozkoumej ho.</div>';
+        return;
+      }
+      const cnt = document.createElement('div');
+      cnt.className = 'log-count';
+      cnt.textContent = 'Navštíveno míst: ' + recs.length;
+      logListEl.appendChild(cnt);
+      for (const r of recs) {
+        const row = document.createElement('div');
+        row.className = 'log-row';
+        row.innerHTML = '<div class="log-ic"></div><div class="log-info"><div class="log-name"></div><div class="log-meta"></div></div>';
+        row.querySelector('.log-ic').textContent = r.icon || '📍';
+        row.querySelector('.log-name').textContent = r.name || 'Místo';
+        row.querySelector('.log-meta').textContent =
+          (r.type ? r.type + ' · ' : '') + 'poprvé ' + fmtTime(r.firstAt) + (r.count > 1 ? ' · ' + r.count + '×' : '');
+        row.addEventListener('click', function () {
+          view = { lat: r.lat, lng: r.lng };
+          following = false;
+          closeLog();
+        });
+        logListEl.appendChild(row);
+      }
+    }
+
+    // pomocná projekce pro náhledovou mapu (nezávislá na hlavním zoomu)
+    function gx(lng, z) { return (lng + 180) / 360 * TILE * Math.pow(2, z); }
+    function gy(lat, z) {
+      const s = Math.sin(lat * Math.PI / 180);
+      return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * TILE * Math.pow(2, z);
+    }
+    function renderLogMap(cv, recs) {
+      const cssW = cv.clientWidth || 300, cssH = cv.clientHeight || 300;
+      cv.width = cssW * DPR; cv.height = cssH * DPR;
+      const c = cv.getContext('2d');
+      c.fillStyle = '#16324a'; c.fillRect(0, 0, cv.width, cv.height);
+      if (!recs.length) return;
+      let minLa = 90, maxLa = -90, minLn = 180, maxLn = -180;
+      for (const r of recs) {
+        minLa = Math.min(minLa, r.lat); maxLa = Math.max(maxLa, r.lat);
+        minLn = Math.min(minLn, r.lng); maxLn = Math.max(maxLn, r.lng);
+      }
+      const cLat = (minLa + maxLa) / 2, cLng = (minLn + maxLn) / 2;
+      // zvol zoom tak, aby se všechny body vešly
+      let z = 18;
+      for (; z > 2; z--) {
+        const wpx = Math.abs(gx(maxLn, z) - gx(minLn, z));
+        const hpx = Math.abs(gy(minLa, z) - gy(maxLa, z));
+        if (wpx < cssW * 0.8 && hpx < cssH * 0.8) break;
+      }
+      const vx = gx(cLng, z), vy = gy(cLat, z), n = Math.pow(2, z);
+      const halfW = cssW / 2, halfH = cssH / 2, ts = TILE * DPR;
+      const x0 = Math.floor((vx - halfW) / TILE), x1 = Math.floor((vx + halfW) / TILE);
+      const y0 = Math.floor((vy - halfH) / TILE), y1 = Math.floor((vy + halfH) / TILE);
+      c.filter = 'brightness(0.96) saturate(1.12) contrast(1.02)';
+      for (let tx = x0; tx <= x1; tx++) {
+        for (let ty = y0; ty <= y1; ty++) {
+          if (ty < 0 || ty >= n) continue;
+          const wrapX = ((tx % n) + n) % n;
+          const img = getTile(z, wrapX, ty);
+          const sx = (tx * TILE - vx) * DPR + cv.width / 2;
+          const sy = (ty * TILE - vy) * DPR + cv.height / 2;
+          if (img.complete && img.naturalWidth) c.drawImage(img, sx, sy, ts + 1, ts + 1);
+        }
+      }
+      c.filter = 'none';
+      for (const r of recs) {
+        const sx = (gx(r.lng, z) - vx) * DPR + cv.width / 2;
+        const sy = (gy(r.lat, z) - vy) * DPR + cv.height / 2;
+        const rad = 12 * DPR;
+        c.beginPath(); c.arc(sx, sy - rad * .2, rad, 0, Math.PI * 2);
+        c.fillStyle = r.color || '#caa84a'; c.fill();
+        c.lineWidth = 2 * DPR; c.strokeStyle = '#fff'; c.stroke();
+        c.font = (13 * DPR) + 'px system-ui'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillText(r.icon || '📍', sx, sy - rad * .2);
+      }
+    }
+
+    function showLogTab(which) {
+      const isMap = which === 'map';
+      logTabMap.classList.toggle('active', isMap);
+      logTabList.classList.toggle('active', !isMap);
+      logMapWrap.style.display = isMap ? 'block' : 'none';
+      logListEl.style.display = isMap ? 'none' : 'block';
+      clearInterval(logMapTimer); logMapTimer = null;
+      if (isMap) {
+        const recs = visitedRecords();
+        renderLogMap(logMapCanvas, recs);
+        // dlaždice se načítají asynchronně – chvíli překresluj
+        logMapTimer = setInterval(() => renderLogMap(logMapCanvas, recs), 700);
+      }
+    }
+    function openLog() {
+      buildLogList();
+      logOverlay.classList.remove('hidden');
+      showLogTab('list');
+    }
+    function closeLog() {
+      logOverlay.classList.add('hidden');
+      clearInterval(logMapTimer); logMapTimer = null;
+    }
+    // úplný reset postupu – jedinou výjimkou jsou navštívená místa v kronice
+    const resetOverlay = document.getElementById('reset-overlay');
+    function resetProgress() { resetOverlay.classList.remove('hidden'); }
+    function closeResetDialog() { resetOverlay.classList.add('hidden'); }
+    function performReset() {
+      closeResetDialog();
+      xp = 0; saveXp();
+      playerHp = playerMaxHp(); saveHp();
+      gold = 0; saveGold();
+      inventory = { ownedWeapons: ['w0'], ownedArmors: ['a0'], weapon: 'w0', armor: 'a0' };
+      saveInventory();
+      amuletLevel = 0; saveAmulet();
+      activeQuest = null; saveQuest();
+      questTakenAt = 0; saveQuestTakenAt();
+      clearQuestOffer();
+      updateQuestBtn();
+      updateXpMenuInfo();
+      updateHpHud();
+      updateGoldHud();
+      showToast('♻️ Postup byl resetován, navštívená místa zůstala zachována', 3000);
+    }
+    document.getElementById('log-close').addEventListener('click', closeLog);
+    logTabList.addEventListener('click', () => showLogTab('list'));
+    logTabMap.addEventListener('click', () => showLogTab('map'));
+    logOverlay.addEventListener('click', e => { if (e.target === logOverlay) closeLog(); });
+    document.getElementById('reset-confirm').addEventListener('click', performReset);
+    document.getElementById('reset-cancel').addEventListener('click', closeResetDialog);
+    resetOverlay.addEventListener('click', e => { if (e.target === resetOverlay) closeResetDialog(); });
+
+    // --- obchod: nákup a výbava zbraní/zbroje za zlaťáky ---
+    const shopOverlay = document.getElementById('shop-overlay');
+    const shopListEl = document.getElementById('shop-list');
+    const shopGoldTextEl = document.getElementById('shop-gold-text');
+    const shopTabWeapons = document.getElementById('shop-tab-weapons');
+    const shopTabArmor = document.getElementById('shop-tab-armor');
+    let shopTab = 'weapons';
+    function buyOrEquip(item, kind) {
+      const ownedList = kind === 'weapon' ? inventory.ownedWeapons : inventory.ownedArmors;
+      const owned = ownedList.includes(item.id);
+      if (!owned) {
+        if (!spendGold(item.cost)) {
+          showToast('🪙 Nedostatek zlata na ' + item.name, 2400);
+          return;
+        }
+        ownedList.push(item.id);
+      }
+      if (kind === 'weapon') inventory.weapon = item.id; else inventory.armor = item.id;
+      saveInventory();
+      showToast((owned ? '✅ Vybaveno: ' : '🎉 Koupeno a vybaveno: ') + item.name, 2400);
+      renderShopList();
+    }
+    function renderShopList() {
+      const isWeapons = shopTab === 'weapons';
+      const list = isWeapons ? WEAPONS : ARMORS;
+      const kind = isWeapons ? 'weapon' : 'armor';
+      const ownedList = isWeapons ? inventory.ownedWeapons : inventory.ownedArmors;
+      const equippedId = isWeapons ? inventory.weapon : inventory.armor;
+      shopListEl.innerHTML = '';
+      for (const item of list) {
+        const owned = ownedList.includes(item.id);
+        const equipped = equippedId === item.id;
+        const row = document.createElement('div');
+        row.className = 'shop-row';
+        row.innerHTML = '<div class="shop-ic"></div><div class="shop-info"><div class="shop-name"></div><div class="shop-stat"></div></div><button class="shop-action"></button>';
+        row.querySelector('.shop-ic').textContent = item.icon;
+        row.querySelector('.shop-name').textContent = item.name;
+        row.querySelector('.shop-stat').textContent = item.desc + (owned ? '' : ' · cena ' + item.cost + ' 🪙');
+        const btn = row.querySelector('.shop-action');
+        if (equipped) {
+          btn.textContent = '✅ Vybaveno';
+          btn.classList.add('equipped');
+          btn.disabled = true;
+        } else if (owned) {
+          btn.textContent = 'Vybavit';
+          btn.addEventListener('click', () => buyOrEquip(item, kind));
+        } else {
+          btn.textContent = 'Koupit (' + item.cost + ' 🪙)';
+          btn.disabled = gold < item.cost;
+          btn.addEventListener('click', () => buyOrEquip(item, kind));
+        }
+        shopListEl.appendChild(row);
+      }
+    }
+    function showShopTab(which) {
+      shopTab = which;
+      shopTabWeapons.classList.toggle('active', which === 'weapons');
+      shopTabArmor.classList.toggle('active', which === 'armor');
+      renderShopList();
+    }
+    function openShop() {
+      shopGoldTextEl.textContent = '🪙 ' + gold;
+      showShopTab(shopTab);
+      shopOverlay.classList.remove('hidden');
+    }
+    function closeShop() { shopOverlay.classList.add('hidden'); }
+    document.getElementById('shop-close').addEventListener('click', closeShop);
+    shopTabWeapons.addEventListener('click', () => showShopTab('weapons'));
+    shopTabArmor.addEventListener('click', () => showShopTab('armor'));
+    shopOverlay.addEventListener('click', e => { if (e.target === shopOverlay) closeShop(); });
+
+    // --- úkoly a amulet poutníka ---
+    // 3 druhy úkolů (10 nestvůr / 10 bylin / 1 km cesty); první splněný úkol odmění
+    // amuletem, každý další ho posílí o úroveň – každá úroveň = +1 % max. HP regenerace za minutu
+    const QUEST_KEY = 'pxplore.quest';              // aktivní úkol {type, progress, takenAt}
+    const AMULET_KEY = 'pxplore.amulet';            // úroveň amuletu (0 = zatím nezískán)
+    const QUEST_TAKEN_KEY = 'pxplore.questTakenAt'; // kdy byl naposledy přijat úkol
+    const QUEST_COOLDOWN_MS = 86400000;          // nový úkol lze vzít jednou za 24 h
+    const QUEST_TYPES = [
+      { id: 'hunt', icon: '⚔️', name: 'Vyčisti stezky', target: 10, unit: 'nestvůr',
+        offer: 'Poraz 10 nestvůr.',
+        story: 'Stařec u milníku ti vtiskne do dlaně zmuchlaný lístek: „Stíny houstnou a nestvůry se stahují k lidským stezkám. Poraz jich deset, poutníku – označil jsem ti je na mapě."' },
+      { id: 'herbs', icon: '🌿', name: 'Bylinářčina prosba', target: 10, unit: 'bylin',
+        offer: 'Nasbírej 10 bylin či pokladů.',
+        story: '„Zásoby došly a nemocní čekají," šeptá bylinářka nad prázdným hmoždířem. „Přines mi deset bylin z divočiny a odměna tě nemine."' },
+      { id: 'travel', icon: '🥾', name: 'Poutníkova cesta', target: 1000, unit: 'm',
+        offer: 'Ujdi 1 kilometr.',
+        story: '„Kdo stojí, ten rezaví," hlásá nápis vyrytý do starého milníku. „Ujdi tisíc kroků světem a cesta sama ti ukáže, co jsi měl najít."' },
+    ];
+    const AMULET_STORY = 'Za splněný úkol ti do dlaně padá matně zářící kámen na koženém řemínku – Amulet poutníka. Prastarý artefakt, který tiše hojí rány svého nositele a sílí s každým dalším splněným úkolem. Najdeš ho v menu po klepnutí na HP lištu.';
+    function loadQuest() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(QUEST_KEY) || 'null');
+        if (raw && QUEST_TYPES.some(t => t.id === raw.type) && typeof raw.progress === 'number') return raw;
+      } catch (e) {}
+      return null;
+    }
+    let activeQuest = loadQuest();
+    function saveQuest() { try { localStorage.setItem(QUEST_KEY, JSON.stringify(activeQuest)); } catch (e) {} }
+    function loadAmulet() {
+      try { const v = parseInt(localStorage.getItem(AMULET_KEY) || '0', 10); return isNaN(v) ? 0 : v; }
+      catch (e) { return 0; }
+    }
+    let amuletLevel = loadAmulet();
+    function saveAmulet() { try { localStorage.setItem(AMULET_KEY, String(amuletLevel)); } catch (e) {} }
+    function loadQuestTakenAt() {
+      try { const v = parseInt(localStorage.getItem(QUEST_TAKEN_KEY) || '0', 10); return isNaN(v) ? 0 : v; }
+      catch (e) { return 0; }
+    }
+    let questTakenAt = loadQuestTakenAt();
+    function saveQuestTakenAt() { try { localStorage.setItem(QUEST_TAKEN_KEY, String(questTakenAt)); } catch (e) {} }
+
+    // nabízí se vždy jeden náhodně vylosovaný úkol; los se uloží, aby refresh stránky nepřelosoval
+    const QUEST_OFFER_KEY = 'pxplore.questOffer';
+    function clearQuestOffer() { try { localStorage.removeItem(QUEST_OFFER_KEY); } catch (e) {} }
+    function currentQuestOffer() {
+      let id = null;
+      try { id = localStorage.getItem(QUEST_OFFER_KEY); } catch (e) {}
+      let def = QUEST_TYPES.find(t => t.id === id);
+      if (!def) {
+        def = QUEST_TYPES[Math.floor(Math.random() * QUEST_TYPES.length)];
+        try { localStorage.setItem(QUEST_OFFER_KEY, def.id); } catch (e) {}
+      }
+      return def;
+    }
+
+    function questDef(q) { return QUEST_TYPES.find(t => t.id === q.type); }
+    function questProgressText(q) {
+      const def = questDef(q);
+      const cur = q.type === 'travel' ? Math.round(q.progress) : q.progress;
+      return cur + ' / ' + def.target + ' ' + def.unit;
+    }
+    function fmtRemaining(ms) {
+      const min = Math.ceil(ms / 60000);
+      if (min < 60) return min + ' min';
+      const h = Math.floor(min / 60), m = min % 60;
+      return h + ' h' + (m ? ' ' + m + ' min' : '');
+    }
+
+    // sledování ušlé vzdálenosti pro úkol „Poutníkova cesta"
+    let lastTravelPos = null;
+    function questTravel(pos) {
+      if (!lastTravelPos) { lastTravelPos = pos; return; }
+      const d = metersBetween(lastTravelPos, pos);
+      if (d > 500) { lastTravelPos = pos; return; }  // GPS skok/teleport – nepočítat
+      if (d < 2) return;                             // šum polohy – čekej na skutečný posun
+      lastTravelPos = pos;
+      questProgress('travel', d);
+    }
+
+    function questProgress(type, amount) {
+      const q = activeQuest;
+      if (!q || q.type !== type) return;
+      const def = questDef(q);
+      q.progress = Math.min(def.target, q.progress + amount);
+      saveQuest();
+      if (q.progress >= def.target) {
+        completeQuest(def);
+      } else if (type !== 'travel') {
+        // toast s postupem až po chvíli, ať nepřepíše hlášku o zabití/sběru
+        const txt = def.icon + ' Úkol: ' + questProgressText(q);
+        setTimeout(() => showToast(txt, 2000), 1400);
+      }
+      if (activeQuest) updateQuestBtn();   // po dokončení už odznáček přepsal completeQuest
+      if (!questOverlay.classList.contains('hidden')) renderQuestBody();
+    }
+    function completeQuest(def) {
+      activeQuest = null;
+      saveQuest();
+      amuletLevel += 1;
+      saveAmulet();
+      updateQuestBtn();
+      showAmuletOverlay(amuletLevel === 1, def);
+    }
+
+    // amulet pomalu hojí nositele – každá úroveň obnoví navíc 1 % max. HP za minutu
+    let amuletRegenAcc = 0;
+    setInterval(function () {
+      if (amuletLevel <= 0) return;
+      const max = playerMaxHp();
+      if (playerHp >= max) { amuletRegenAcc = 0; return; }
+      amuletRegenAcc += max * amuletLevel / 100 / 60;
+      if (amuletRegenAcc < 1) return;
+      const heal = Math.floor(amuletRegenAcc);
+      amuletRegenAcc -= heal;
+      playerHp = Math.min(max, playerHp + heal);
+      saveHp();
+      updateHpHud();
+      if (selectedMob) updateMobPanel();
+    }, 1000);
+
+    // panel úkolů (otevírá se z menu)
+    const questOverlay = document.getElementById('quest-overlay');
+    const questBodyEl = document.getElementById('quest-body');
+    function takeQuest(id) {
+      if (activeQuest) return;
+      if (Date.now() - questTakenAt < QUEST_COOLDOWN_MS) return;
+      const def = QUEST_TYPES.find(t => t.id === id);
+      if (!def) return;
+      activeQuest = { type: id, progress: 0, takenAt: Date.now() };
+      questTakenAt = Date.now();
+      saveQuest();
+      saveQuestTakenAt();
+      clearQuestOffer();
+      if (id === 'travel') lastTravelPos = player ? { lat: player.lat, lng: player.lng } : null;
+      renderQuestBody();
+      updateQuestBtn();
+      showToast(def.icon + ' Úkol přijat: ' + def.name, 2600);
+    }
+    function renderQuestBody() {
+      questBodyEl.innerHTML = '';
+      if (amuletLevel > 0) {
+        const a = document.createElement('div');
+        a.className = 'quest-amulet';
+        a.innerHTML = '<div class="ic">🧿</div><div><div class="nm"></div><div class="fx"></div></div>';
+        a.querySelector('.nm').textContent = 'Amulet poutníka · úroveň ' + amuletLevel;
+        a.querySelector('.fx').textContent = 'Obnovuje navíc ' + amuletLevel + ' % max. HP za minutu';
+        questBodyEl.appendChild(a);
+      }
+      if (activeQuest) {
+        const def = questDef(activeQuest);
+        const h = document.createElement('div');
+        h.className = 'quest-head-note';
+        h.textContent = def.icon + ' ' + def.name;
+        questBodyEl.appendChild(h);
+        const st = document.createElement('div');
+        st.className = 'quest-story';
+        st.textContent = def.story;
+        questBodyEl.appendChild(st);
+        const lbl = document.createElement('div');
+        lbl.className = 'quest-progress-label';
+        lbl.textContent = '📈 Postup úkolu';
+        questBodyEl.appendChild(lbl);
+        const bar = document.createElement('div');
+        bar.className = 'quest-bar';
+        bar.innerHTML = '<i></i><span></span>';
+        bar.querySelector('i').style.width = Math.min(100, activeQuest.progress / def.target * 100) + '%';
+        bar.querySelector('span').textContent = questProgressText(activeQuest);
+        questBodyEl.appendChild(bar);
+        if (def.id !== 'travel') {
+          const note = document.createElement('div');
+          note.className = 'quest-note';
+          note.textContent = def.id === 'hunt'
+            ? '❗ Nestvůry úkolu jsou označené na mapě zlatým vykřičníkem.'
+            : '❗ Byliny úkolu jsou označené na mapě zlatým vykřičníkem.';
+          questBodyEl.appendChild(note);
+        }
+      } else {
+        const waitMs = questTakenAt + QUEST_COOLDOWN_MS - Date.now();
+        if (waitMs <= 0) {
+          const def = currentQuestOffer();
+          const h = document.createElement('div');
+          h.className = 'quest-head-note';
+          h.textContent = 'Nový úkol čeká';
+          questBodyEl.appendChild(h);
+          const row = document.createElement('div');
+          row.className = 'quest-offer';
+          row.innerHTML = '<div class="ic"></div><div class="info"><div class="nm"></div><div class="ds"></div></div><button>Přijmout</button>';
+          row.querySelector('.ic').textContent = def.icon;
+          row.querySelector('.nm').textContent = def.name;
+          row.querySelector('.ds').textContent = def.offer;
+          row.querySelector('button').addEventListener('click', () => takeQuest(def.id));
+          questBodyEl.appendChild(row);
+          const note = document.createElement('div');
+          note.className = 'quest-note';
+          note.textContent = 'Úkol se losuje náhodně a nový si můžeš vzít jednou za 24 hodin. Každý splněný úkol '
+            + (amuletLevel > 0 ? 'posílí amulet o úroveň' : 'tě odmění amuletem')
+            + ' – každá úroveň = +1 % max. HP regenerace za minutu.';
+          questBodyEl.appendChild(note);
+        } else {
+          const note = document.createElement('div');
+          note.className = 'quest-note';
+          note.textContent = '⏳ Další úkol si můžeš vzít za ' + fmtRemaining(waitMs) + '.';
+          questBodyEl.appendChild(note);
+        }
+      }
+    }
+    function openQuests() { renderQuestBody(); questOverlay.classList.remove('hidden'); }
+    function closeQuests() { questOverlay.classList.add('hidden'); }
+    document.getElementById('quest-close').addEventListener('click', closeQuests);
+    questOverlay.addEventListener('click', e => { if (e.target === questOverlay) closeQuests(); });
+
+    // tlačítko úkolů na liště vpravo dole – ikona aktivního úkolu + odznáček s postupem,
+    // vykřičník, když čeká nový úkol k přijetí
+    const questsBtnIc = document.getElementById('quests-btn-ic');
+    const questsBadge = document.getElementById('quests-badge');
+    function updateQuestBtn() {
+      if (activeQuest) {
+        const def = questDef(activeQuest);
+        questsBtnIc.textContent = def.icon;
+        questsBadge.classList.remove('hidden');
+        questsBadge.textContent = def.id === 'travel'
+          ? Math.floor(activeQuest.progress / def.target * 100) + '%'
+          : activeQuest.progress + '/' + def.target;
+      } else {
+        questsBtnIc.textContent = '🗒️';
+        const canTake = Date.now() - questTakenAt >= QUEST_COOLDOWN_MS;
+        questsBadge.textContent = '!';
+        questsBadge.classList.toggle('hidden', !canTake);
+      }
+    }
+    document.getElementById('quests-btn').addEventListener('click', openQuests);
+    setInterval(updateQuestBtn, 5000);   // po vypršení 24h cooldownu se sám objeví vykřičník
+    updateQuestBtn();
+
+    // slavnostní karta – první získání amuletu (intro příběh) / posílení na další úroveň
+    const amuletOverlay = document.getElementById('amulet-overlay');
+    function showAmuletOverlay(first, def) {
+      document.getElementById('amulet-title').textContent = first ? 'Amulet poutníka' : 'Amulet posílil!';
+      document.getElementById('amulet-story').textContent = first
+        ? AMULET_STORY
+        : 'Úkol „' + def.name + '" je splněn. Kámen amuletu se rozzáří jasněji a jeho hojivá moc roste.';
+      document.getElementById('amulet-fx').textContent = '🧿 Úroveň ' + amuletLevel + ' · obnovuje navíc ' + amuletLevel + ' % max. HP za minutu';
+      document.getElementById('amulet-ok').textContent = first ? '🧿 Vzít amulet' : 'Pokračovat';
+      amuletOverlay.classList.remove('hidden');
+    }
+    document.getElementById('amulet-ok').addEventListener('click', () => amuletOverlay.classList.add('hidden'));
+
+    // --- menu otevřené klepnutím na HUD (HP/XP) ---
+    const hudMenuOverlay = document.getElementById('hud-menu-overlay');
+    // řádek s amuletem v menu – objeví se až po jeho získání
+    const amuletMenuInfoEl = document.getElementById('hud-menu-amulet-info');
+    function updateAmuletMenuInfo() {
+      if (amuletLevel > 0) {
+        amuletMenuInfoEl.style.display = '';
+        amuletMenuInfoEl.textContent = '🧿 Amulet úr. ' + amuletLevel + ' – navíc +' + amuletLevel + ' % max. HP/min';
+      } else {
+        amuletMenuInfoEl.style.display = 'none';
+      }
+    }
+    function openHudMenu() {
+      updateXpMenuInfo();
+      updateHpMenuInfo();
+      updateCombatMenuInfo();
+      updateAmuletMenuInfo();
+      hudMenuOverlay.classList.remove('hidden');
+    }
+    function closeHudMenu() { hudMenuOverlay.classList.add('hidden'); }
+    document.getElementById('hud').addEventListener('click', openHudMenu);
+    document.getElementById('hud-menu-close').addEventListener('click', closeHudMenu);
+    document.getElementById('hud-menu-quests').addEventListener('click', () => { closeHudMenu(); openQuests(); });
+    document.getElementById('hud-menu-shop').addEventListener('click', () => { closeHudMenu(); openShop(); });
+    document.getElementById('hud-menu-log').addEventListener('click', () => { closeHudMenu(); openLog(); });
+    document.getElementById('hud-menu-reset').addEventListener('click', () => { closeHudMenu(); resetProgress(); });
+    hudMenuOverlay.addEventListener('click', e => { if (e.target === hudMenuOverlay) closeHudMenu(); });
+
+    // --- geolokace ---
+    function onPosition(lat, lng) {
+      const first = !player;
+      player = { lat, lng };
+      if (first) {
+        view = { lat, lng };
+        hideStatus();
+        loadPois(player);        // načti reálná místa z OpenStreetMap
+        // nestvůry a byliny se obnoví z uloženého stavu (aby obnovení stránky nevyspawnovalo nové) –
+        // počáteční sada se vytvoří jen při opravdu prvním spuštění, ne pokaždé, když je pole
+        // prázdné (to by šlo obejít vyzabíjením/posbíráním všeho a refreshem)
+        if (!worldInitialized()) {
+          for (let i = 0; i < 3; i++) monsters.push(makeMob(player));
+          saveMonsters();
+          herbs.push(makeHerb(player));
+          saveHerbsState();
+          markWorldInitialized();
+        }
+        lastSpawnAt = Date.now();
+        lastHerbSpawnAt = Date.now();
+      } else if (following) {
+        view = { lat: player.lat, lng: player.lng };
+      }
+      questTravel({ lat, lng });   // ušlá vzdálenost pro úkol „Poutníkova cesta"
+      // pokud je panel otevřený, aktualizuj vzdálenost/tlačítko
+      if (selected) updatePoiButtons();
+      if (selectedMob) updateMobPanel();
+      if (selectedHerb) updateHerbPanel();
+    }
+
+    // bez polohy se hrát nedá – místo hry řekni hráči, co potřebuje udělat
+    function geoErrorText(err) {
+      if (err && err.code === 1) {
+        return 'Hra se hraje pohybem ve skutečném světě, a potřebuje proto přístup k tvojí poloze. Povol polohu v prohlížeči a zkus to znovu.';
+      }
+      return 'Nepodařilo se zjistit tvoji polohu. Zkontroluj, že máš zapnuté polohové služby a signál, a zkus to znovu.';
+    }
+
+    let geoWatchId = null;
+    function startGeo() {
+      if (!('geolocation' in navigator)) {
+        showStatus('Tvůj prohlížeč neumí zjišťovat polohu, takže v něm hru nejde spustit. Otevři ji v prohlížeči s podporou GPS (např. na mobilu).');
+        return;
+      }
+      showStatus('Zjišťuji tvoji polohu…');
+      navigator.geolocation.getCurrentPosition(
+        pos => onPosition(pos.coords.latitude, pos.coords.longitude),
+        err => {
+          console.warn('geo error', err);
+          if (!player) showStatus(geoErrorText(err), true);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+      );
+      // průběžné sledování polohy (jen jednou – opakované „Zkusit znovu" nesmí vršit watchery)
+      if (geoWatchId === null) {
+        geoWatchId = navigator.geolocation.watchPosition(
+          pos => onPosition(pos.coords.latitude, pos.coords.longitude),
+          () => {},
+          { enableHighAccuracy: true, maximumAge: 3000 }
+        );
+      }
+    }
+
+    statusBtn.addEventListener('click', startGeo);
+
+    // --- start ---
+    updateXpMenuInfo();
+    updateHpHud();
+    updateGoldHud();
+    window.addEventListener('resize', resize);
+    resize();
+    loop();
+    startGeo();
+  })();
+  </script>
+</body>
+</html>

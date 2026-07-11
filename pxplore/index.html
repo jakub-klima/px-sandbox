@@ -36,7 +36,7 @@
       color: #fff;
       pointer-events: none;
     }
-    /* zlaťáky jako HUD blok */
+    /* úroveň a počítadlo míst jako jeden svázaný HUD blok */
     #hud {
       display: flex;
       flex-direction: column;
@@ -160,8 +160,9 @@
       pointer-events: auto;
     }
     #attribution a { color: #1b6fa8; }
-    /* barva výplně pruhu zlaťáků v HUDu */
-    #gold > i { width: 100%; background: linear-gradient(180deg,#e8c34a,#a8780a); }
+    /* HUD: pruh úrovně (výplň = postup k další úrovni) a počítadlo navštívených míst */
+    #level > i { background: linear-gradient(180deg,#e8c34a,#a8780a); }
+    #places > i { width: 100%; background: linear-gradient(180deg,#3a5a7a,#22384e); }
     /* informační bublina (načítání míst apod.) */
     #toast {
       position: absolute;
@@ -207,7 +208,7 @@
         rgba(20,15,10,0) 62%, rgba(24,17,11,.22) 88%, rgba(18,12,8,.4) 100%);
     }
     /* UI nad vinětu */
-    #topbar, #buttons, #status, #poi-panel, #herb-panel, #toast, #attribution { z-index: 2; }
+    #topbar, #buttons, #status, #poi-panel, #toast, #attribution { z-index: 2; }
     #topbar { background: linear-gradient(180deg, rgba(16,13,11,.92), rgba(16,13,11,0)); }
     /* menu otevřené klepnutím na HUD – kronika a reset postupu */
     #hud-menu-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
@@ -246,8 +247,6 @@
     #attribution a { color: #caa84a; }
     .hint { color: #a08c6a; }
     .xp-float { color: #e8c34a; }
-    .xp-float.herb { color: #8bd17a; }
-    .xp-float.treasure { color: #ffd54a; font-size: 26px; }
 
     /* panel místa – temná „parchment" varianta */
     #poi-panel { background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; color: #d9c7a3; border-radius: 14px; }
@@ -259,27 +258,6 @@
     #poi-panel .collect { background: linear-gradient(180deg,#3a5a2e,#26401d); color: #f2e6c8; border: 1px solid #6b5836; border-radius: 8px; }
     #poi-panel .collect:disabled { background: #2a241d; color: #7a6f5a; border-color: #473a26; }
     #poi-panel .close { background: #2a241d; color: #d9c7a3; border: 1px solid #6b5836; border-radius: 8px; }
-
-    /* panel byliny / pokladu (přírodní zelenozlatý tón) */
-    #herb-panel {
-      position: absolute; left: 12px; right: 12px; bottom: 24px;
-      background: linear-gradient(180deg,#1c2417,#12160e);
-      border: 1px solid #4a6b30; color: #d9e0c8; border-radius: 14px;
-      padding: 18px 20px; box-shadow: 0 12px 30px rgba(0,0,0,.7);
-      transform: translateY(180%); transition: transform .28s cubic-bezier(.2,.8,.2,1);
-    }
-    #herb-panel.open { transform: translateY(0); }
-    #herb-panel .head { display: flex; align-items: center; gap: 12px; }
-    #herb-panel .icon { font-size: 34px; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.4); border: 1px solid #4a6b30; border-radius: 10px; flex-shrink: 0; }
-    #herb-panel .title { font-family: Georgia, serif; font-size: 20px; font-weight: 700; color: #d8e8a0; }
-    #herb-panel .type { font-size: 13px; color: #9ab87a; margin-top: 2px; }
-    #herb-panel .desc { margin-top: 12px; font-size: 14px; line-height: 1.5; font-style: italic; color: #b8c8a0; }
-    #herb-panel .dist { margin-top: 10px; font-size: 13px; color: #caa84a; font-weight: 600; }
-    #herb-panel .actions { margin-top: 14px; display: flex; gap: 10px; }
-    #herb-panel .actions button { flex: 1; border: 1px solid #4a6b30; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 700; cursor: pointer; color: #f2e6c8; }
-    #herb-panel .collect { background: linear-gradient(180deg,#3a6b2a,#26401d); }
-    #herb-panel .actions button:disabled { background: #202a1d; color: #7a8a5a; border-color: #2e4a26; cursor: default; }
-    #herb-panel .close { background: #202a1d; color: #d9e0c8; flex: 0 0 56px; }
 
     /* potvrzení resetu postupu – tématický dialog místo nativního confirm() */
     #reset-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; }
@@ -302,7 +280,8 @@
 
     <div id="topbar">
       <div id="hud">
-        <div id="gold" class="bar" title="Zlaťáky"><i id="gold-fill"></i><span id="gold-text">🪙 0</span></div>
+        <div id="level" class="bar" title="Úroveň průzkumníka"><i id="level-fill"></i><span id="level-text">⭐ Lv 0</span></div>
+        <div id="places" class="bar" title="Navštívená místa"><i id="places-fill"></i><span id="places-text">📍 0</span></div>
       </div>
     </div>
 
@@ -335,22 +314,6 @@
       </div>
     </div>
 
-    <div id="herb-panel">
-      <div class="head">
-        <div class="icon" id="herb-icon">🌿</div>
-        <div>
-          <div class="title" id="herb-title">Bylina</div>
-          <div class="type" id="herb-type">Bylina</div>
-        </div>
-      </div>
-      <div class="desc" id="herb-desc"></div>
-      <div class="dist" id="herb-dist"></div>
-      <div class="actions">
-        <button class="collect" id="herb-collect">🧺 Sebrat</button>
-        <button class="close" id="herb-close">✕</button>
-      </div>
-    </div>
-
     <div id="hud-menu-overlay" class="hidden">
       <div id="hud-menu-card">
         <div class="log-head">
@@ -358,6 +321,7 @@
           <button id="hud-menu-close" class="log-x">✕</button>
         </div>
         <div id="hud-menu-actions">
+          <div id="hud-menu-level-info" class="hud-menu-info"></div>
           <div id="hud-menu-xp-info" class="hud-menu-info"></div>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
@@ -383,7 +347,7 @@
     <div id="reset-overlay" class="hidden">
       <div id="reset-card">
         <div class="ttl">♻️ Resetovat postup?</div>
-        <div class="txt">XP a zlaťáky se vynulují. Navštívená místa v kronice zůstanou zachována.</div>
+        <div class="txt">XP se vynuluje. Navštívená místa v kronice – a tím i počítadlo a úroveň – zůstanou zachovány.</div>
         <div class="btns">
           <button id="reset-cancel">Zrušit</button>
           <button id="reset-confirm">♻️ Resetovat</button>
@@ -408,46 +372,19 @@
     let view = null;          // {lat, lng} střed pohledu (kvůli posunu mapy)
     let pois = [];            // seznam point of interest
     let selected = null;      // právě otevřený PoI
-    let herbs = [];           // byliny a vzácné poklady kolem hráče
-    let selectedHerb = null;  // právě otevřená bylina/poklad
     let following = true;     // mapa sleduje hráče?
     let heading = 0;          // animovaný úhel pro pulzování
 
     // --- XP a postup (ukládá se do localStorage) ---
     const SAVE_KEY = 'pxplore.xp';
     const COOLDOWN_MS = 1800000;  // jak dlouho se místo po prozkoumání regeneruje
-    const REACH_M = 70;         // dosah interakce s místy i bylinami (m)
+    const REACH_M = 70;         // dosah interakce s místy (m)
     let xp = loadXp();
     function loadXp() {
       try { const v = parseInt(localStorage.getItem(SAVE_KEY) || '0', 10); return isNaN(v) ? 0 : v; }
       catch (e) { return 0; }
     }
     function saveXp() { try { localStorage.setItem(SAVE_KEY, String(xp)); } catch (e) {} }
-
-    // --- zlaťáky (padají z nalezených pokladů) ---
-    const GOLD_KEY = 'pxplore.gold';
-    let gold = loadGold();
-    function loadGold() {
-      try { const v = parseInt(localStorage.getItem(GOLD_KEY) || '0', 10); return isNaN(v) ? 0 : v; }
-      catch (e) { return 0; }
-    }
-    function saveGold() { try { localStorage.setItem(GOLD_KEY, String(gold)); } catch (e) {} }
-    function gainGold(amount) { gold += amount; saveGold(); updateGoldHud(); }
-    // odměna zlaťáků za nalezený poklad (jen vzácnější byliny tieru 2, ne obyčejné byliny)
-    function treasureGoldReward() { return 20 + Math.floor(Math.random() * 41); }
-
-    // --- uložení bylin, aby obnovení stránky nevyspawnovalo čerstvé cíle znovu ---
-    const HERBS_KEY = 'pxplore.herbs';
-    function loadStoredArray(key) {
-      try { const raw = JSON.parse(localStorage.getItem(key) || 'null'); return Array.isArray(raw) ? raw : []; }
-      catch (e) { return []; }
-    }
-    function saveHerbsState() { try { localStorage.setItem(HERBS_KEY, JSON.stringify(herbs)); } catch (e) {} }
-    // odlišuje "opravdu první spuštění" od "hráč všechno posbíral" – bez toho by
-    // vynulování pole refreshem znovu nahodilo počáteční sadu (stejný cheat, jen jinou cestou)
-    const WORLD_INIT_KEY = 'pxplore.worldInit';
-    function worldInitialized() { try { return localStorage.getItem(WORLD_INIT_KEY) === '1'; } catch (e) { return false; } }
-    function markWorldInitialized() { try { localStorage.setItem(WORLD_INIT_KEY, '1'); } catch (e) {} }
 
     // navštívená místa – kronika: id -> { name, type, icon, color, lat, lng, firstAt, lastAt, count }
     const VISIT_KEY = 'pxplore.visited';
@@ -483,6 +420,14 @@
         visited.set(id, { id, name: p.name, type: p.type, icon: p.icon, color: p.color, lat: p.lat, lng: p.lng, firstAt: now, lastAt: now, count: 1 });
       }
       saveVisited();
+      updatePlacesHud();
+    }
+    // úroveň průzkumníka z počtu unikátně navštívených míst:
+    // 1. úroveň za 5 míst, každá další vždy o 5 míst dražší (+10, +15, +20…)
+    function levelInfo(count) {
+      let lv = 0, need = 5, rest = count;
+      while (rest >= need) { rest -= need; lv++; need += 5; }
+      return { lv, into: rest, need };   // into/need = postup k další úrovni
     }
     function xpFor(type) {
       const big = ['Muzeum', 'Galerie', 'Památka', 'Vyhlídka', 'Atrakce', 'Divadlo', 'Svatostánek'];
@@ -493,75 +438,6 @@
     }
     // místo je připravené k prozkoumání (není v regeneraci)
     function isReady(p) { return !p.cooldownUntil || Date.now() >= p.cooldownUntil; }
-
-    // --- spawn bodů v okolí hráče ---
-    const SPAWN_MIN = 16, SPAWN_MAX = 180;   // vzdálenost spawnu (m) – úměrně většímu dosahu
-    const RELOCATE_MIN = 90000, RELOCATE_MAX = 180000; // za jak dlouho se nesebraná bylina přesune
-    function relocateTime() { return Date.now() + RELOCATE_MIN + Math.random() * (RELOCATE_MAX - RELOCATE_MIN); }
-
-    // náhodný geo bod v okolí (m)
-    function randomPointNear(center, minM, maxM) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = minM + Math.random() * (maxM - minM);
-      const dx = Math.cos(angle) * dist, dy = Math.sin(angle) * dist;
-      const lat = center.lat * Math.PI / 180;
-      return {
-        lat: center.lat + (dy / EARTH) * 180 / Math.PI,
-        lng: center.lng + (dx / (EARTH * Math.cos(lat))) * 180 / Math.PI,
-      };
-    }
-
-    // --- byliny a vzácné poklady (mírumilovné sběratelství při toulkách) ---
-    const HERB_TYPES = [
-      { icon: '🌿', name: 'Léčivá bylina', color: '#5a9e4a', tier: 1, desc: 'Voňavá bylina se slabými hojivými účinky.' },
-      { icon: '🍄', name: 'Lesní hřib',    color: '#8a6a3a', tier: 1, desc: 'Pevná hlíva schovaná pod spadaným listím.' },
-      { icon: '🍀', name: 'Čtyřlístek',    color: '#4a9e5a', tier: 1, desc: 'Vzácný symbol štěstí ukrytý v trávě.' },
-      { icon: '🌼', name: 'Polní kvítek',  color: '#e0c040', tier: 1, desc: 'Drobný kvítek hřející barvou.' },
-      { icon: '🪙', name: 'Skrytý poklad',  color: '#f0c040', tier: 2, desc: 'Váček plný lesklých mincí zapomenutý v trávě.' },
-      { icon: '💎', name: 'Zářící drahokam', color: '#40c0e0', tier: 2, desc: 'Drahokam, který právě zachytil paprsek slunce.' },
-    ];
-    const HERB_TARGET = 3;                 // kolik bylin/pokladů držet kolem hráče
-    const TREASURE_CHANCE = 0.12;          // jak vzácně je nález poklad místo obyčejné byliny
-    let herbSeq = 0;
-    herbs = loadStoredArray(HERBS_KEY);
-    herbSeq = herbs.reduce((mx, h) => Math.max(mx, h.id || 0), 0);
-    function makeHerb(center) {
-      const tier = Math.random() < TREASURE_CHANCE ? 2 : 1;
-      const pool = HERB_TYPES.filter(h => h.tier === tier);
-      const t = pool[Math.floor(Math.random() * pool.length)];
-      const pos = randomPointNear(center, SPAWN_MIN, SPAWN_MAX);
-      const xp = tier === 1 ? (4 + Math.floor(Math.random() * 5)) : (30 + Math.floor(Math.random() * 21));
-      return { id: ++herbSeq, ...t, ...pos, xp, relocateAt: relocateTime() };
-    }
-    const HERB_SPAWN_INTERVAL = 60000;     // doplňují se pozvolna
-    let lastHerbSpawnAt = 0;
-    function ensureHerbs(center) {
-      if (herbs.length >= HERB_TARGET) return;
-      const now = Date.now();
-      if (now - lastHerbSpawnAt < HERB_SPAWN_INTERVAL) return;
-      herbs.push(makeHerb(center));
-      lastHerbSpawnAt = now;
-      saveHerbsState();
-    }
-
-    // byliny stojí; když je delší dobu nikdo nesebere, přesunou se jinam
-    // (kolem hráče) – tak se k tobě časem nějaká dostane, i když stojíš na místě
-    setInterval(function () {
-      if (!player) return;
-      const now = Date.now();
-      let herbsChanged = false;
-      for (const h of herbs) {
-        if (h === selectedHerb) continue;
-        if (now >= h.relocateAt || metersBetween(player, h) > 350) {
-          const pos = randomPointNear(player, SPAWN_MIN, SPAWN_MAX);
-          h.lat = pos.lat; h.lng = pos.lng;
-          h.relocateAt = relocateTime();
-          herbsChanged = true;
-        }
-      }
-      ensureHerbs(player);
-      if (herbsChanged) saveHerbsState();
-    }, 1000);
 
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
 
@@ -787,37 +663,6 @@
       }
     }
 
-    function drawHerb(h) {
-      const s = worldToScreen(h);
-      if (s.x < -40 || s.x > canvas.width + 40 || s.y < -40 || s.y > canvas.height + 40) return;
-      const r = 13 * DPR;
-      const cy = s.y - r * .2;
-      const treasure = h.tier === 2;
-      // aura – zelená pro bylinu, zlatá pro poklad
-      ctx.beginPath();
-      ctx.arc(s.x, cy, r + 5 * DPR, 0, Math.PI * 2);
-      ctx.fillStyle = treasure ? 'rgba(240,192,64,.28)' : 'rgba(80,160,60,.18)';
-      ctx.fill();
-      // stín
-      ctx.beginPath();
-      ctx.ellipse(s.x, s.y + r * .6, r * .7, r * .25, 0, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0,0,0,.4)';
-      ctx.fill();
-      // disk
-      ctx.beginPath();
-      ctx.arc(s.x, cy, r, 0, Math.PI * 2);
-      ctx.fillStyle = h.color;
-      ctx.fill();
-      ctx.lineWidth = 3 * DPR;
-      ctx.strokeStyle = selectedHerb === h ? '#fff' : (treasure ? '#a8780a' : '#2e5a20');
-      ctx.stroke();
-      // ikona
-      ctx.font = (16 * DPR) + 'px system-ui';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(h.icon, s.x, cy);
-    }
-
     function drawPoi(p) {
       const s = worldToScreen(p);
       if (s.x < -40 || s.x > canvas.width + 40 || s.y < -40 || s.y > canvas.height + 40) return;
@@ -901,7 +746,6 @@
       if (!view) return;
       drawTiles();
       pois.forEach(drawPoi);
-      herbs.forEach(drawHerb);
       if (player) drawPlayer();
     }
 
@@ -935,9 +779,19 @@
       xpMenuInfoEl.textContent = '✨ XP: ' + xp;
     }
 
-    const goldTextEl = document.getElementById('gold-text');
-    function updateGoldHud() {
-      goldTextEl.textContent = '🪙 ' + gold;
+    // HUD: úroveň (výplň pruhu = postup k další úrovni) + počítadlo unikátně navštívených míst
+    const levelTextEl = document.getElementById('level-text');
+    const levelFillEl = document.getElementById('level-fill');
+    const placesTextEl = document.getElementById('places-text');
+    const levelMenuInfoEl = document.getElementById('hud-menu-level-info');
+    function updatePlacesHud() {
+      const count = visited.size;
+      const info = levelInfo(count);
+      levelTextEl.textContent = '⭐ Lv ' + info.lv;
+      levelFillEl.style.width = (info.into / info.need * 100) + '%';
+      placesTextEl.textContent = '📍 ' + count + (count === 1 ? ' místo' : (count >= 2 && count <= 4 ? ' místa' : ' míst'));
+      levelMenuInfoEl.textContent = '⭐ Úroveň ' + info.lv + ' · do další ještě ' + (info.need - info.into)
+        + ' ' + ((info.need - info.into) === 1 ? 'místo' : ((info.need - info.into) <= 4 ? 'místa' : 'míst'));
     }
 
     // centrální přičtení XP
@@ -1014,94 +868,37 @@
       if (d > reachLimit(16)) return;
       const first = !isVisited(p);
       const gain = rewardFor(p);
+      const lvBefore = levelInfo(visited.size).lv;
       gainXp(gain);
       spawnXpPopup(p, gain, first);
-      recordVisit(p);   // zapiš do kroniky (čas, počet návštěv)
-      if (first) {
+      recordVisit(p);   // zapiš do kroniky (čas, počet návštěv) a obnov počítadlo/úroveň
+      const lvAfter = levelInfo(visited.size).lv;
+      if (lvAfter > lvBefore) {
+        showToast('⭐ Postup na úroveň ' + lvAfter + '!', 3200);
+      } else if (first) {
         showToast('🏅 Nové místo objeveno! Bonus ×2 za první návštěvu', 2800);
       }
       p.cooldownUntil = Date.now() + COOLDOWN_MS;  // místo se začne regenerovat
       updatePoiButtons();
     });
 
-    // --- panel byliny / pokladu ---
-    const herbPanel = document.getElementById('herb-panel');
-    const herbCollectBtn = document.getElementById('herb-collect');
-    const herbDistEl = document.getElementById('herb-dist');
-    function updateHerbPanel() {
-      const h = selectedHerb;
-      if (!h) return;
-      const d = player ? Math.round(metersBetween(player, h)) : null;
-      if (d === null) { herbDistEl.textContent = ''; herbCollectBtn.disabled = true; herbCollectBtn.textContent = '🧺 Sebrat'; return; }
-      herbDistEl.textContent = '📏 Vzdálenost: ' + d + ' m';
-      if (d <= reachLimit(13)) {
-        herbCollectBtn.disabled = false;
-        herbCollectBtn.textContent = '🧺 Sebrat (+' + h.xp + ' XP)';
-      } else {
-        herbCollectBtn.disabled = true;
-        herbCollectBtn.textContent = 'Přijdi blíž (do ' + Math.round(reachLimit(13)) + ' m)';
-      }
-    }
-    function openHerb(h) {
-      selectedHerb = h;
-      document.getElementById('herb-icon').textContent = h.icon;
-      document.getElementById('herb-title').textContent = h.name;
-      document.getElementById('herb-type').textContent = h.tier === 2 ? 'Vzácný nález' : 'Bylina';
-      document.getElementById('herb-desc').textContent = h.desc;
-      updateHerbPanel();
-      herbPanel.classList.add('open');
-    }
-    function closeHerb() {
-      selectedHerb = null;
-      herbPanel.classList.remove('open');
-    }
-    document.getElementById('herb-close').addEventListener('click', closeHerb);
-
-    herbCollectBtn.addEventListener('click', function () {
-      const h = selectedHerb;
-      if (!h) return;
-      const d = player ? metersBetween(player, h) : Infinity;
-      if (d > reachLimit(13)) return;
-      gainXp(h.xp);
-      spawnFloat(h, '+' + h.xp + ' XP', h.tier === 2 ? 'treasure' : 'herb');
-      if (h.tier === 2) {
-        const goldDrop = treasureGoldReward();
-        gainGold(goldDrop);
-        showToast('🪙 Nalezen poklad: ' + h.name + '  (+' + h.xp + ' XP, +' + goldDrop + ' 🪙)', 2600);
-      } else {
-        showToast('🌿 Sebráno: ' + h.name + '  (+' + h.xp + ' XP)', 2600);
-      }
-      herbs = herbs.filter(x => x !== h);
-      closeHerb();
-      if (player) ensureHerbs(player);
-      saveHerbsState();
-    });
-
-    // průběžně obnovuj odpočet regenerace / vzdálenost v otevřených panelech
+    // průběžně obnovuj odpočet regenerace / vzdálenost v otevřeném panelu
     setInterval(() => {
       if (selected) updatePoiButtons();
-      if (selectedHerb) updateHerbPanel();
     }, 500);
 
-    // klik / tap na mapu – najdi nejbližší cíl (místo nebo bylinu) v dosahu
+    // klik / tap na mapu – najdi nejbližší místo v dosahu
     function pickAt(clientX, clientY) {
       const px = clientX * DPR;
       const py = clientY * DPR;
-      let best = null, bestKind = null, bestD = 30 * DPR;
+      let best = null, bestD = 30 * DPR;
       for (const p of pois) {
         const s = worldToScreen(p);
         const d = Math.hypot(s.x - px, s.y - py);
-        if (d < bestD) { bestD = d; best = p; bestKind = 'poi'; }
-      }
-      for (const h of herbs) {
-        const s = worldToScreen(h);
-        const d = Math.hypot(s.x - px, s.y - py);
-        if (d < bestD) { bestD = d; best = h; bestKind = 'herb'; }
+        if (d < bestD) { bestD = d; best = p; }
       }
       closePoi();
-      closeHerb();
-      if (bestKind === 'poi') openPoi(best);
-      else if (bestKind === 'herb') openHerb(best);
+      if (best) openPoi(best);
     }
 
     // tažení mapy (myš i dotyk)
@@ -1300,9 +1097,7 @@
     function performReset() {
       closeResetDialog();
       xp = 0; saveXp();
-      gold = 0; saveGold();
       updateXpMenuInfo();
-      updateGoldHud();
       showToast('♻️ Postup byl resetován, navštívená místa zůstala zachována', 3000);
     }
     document.getElementById('log-close').addEventListener('click', closeLog);
@@ -1334,21 +1129,11 @@
         view = { lat, lng };
         hideStatus();
         loadPois(player);        // načti reálná místa z OpenStreetMap
-        // byliny se obnoví z uloženého stavu (aby obnovení stránky nevyspawnovalo nové) –
-        // počáteční sada se vytvoří jen při opravdu prvním spuštění, ne pokaždé, když je pole
-        // prázdné (to by šlo obejít posbíráním všeho a refreshem)
-        if (!worldInitialized()) {
-          herbs.push(makeHerb(player));
-          saveHerbsState();
-          markWorldInitialized();
-        }
-        lastHerbSpawnAt = Date.now();
       } else if (following) {
         view = { lat: player.lat, lng: player.lng };
       }
       // pokud je panel otevřený, aktualizuj vzdálenost/tlačítko
       if (selected) updatePoiButtons();
-      if (selectedHerb) updateHerbPanel();
     }
 
     // bez polohy se hrát nedá – místo hry řekni hráči, co potřebuje udělat
@@ -1388,7 +1173,7 @@
 
     // --- start ---
     updateXpMenuInfo();
-    updateGoldHud();
+    updatePlacesHud();
     window.addEventListener('resize', resize);
     resize();
     loop();

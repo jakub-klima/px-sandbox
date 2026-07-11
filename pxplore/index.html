@@ -181,7 +181,7 @@
       transition: opacity .25s, transform .25s;
     }
     #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-    /* vyskakující "+XP" po prozkoumání místa */
+    /* vyskakující text po prozkoumání místa */
     .xp-float {
       position: absolute;
       color: #ffd166;
@@ -322,7 +322,6 @@
         </div>
         <div id="hud-menu-actions">
           <div id="hud-menu-level-info" class="hud-menu-info"></div>
-          <div id="hud-menu-xp-info" class="hud-menu-info"></div>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
         </div>
@@ -347,7 +346,7 @@
     <div id="reset-overlay" class="hidden">
       <div id="reset-card">
         <div class="ttl">♻️ Resetovat postup?</div>
-        <div class="txt">XP se vynuluje. Navštívená místa v kronice – a tím i počítadlo a úroveň – zůstanou zachovány.</div>
+        <div class="txt">Kronika navštívených míst se vymaže – počítadlo i úroveň začnou znovu od nuly.</div>
         <div class="btns">
           <button id="reset-cancel">Zrušit</button>
           <button id="reset-confirm">♻️ Resetovat</button>
@@ -375,16 +374,9 @@
     let following = true;     // mapa sleduje hráče?
     let heading = 0;          // animovaný úhel pro pulzování
 
-    // --- XP a postup (ukládá se do localStorage) ---
-    const SAVE_KEY = 'pxplore.xp';
+    // --- postup (ukládá se do localStorage) ---
     const COOLDOWN_MS = 1800000;  // jak dlouho se místo po prozkoumání regeneruje
     const REACH_M = 70;         // dosah interakce s místy (m)
-    let xp = loadXp();
-    function loadXp() {
-      try { const v = parseInt(localStorage.getItem(SAVE_KEY) || '0', 10); return isNaN(v) ? 0 : v; }
-      catch (e) { return 0; }
-    }
-    function saveXp() { try { localStorage.setItem(SAVE_KEY, String(xp)); } catch (e) {} }
 
     // navštívená místa – kronika: id -> { name, type, icon, color, lat, lng, firstAt, lastAt, count }
     const VISIT_KEY = 'pxplore.visited';
@@ -428,13 +420,6 @@
       let lv = 0, need = 5, rest = count;
       while (rest >= need) { rest -= need; lv++; need += 5; }
       return { lv, into: rest, need };   // into/need = postup k další úrovni
-    }
-    function xpFor(type) {
-      const big = ['Muzeum', 'Galerie', 'Památka', 'Vyhlídka', 'Atrakce', 'Divadlo', 'Svatostánek'];
-      const mid = ['Kavárna', 'Restaurace', 'Hospoda', 'Park', 'Zahrada', 'Knihovna', 'Kino', 'Hřiště', 'Fontána', 'Občerstvení', 'Škola'];
-      if (big.includes(type)) return 25;
-      if (mid.includes(type)) return 15;
-      return 10;
     }
     // místo je připravené k prozkoumání (není v regeneraci)
     function isReady(p) { return !p.cooldownUntil || Date.now() >= p.cooldownUntil; }
@@ -597,7 +582,6 @@
           list.push({
             lat, lng, ...cls,
             name: (el.tags && el.tags.name) ? el.tags.name : cls.type,
-            xp: xpFor(cls.type),
             cooldownUntil: 0,
           });
         }
@@ -773,12 +757,6 @@
       if (hideAfter) toastTimer = setTimeout(() => toastEl.classList.remove('show'), hideAfter);
     }
 
-    // XP se v hlavním HUDu nezobrazuje – vidíš ho jen po otevření menu (klepnutím na HUD)
-    const xpMenuInfoEl = document.getElementById('hud-menu-xp-info');
-    function updateXpMenuInfo() {
-      xpMenuInfoEl.textContent = '✨ XP: ' + xp;
-    }
-
     // HUD: úroveň (výplň pruhu = postup k další úrovni) + počítadlo unikátně navštívených míst
     const levelTextEl = document.getElementById('level-text');
     const levelFillEl = document.getElementById('level-fill');
@@ -794,37 +772,26 @@
         + ' ' + ((info.need - info.into) === 1 ? 'místo' : ((info.need - info.into) <= 4 ? 'místa' : 'míst'));
     }
 
-    // centrální přičtení XP
-    function gainXp(amount) {
-      xp += amount;
-      saveXp();
-      updateXpMenuInfo();
-    }
-
     const panel = document.getElementById('poi-panel');
     const collectBtn = document.getElementById('poi-collect');
     const distEl = document.getElementById('poi-dist');
     const badgeEl = document.getElementById('poi-badge');
-    // odměna za prozkoumání – při první návštěvě dvojnásobek
-    function rewardFor(p) { return isVisited(p) ? p.xp : p.xp * 2; }
     // přepočítá dynamickou část panelu (vzdálenost + tlačítko + odznáček) podle stavu
     function updatePoiButtons() {
       const p = selected;
       if (!p) return;
-      const gain = rewardFor(p);
-      const firstLabel = isVisited(p) ? '' : ' ×2!';
       badgeEl.textContent = isVisited(p)
-        ? '🏅 Tady už jsi byl – odznáček získán'
-        : '✨ První návštěva = dvojnásobná odměna!';
+        ? '🏅 Tady už jsi byl – místo je v kronice'
+        : '✨ Nové místo – přičte se do počítadla!';
       const d = player ? Math.round(metersBetween(player, p)) : null;
-      if (d === null) { distEl.textContent = ''; collectBtn.disabled = true; collectBtn.textContent = 'Prozkoumat (+' + gain + ' XP' + firstLabel + ')'; return; }
+      if (d === null) { distEl.textContent = ''; collectBtn.disabled = true; collectBtn.textContent = 'Prozkoumat'; return; }
       distEl.textContent = '📏 Vzdálenost: ' + d + ' m';
       if (!isReady(p)) {
         const sec = Math.ceil((p.cooldownUntil - Date.now()) / 1000);
         collectBtn.textContent = '⏳ Regeneruje se… ' + sec + ' s';
         collectBtn.disabled = true;
       } else if (d <= reachLimit(16)) {
-        collectBtn.textContent = 'Prozkoumat (+' + gain + ' XP' + firstLabel + ')';
+        collectBtn.textContent = 'Prozkoumat';
         collectBtn.disabled = false;
       } else {
         collectBtn.textContent = 'Přijdi blíž (do ' + Math.round(reachLimit(16)) + ' m)';
@@ -846,7 +813,7 @@
     }
     document.getElementById('poi-close').addEventListener('click', closePoi);
 
-    // vyskakující text (XP / poškození) od daného bodu na mapě
+    // vyskakující text od daného bodu na mapě
     function spawnFloat(p, text, cls) {
       const s = worldToScreen(p);
       const el = document.createElement('div');
@@ -857,9 +824,6 @@
       document.getElementById('app').appendChild(el);
       setTimeout(() => el.remove(), 1200);
     }
-    function spawnXpPopup(p, amount, first) {
-      spawnFloat(p, '+' + amount + ' XP' + (first ? ' 🏅×2' : ''), first ? 'first' : '');
-    }
 
     collectBtn.addEventListener('click', function () {
       const p = selected;
@@ -867,16 +831,14 @@
       const d = player ? metersBetween(player, p) : Infinity;
       if (d > reachLimit(16)) return;
       const first = !isVisited(p);
-      const gain = rewardFor(p);
       const lvBefore = levelInfo(visited.size).lv;
-      gainXp(gain);
-      spawnXpPopup(p, gain, first);
+      spawnFloat(p, first ? '📍 +1 místo' : '✔️ Prozkoumáno', first ? 'first' : '');
       recordVisit(p);   // zapiš do kroniky (čas, počet návštěv) a obnov počítadlo/úroveň
       const lvAfter = levelInfo(visited.size).lv;
       if (lvAfter > lvBefore) {
         showToast('⭐ Postup na úroveň ' + lvAfter + '!', 3200);
       } else if (first) {
-        showToast('🏅 Nové místo objeveno! Bonus ×2 za první návštěvu', 2800);
+        showToast('🏅 Nové místo objeveno a zapsáno do kroniky!', 2800);
       }
       p.cooldownUntil = Date.now() + COOLDOWN_MS;  // místo se začne regenerovat
       updatePoiButtons();
@@ -1090,15 +1052,16 @@
       logOverlay.classList.add('hidden');
       clearInterval(logMapTimer); logMapTimer = null;
     }
-    // úplný reset postupu – jedinou výjimkou jsou navštívená místa v kronice
+    // úplný reset postupu – vymaže kroniku, a tím i počítadlo míst a úroveň
     const resetOverlay = document.getElementById('reset-overlay');
     function resetProgress() { resetOverlay.classList.remove('hidden'); }
     function closeResetDialog() { resetOverlay.classList.add('hidden'); }
     function performReset() {
       closeResetDialog();
-      xp = 0; saveXp();
-      updateXpMenuInfo();
-      showToast('♻️ Postup byl resetován, navštívená místa zůstala zachována', 3000);
+      visited = new Map();
+      saveVisited();
+      updatePlacesHud();
+      showToast('♻️ Postup byl resetován, kronika je prázdná', 3000);
     }
     document.getElementById('log-close').addEventListener('click', closeLog);
     logTabList.addEventListener('click', () => showLogTab('list'));
@@ -1111,7 +1074,7 @@
     // --- menu otevřené klepnutím na HUD ---
     const hudMenuOverlay = document.getElementById('hud-menu-overlay');
     function openHudMenu() {
-      updateXpMenuInfo();
+      updatePlacesHud();
       hudMenuOverlay.classList.remove('hidden');
     }
     function closeHudMenu() { hudMenuOverlay.classList.add('hidden'); }
@@ -1172,7 +1135,6 @@
     statusBtn.addEventListener('click', startGeo);
 
     // --- start ---
-    updateXpMenuInfo();
     updatePlacesHud();
     window.addEventListener('resize', resize);
     resize();

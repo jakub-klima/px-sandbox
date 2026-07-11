@@ -280,7 +280,7 @@
 
     <div id="topbar">
       <div id="hud">
-        <div id="level" class="bar" title="Úroveň průzkumníka"><i id="level-fill"></i><span id="level-text">⭐ Lv 0</span></div>
+        <div id="level" class="bar" title="Úroveň průzkumníka"><i id="level-fill"></i><span id="level-text">⭐ Lv 1</span></div>
         <div id="places" class="bar" title="Navštívená místa"><i id="places-fill"></i><span id="places-text">📍 0</span></div>
       </div>
     </div>
@@ -346,7 +346,7 @@
     <div id="reset-overlay" class="hidden">
       <div id="reset-card">
         <div class="ttl">♻️ Resetovat postup?</div>
-        <div class="txt">Kronika navštívených míst se vymaže – počítadlo i úroveň začnou znovu od nuly.</div>
+        <div class="txt">Kronika navštívených míst se vymaže – počítadlo se vynuluje a úroveň se vrátí na 1.</div>
         <div class="btns">
           <button id="reset-cancel">Zrušit</button>
           <button id="reset-confirm">♻️ Resetovat</button>
@@ -414,10 +414,10 @@
       saveVisited();
       updatePlacesHud();
     }
-    // úroveň průzkumníka z počtu unikátně navštívených míst:
-    // 1. úroveň za 5 míst, každá další vždy o 5 míst dražší (+10, +15, +20…)
+    // úroveň průzkumníka z počtu unikátně navštívených míst: začíná se na úrovni 1,
+    // na 2. úroveň je potřeba 5 míst, každá další je vždy o 5 míst dražší (+10, +15, +20…)
     function levelInfo(count) {
-      let lv = 0, need = 5, rest = count;
+      let lv = 1, need = 5, rest = count;
       while (rest >= need) { rest -= need; lv++; need += 5; }
       return { lv, into: rest, need };   // into/need = postup k další úrovni
     }

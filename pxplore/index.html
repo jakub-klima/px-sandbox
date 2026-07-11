@@ -429,7 +429,8 @@
     // --- mapové dlaždice (OpenStreetMap) + Web Mercator projekce ---
     const TILE = 256;                       // velikost dlaždice v px
     const ZMIN = 11, ZMAX = 19;             // meze přiblížení (OSM má dlaždice do 19)
-    let zoom = 17;                          // aktuální (klidně desetinné) přiblížení
+    const ZOOM_DEFAULT = 17;                // výchozí přiblížení (i po vycentrování)
+    let zoom = ZOOM_DEFAULT;                // aktuální (klidně desetinné) přiblížení
     function worldSize() { return TILE * Math.pow(2, zoom); } // velikost světa v px
     function lngToWorldX(lng) { return (lng + 180) / 360 * worldSize(); }
     function latToWorldY(lat) {
@@ -921,6 +922,7 @@
 
     document.getElementById('recenter').addEventListener('click', function () {
       if (player) {
+        zoom = ZOOM_DEFAULT;
         view = { lat: player.lat, lng: player.lng };
         following = true;
       }

@@ -288,6 +288,18 @@
       0%   { transform: translateY(-8vh) rotate(0deg); opacity: 1; }
       100% { transform: translateY(112vh) rotate(720deg); opacity: .55; }
     }
+    /* úvodní obrazovka – jméno průzkumníka a pozvání na cestu */
+    #intro-overlay { position: absolute; inset: 0; z-index: 14; background: rgba(10,8,6,.94); display: flex; align-items: center; justify-content: center; }
+    #intro-overlay.hidden { display: none; }
+    #intro-card { width: min(88vw,360px); background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #caa84a; border-radius: 16px; box-shadow: 0 16px 40px rgba(0,0,0,.7), 0 0 60px rgba(232,195,74,.25); padding: 28px 22px; text-align: center; animation: lvlpop .45s cubic-bezier(.2,1.4,.4,1); }
+    #intro-card img { width: 92px; height: 92px; border-radius: 21px; box-shadow: 0 8px 24px rgba(0,0,0,.6); }
+    #intro-card .ttl { font-family: Georgia, serif; font-size: 30px; color: #e8d8b0; font-weight: 700; margin-top: 12px; letter-spacing: 1px; }
+    #intro-card .stry { font-style: italic; color: #c2b18d; font-size: 14px; line-height: 1.6; margin-top: 12px; }
+    #intro-card label { display: block; margin-top: 18px; font-size: 13px; color: #caa84a; font-weight: 700; text-align: left; }
+    #intro-name { width: 100%; margin-top: 8px; padding: 12px; border: 1px solid #6b5836; border-radius: 8px; background: #14100c; color: #e8d8b0; font-size: 17px; text-align: center; outline: none; }
+    #intro-name:focus { border-color: #caa84a; box-shadow: 0 0 12px rgba(202,168,74,.35); }
+    #intro-start { margin-top: 16px; width: 100%; padding: 13px; border: 1px solid #6b5836; border-radius: 8px; background: linear-gradient(180deg,#3a5a2e,#26401d); color: #f2e6c8; font-size: 16px; font-weight: 700; cursor: pointer; }
+    #intro-start:disabled { background: #2a241d; color: #7a6f5a; cursor: default; }
   </style>
 </head>
 <body>
@@ -336,12 +348,13 @@
     <div id="hud-menu-overlay" class="hidden">
       <div id="hud-menu-card">
         <div class="log-head">
-          <div class="log-title">🧭 Průzkumník</div>
+          <div class="log-title" id="hud-menu-title">🧭 Průzkumník</div>
           <button id="hud-menu-close" class="log-x">✕</button>
         </div>
         <div id="hud-menu-actions">
           <div id="hud-menu-level-info" class="hud-menu-info"></div>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
+          <button id="hud-menu-rename">✏️ Změnit jméno</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
         </div>
       </div>
@@ -381,6 +394,17 @@
         <button id="levelup-ok">Pokračovat v průzkumu</button>
       </div>
     </div>
+
+    <div id="intro-overlay" class="hidden">
+      <div id="intro-card">
+        <img src="icon.svg" alt="Pxplore">
+        <div class="ttl">Pxplore</div>
+        <div class="stry">Svět kolem tebe je plný míst, kolem kterých chodíš bez povšimnutí – památky, vyhlídky, zákoutí i skryté poklady tvého okolí. Vydej se ven, objevuj je a staň se legendárním průzkumníkem.</div>
+        <label for="intro-name">Jak ti mají říkat?</label>
+        <input id="intro-name" maxlength="12" placeholder="Tvoje jméno" autocomplete="off">
+        <button id="intro-start">🧭 Vydat se na cestu</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -404,6 +428,15 @@
     // --- postup (ukládá se do localStorage) ---
     const COOLDOWN_MS = 1800000;  // jak dlouho se místo po prozkoumání regeneruje
     const REACH_M = 120;        // dosah interakce s místy (m)
+
+    // jméno průzkumníka – zadává se na úvodní obrazovce
+    const NAME_KEY = 'pxplore.name';
+    let playerName = '';
+    try { playerName = (localStorage.getItem(NAME_KEY) || '').trim(); } catch (e) {}
+    function savePlayerName(name) {
+      playerName = name;
+      try { localStorage.setItem(NAME_KEY, name); } catch (e) {}
+    }
 
     // navštívená místa – kronika: id -> { name, type, icon, color, lat, lng, firstAt, lastAt, count }
     const VISIT_KEY = 'pxplore.visited';
@@ -792,12 +825,14 @@
     const levelFillEl = document.getElementById('level-fill');
     const placesTextEl = document.getElementById('places-text');
     const levelMenuInfoEl = document.getElementById('hud-menu-level-info');
+    const hudMenuTitleEl = document.getElementById('hud-menu-title');
     function updatePlacesHud() {
       const count = visited.size;
       const info = levelInfo(count);
-      levelTextEl.textContent = '⭐ Úroveň ' + info.lv;
+      levelTextEl.textContent = '⭐ ' + (playerName ? playerName + ' · úr. ' : 'Úroveň ') + info.lv;
       levelFillEl.style.width = (info.into / info.need * 100) + '%';
       placesTextEl.textContent = '📍 ' + count + ' ' + mistaWord(count);
+      hudMenuTitleEl.textContent = '🧭 ' + (playerName || 'Průzkumník');
       levelMenuInfoEl.textContent = '⭐ Úroveň ' + info.lv + ' · do další ještě '
         + (info.need - info.into) + ' ' + mistaWord(info.need - info.into);
     }
@@ -810,7 +845,8 @@
       const info = levelInfo(visited.size);
       const left = info.need - info.into;
       document.getElementById('levelup-sub').textContent =
-        'Prozkoumáno už ' + visited.size + ' ' + mistaWord(visited.size)
+        (playerName ? 'Skvělá práce, ' + playerName + '! ' : '')
+        + 'Prozkoumáno už ' + visited.size + ' ' + mistaWord(visited.size)
         + '. Do úrovně ' + (lv + 1) + ' zbývá ' + left + ' ' + mistaWord(left) + '.';
       for (let i = 0; i < 28; i++) {
         const c = document.createElement('div');
@@ -828,6 +864,29 @@
     function closeLevelUp() { levelupOverlay.classList.add('hidden'); }
     document.getElementById('levelup-ok').addEventListener('click', closeLevelUp);
     levelupOverlay.addEventListener('click', e => { if (e.target === levelupOverlay) closeLevelUp(); });
+
+    // úvodní obrazovka – poprvé při startu, později i pro změnu jména z menu
+    const introOverlay = document.getElementById('intro-overlay');
+    const introNameEl = document.getElementById('intro-name');
+    const introStartBtn = document.getElementById('intro-start');
+    function showIntro() {
+      introNameEl.value = playerName;
+      introStartBtn.disabled = !introNameEl.value.trim();
+      introOverlay.classList.remove('hidden');
+      setTimeout(() => introNameEl.focus(), 300);
+    }
+    function submitIntro() {
+      const name = introNameEl.value.trim();
+      if (!name) return;
+      const isNew = !playerName;
+      savePlayerName(name);
+      introOverlay.classList.add('hidden');
+      updatePlacesHud();
+      showToast(isNew ? '🧭 Vítej na cestě, ' + name + '! Prozkoumej první místo na mapě.' : '✏️ Jméno změněno na ' + name, 3200);
+    }
+    introNameEl.addEventListener('input', () => { introStartBtn.disabled = !introNameEl.value.trim(); });
+    introNameEl.addEventListener('keydown', e => { if (e.key === 'Enter') submitIntro(); });
+    introStartBtn.addEventListener('click', submitIntro);
 
     const panel = document.getElementById('poi-panel');
     const collectBtn = document.getElementById('poi-collect');
@@ -1139,6 +1198,7 @@
     document.getElementById('hud').addEventListener('click', openHudMenu);
     document.getElementById('hud-menu-close').addEventListener('click', closeHudMenu);
     document.getElementById('hud-menu-log').addEventListener('click', () => { closeHudMenu(); openLog(); });
+    document.getElementById('hud-menu-rename').addEventListener('click', () => { closeHudMenu(); showIntro(); });
     document.getElementById('hud-menu-reset').addEventListener('click', () => { closeHudMenu(); resetProgress(); });
     hudMenuOverlay.addEventListener('click', e => { if (e.target === hudMenuOverlay) closeHudMenu(); });
 
@@ -1194,6 +1254,7 @@
 
     // --- start ---
     updatePlacesHud();
+    if (!playerName) showIntro();   // poprvé: představ hru a nech hráče se pojmenovat
     window.addEventListener('resize', resize);
     resize();
     loop();

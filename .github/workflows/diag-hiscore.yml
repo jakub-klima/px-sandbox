@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Probe candidate storages
         run: |
-          set -uo pipefail
+          set +e
           O='Origin: https://jakub-klima.github.io'
 
           echo "===== extendsclass json-storage ====="

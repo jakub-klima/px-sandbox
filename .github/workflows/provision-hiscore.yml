@@ -17,43 +17,54 @@ jobs:
 
       - name: Create kvdb.io bucket and commit its URL
         run: |
-          set -euo pipefail
-          if grep -q "https://kvdb.io/" pxplore/hiscore-config.js; then
-            # kyblík už existuje – jen ověř, že do něj jde zapsat a číst
-            BUCKET=$(grep -o "https://kvdb.io/[A-Za-z0-9]*" pxplore/hiscore-config.js | sed 's|.*/||')
-            echo "Žebříček už je nastaven (kyblík ${BUCKET}), spouštím jen self-test."
-            curl -sS -f -X POST "https://kvdb.io/${BUCKET}/selftest" -d '{"n":"selftest","s":0,"t":0}'
-            curl -sS -f "https://kvdb.io/${BUCKET}/selftest"; echo
-            curl -sS -f "https://kvdb.io/${BUCKET}/?values=true&format=json"; echo
-            curl -sS -f -X DELETE "https://kvdb.io/${BUCKET}/selftest" || true
-            echo "Self-test OK."
-            exit 0
-          fi
-          BUCKET=""
-          for DATA in 'email=pxplore-hiscore@mailinator.com' 'email=pxplore@example.org' ''; do
-            RESP=$(curl -sS -m 20 -w '\n%{http_code}' -X POST https://kvdb.io -d "$DATA" || true)
-            CODE=$(printf '%s' "$RESP" | tail -n 1)
-            BODY=$(printf '%s' "$RESP" | sed '$d' | tr -d '[:space:]')
-            echo "Pokus data='$DATA' -> HTTP $CODE, tělo: $BODY"
-            if { [ "$CODE" = "200" ] || [ "$CODE" = "201" ]; } && printf '%s' "$BODY" | grep -Eq '^[A-Za-z0-9]{8,40}$'; then
-              BUCKET="$BODY"
-              break
-            fi
-            sleep 3
+          set -uo pipefail
+          # self-test kyblíku: zápis, čtení, výpis (vše s vypsáním celé odpovědi)
+          test_bucket() {
+            B="$1"
+            W=$(curl -sS -m 20 -w '|%{http_code}' -X POST "https://kvdb.io/${B}/selftest" -d 'selftest' || true)
+            echo "kyblík ${B}: zápis -> ${W}"
+            case "$W" in *'|200'|*'|201') ;; *) return 1 ;; esac
+            R=$(curl -sS -m 20 -w '|%{http_code}' "https://kvdb.io/${B}/selftest" || true)
+            echo "kyblík ${B}: čtení -> ${R}"
+            case "$R" in 'selftest|200') ;; *) return 1 ;; esac
+            L=$(curl -sS -m 20 -w '|%{http_code}' "https://kvdb.io/${B}/?values=true&format=json" || true)
+            echo "kyblík ${B}: výpis -> ${L}"
+            case "$L" in *'|200') ;; *) return 1 ;; esac
+            curl -sS -X DELETE "https://kvdb.io/${B}/selftest" >/dev/null 2>&1 || true
+            return 0
+          }
+          # kandidáti: kyblík z configu + dříve založené kyblíky
+          CURRENT=$(grep -o "https://kvdb.io/[A-Za-z0-9]*" pxplore/hiscore-config.js | sed 's|.*/||' || true)
+          WORKING=""
+          for B in ${CURRENT} 8ZtB9o7uHw1ddaoLoPzdjo CvkSYQDgTM9v7DwUSEUiSp; do
+            if test_bucket "$B"; then WORKING="$B"; break; fi
           done
-          if [ -z "$BUCKET" ]; then
-            echo "Kyblík se nepodařilo založit, viz pokusy výše."
+          # žádný nefunguje – zkus založit čerstvý
+          if [ -z "$WORKING" ]; then
+            for DATA in 'email=pxplore-hiscore@mailinator.com' 'email=pxplore@example.org'; do
+              RESP=$(curl -sS -m 20 -w '\n%{http_code}' -X POST https://kvdb.io -d "$DATA" || true)
+              CODE=$(printf '%s' "$RESP" | tail -n 1)
+              BODY=$(printf '%s' "$RESP" | sed '$d' | tr -d '[:space:]')
+              echo "Založení (data='$DATA') -> HTTP $CODE, tělo: $BODY"
+              if { [ "$CODE" = "200" ] || [ "$CODE" = "201" ]; } && printf '%s' "$BODY" | grep -Eq '^[A-Za-z0-9]{8,40}$'; then
+                if test_bucket "$BODY"; then WORKING="$BODY"; break; fi
+              fi
+              sleep 3
+            done
+          fi
+          if [ -z "$WORKING" ]; then
+            echo "Nenašel se žádný funkční kyblík, viz výpisy výše."
             exit 1
           fi
-          echo "Vytvořen kyblík: ${BUCKET}"
-          # ověř, že do kyblíku jde zapsat a číst
-          curl -sS -f -X POST "https://kvdb.io/${BUCKET}/selftest" -d '{"n":"selftest","s":0,"t":0}'
-          curl -sS -f "https://kvdb.io/${BUCKET}/selftest"
-          curl -sS -f -X DELETE "https://kvdb.io/${BUCKET}/selftest" || true
+          echo "Funkční kyblík: ${WORKING}"
+          if [ "$WORKING" = "$CURRENT" ]; then
+            echo "Config už na něj ukazuje, hotovo."
+            exit 0
+          fi
           {
             echo "// URL globálního žebříčku (kvdb.io) – vygenerováno workflow provision-hiscore."
             echo "// Hra funguje i bez ní; postup hráče je vždy primárně v jeho zařízení."
-            echo "window.PXPLORE_HISCORE_URL = 'https://kvdb.io/${BUCKET}';"
+            echo "window.PXPLORE_HISCORE_URL = 'https://kvdb.io/${WORKING}';"
           } > pxplore/hiscore-config.js
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

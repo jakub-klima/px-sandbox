@@ -269,6 +269,21 @@
     #reset-card .btns button { flex: 1; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; }
     #reset-cancel { background: #2a231b; border: 1px solid #6b5836; color: #e8d8b0; }
     #reset-confirm { background: linear-gradient(180deg,#8c2f2a,#5c1e1b); border: 1px solid #7a3a30; color: #f2e6c8; }
+    /* slavnostní karta postupu na novou úroveň */
+    #levelup-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    #levelup-overlay.hidden { display: none; }
+    #levelup-card { width: min(86vw,340px); background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #caa84a; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7), 0 0 60px rgba(232,195,74,.35); padding: 26px 20px; text-align: center; animation: lvlpop .45s cubic-bezier(.2,1.4,.4,1); }
+    @keyframes lvlpop { 0% { transform: scale(.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+    #levelup-card .big { font-size: 58px; animation: lvlglow 1.6s infinite; }
+    @keyframes lvlglow { 0%,100% { text-shadow: 0 0 10px rgba(232,195,74,.6); } 50% { text-shadow: 0 0 32px rgba(232,195,74,1); } }
+    #levelup-card .ttl { font-family: Georgia, serif; font-size: 24px; color: #ffe08a; font-weight: 700; margin-top: 10px; }
+    #levelup-card .sub { font-size: 14px; color: #c2b18d; margin-top: 10px; line-height: 1.5; }
+    #levelup-card button { margin-top: 18px; width: 100%; padding: 12px; border: 1px solid #6b5836; border-radius: 8px; background: linear-gradient(180deg,#3a5a2e,#26401d); color: #f2e6c8; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .confetti { position: absolute; top: 0; pointer-events: none; animation: confettifall linear forwards; }
+    @keyframes confettifall {
+      0%   { transform: translateY(-8vh) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(112vh) rotate(720deg); opacity: .55; }
+    }
   </style>
 </head>
 <body>
@@ -354,6 +369,14 @@
       </div>
     </div>
 
+    <div id="levelup-overlay" class="hidden">
+      <div id="levelup-card">
+        <div class="big">⭐</div>
+        <div class="ttl" id="levelup-title">Postup na úroveň 2!</div>
+        <div class="sub" id="levelup-sub"></div>
+        <button id="levelup-ok">Pokračovat v průzkumu</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -421,6 +444,8 @@
       while (rest >= need) { rest -= need; lv++; need += 5; }
       return { lv, into: rest, need };   // into/need = postup k další úrovni
     }
+    // české skloňování "místo/místa/míst"
+    function mistaWord(n) { return n === 1 ? 'místo' : (n >= 2 && n <= 4 ? 'místa' : 'míst'); }
     // místo je připravené k prozkoumání (není v regeneraci)
     function isReady(p) { return !p.cooldownUntil || Date.now() >= p.cooldownUntil; }
 
@@ -768,10 +793,37 @@
       const info = levelInfo(count);
       levelTextEl.textContent = '⭐ Lv ' + info.lv;
       levelFillEl.style.width = (info.into / info.need * 100) + '%';
-      placesTextEl.textContent = '📍 ' + count + (count === 1 ? ' místo' : (count >= 2 && count <= 4 ? ' místa' : ' míst'));
-      levelMenuInfoEl.textContent = '⭐ Úroveň ' + info.lv + ' · do další ještě ' + (info.need - info.into)
-        + ' ' + ((info.need - info.into) === 1 ? 'místo' : ((info.need - info.into) <= 4 ? 'místa' : 'míst'));
+      placesTextEl.textContent = '📍 ' + count + ' ' + mistaWord(count);
+      levelMenuInfoEl.textContent = '⭐ Úroveň ' + info.lv + ' · do další ještě '
+        + (info.need - info.into) + ' ' + mistaWord(info.need - info.into);
     }
+
+    // slavnostní karta postupu na novou úroveň – zlatá záře a sprška konfet
+    const levelupOverlay = document.getElementById('levelup-overlay');
+    const CONFETTI = ['🎉', '✨', '⭐', '🎊', '🏅'];
+    function showLevelUp(lv) {
+      document.getElementById('levelup-title').textContent = 'Postup na úroveň ' + lv + '!';
+      const info = levelInfo(visited.size);
+      const left = info.need - info.into;
+      document.getElementById('levelup-sub').textContent =
+        'Prozkoumáno už ' + visited.size + ' ' + mistaWord(visited.size)
+        + '. Do úrovně ' + (lv + 1) + ' zbývá ' + left + ' ' + mistaWord(left) + '.';
+      for (let i = 0; i < 28; i++) {
+        const c = document.createElement('div');
+        c.className = 'confetti';
+        c.textContent = CONFETTI[Math.floor(Math.random() * CONFETTI.length)];
+        c.style.left = Math.random() * 100 + '%';
+        c.style.fontSize = (14 + Math.random() * 16) + 'px';
+        c.style.animationDuration = (1.8 + Math.random() * 1.8) + 's';
+        c.style.animationDelay = (Math.random() * 0.9) + 's';
+        levelupOverlay.appendChild(c);
+        setTimeout(() => c.remove(), 4800);
+      }
+      levelupOverlay.classList.remove('hidden');
+    }
+    function closeLevelUp() { levelupOverlay.classList.add('hidden'); }
+    document.getElementById('levelup-ok').addEventListener('click', closeLevelUp);
+    levelupOverlay.addEventListener('click', e => { if (e.target === levelupOverlay) closeLevelUp(); });
 
     const panel = document.getElementById('poi-panel');
     const collectBtn = document.getElementById('poi-collect');
@@ -837,7 +889,7 @@
       recordVisit(p);   // zapiš do kroniky (čas, počet návštěv) a obnov počítadlo/úroveň
       const lvAfter = levelInfo(visited.size).lv;
       if (lvAfter > lvBefore) {
-        showToast('⭐ Postup na úroveň ' + lvAfter + '!', 3200);
+        showLevelUp(lvAfter);
       } else if (first) {
         showToast('🏅 Nové místo objeveno a zapsáno do kroniky!', 2800);
       }

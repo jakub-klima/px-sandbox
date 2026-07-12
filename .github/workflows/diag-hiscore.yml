@@ -1,0 +1,24 @@
+name: Diag Pxplore hiscore CORS
+
+# Dočasná diagnostika: vypíše CORS hlavičky úložiště žebříčku tak,
+# jak je uvidí prohlížeč hráče na jakub-klima.github.io.
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check CORS headers
+        run: |
+          URL=$(grep -o "https://jsonblob.com/api/jsonBlob/[A-Za-z0-9-]*" pxplore/hiscore-config.js)
+          echo "URL: $URL"
+          echo "--- GET s Origin ---"
+          curl -isS -m 20 -H "Origin: https://jakub-klima.github.io" "$URL" | head -40
+          echo "--- OPTIONS preflight pro PUT ---"
+          curl -isS -m 20 -X OPTIONS \
+            -H "Origin: https://jakub-klima.github.io" \
+            -H "Access-Control-Request-Method: PUT" \
+            -H "Access-Control-Request-Headers: content-type" \
+            "$URL" | head -40

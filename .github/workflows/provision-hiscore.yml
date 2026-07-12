@@ -18,7 +18,7 @@ jobs:
       - name: Create kvdb.io bucket and commit its URL
         run: |
           set -euo pipefail
-          if grep -q "kvdb.io" pxplore/hiscore-config.js; then
+          if grep -q "https://kvdb.io/" pxplore/hiscore-config.js; then
             echo "Žebříček už je nastaven, nic nedělám."
             exit 0
           fi

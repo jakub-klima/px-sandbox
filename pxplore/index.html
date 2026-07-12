@@ -910,7 +910,7 @@
     introNameEl.addEventListener('keydown', e => { if (e.key === 'Enter') submitIntro(); });
     introStartBtn.addEventListener('click', submitIntro);
 
-    // --- globální světový žebříček (jsonblob.com – sdílený JSON objekt) ---
+    // --- globální světový žebříček (npoint.io – sdílený JSON objekt) ---
     // Jen neoficiální zrcadlo pro zábavu: postup hráče je vždy primárně
     // v localStorage jeho zařízení. Když žebříček nejde načíst/zapsat
     // (offline, smazané úložiště…), hra běží dál a o nic se nepřijde.
@@ -926,7 +926,8 @@
     let lastSubmitted = '';
     let submittingScore = false;
     async function fetchBoardData() {
-      const res = await fetch(HISCORE_URL);
+      // ?t=… + no-store: npoint posílá max-age=3600 a prohlížeč by jinak servíroval starý žebříček
+      const res = await fetch(HISCORE_URL + '?t=' + Date.now(), { cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       return (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
@@ -942,7 +943,7 @@
         const data = await fetchBoardData();
         data[playerId] = { n: playerName, s: visited.size, t: Date.now() };
         const put = await fetch(HISCORE_URL, {
-          method: 'PUT',
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
         });

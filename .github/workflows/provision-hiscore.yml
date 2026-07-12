@@ -1,7 +1,7 @@
 name: Provision Pxplore high score storage
 
-# Jednorázové založení free JSON úložiště na jsonblob.com pro globální
-# žebříček Pxplore (bez registrace a e-mailu). Spouští se ručně; pokud už
+# Jednorázové založení free JSON úložiště na npoint.io pro globální
+# žebříček Pxplore (anonymně, bez registrace). Spouští se ručně; pokud už
 # config obsahuje funkční URL, jen ji otestuje. Vzniklou URL commitne do
 # pxplore/hiscore-config.js.
 on:
@@ -16,40 +16,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create jsonblob storage and commit its URL
+      - name: Create npoint storage and commit its URL
         run: |
-          set -uo pipefail
-          # self-test úložiště: PUT, GET, a vyčištění zpět na prázdný objekt
-          test_blob() {
+          set +e
+          # self-test úložiště: POST zápis, čtení (s cache-busting parametrem), úklid
+          test_doc() {
             U="$1"
-            P=$(curl -sS -m 20 -o /dev/null -w '%{http_code}' -X PUT "$U" -H 'Content-Type: application/json' -d '{"selftest":{"n":"t","s":0,"t":0}}' || true)
-            echo "blob: PUT -> HTTP $P"
+            P=$(curl -sS -m 20 -o /dev/null -w '%{http_code}' -X POST "$U" -H 'Content-Type: application/json' -d '{"selftest":{"n":"t","s":0,"t":0}}')
+            echo "úložiště: POST -> HTTP $P"
             [ "$P" = "200" ] || return 1
-            G=$(curl -sS -m 20 -w '|%{http_code}' "$U" || true)
-            echo "blob: GET -> $G"
+            G=$(curl -sS -m 20 -w '|%{http_code}' "$U?t=$(date +%s)")
+            echo "úložiště: GET -> $G"
             case "$G" in *'"selftest"'*'|200') ;; *) return 1 ;; esac
-            curl -sS -m 20 -o /dev/null -X PUT "$U" -H 'Content-Type: application/json' -d '{}' || true
+            curl -sS -m 20 -o /dev/null -X POST "$U" -H 'Content-Type: application/json' -d '{}'
             return 0
           }
-          CURRENT=$(grep -o "https://jsonblob.com/api/jsonBlob/[A-Za-z0-9-]*" pxplore/hiscore-config.js || true)
+          CURRENT=$(grep -o "https://api.npoint.io/[A-Za-z0-9]*" pxplore/hiscore-config.js | head -1)
           if [ -n "$CURRENT" ]; then
             echo "Config už obsahuje $CURRENT, spouštím jen self-test."
-            if test_blob "$CURRENT"; then echo "Self-test OK."; exit 0; fi
+            if test_doc "$CURRENT"; then echo "Self-test OK."; exit 0; fi
             echo "Stávající úložiště nefunguje, zakládám nové."
           fi
-          LOC=$(curl -sS -m 20 -D - -o /dev/null -X POST https://jsonblob.com/api/jsonBlob -H 'Content-Type: application/json' -d '{}' | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}')
-          echo "Location: $LOC"
-          case "$LOC" in
-            http*) URL="$LOC" ;;
-            /*) URL="https://jsonblob.com$LOC" ;;
-            *) echo "Úložiště se nepodařilo založit."; exit 1 ;;
-          esac
-          if ! test_blob "$URL"; then
+          R=$(curl -sS -m 20 -X POST https://www.npoint.io/documents -H 'Content-Type: application/json' -d '{"contents":"{}"}')
+          TOKEN=$(printf '%s' "$R" | grep -o '"token":"[^"]*"' | head -1 | cut -d'"' -f4)
+          echo "Založený dokument: token=$TOKEN"
+          if [ -z "$TOKEN" ]; then
+            echo "Úložiště se nepodařilo založit, odpověď: $R"
+            exit 1
+          fi
+          URL="https://api.npoint.io/$TOKEN"
+          if ! test_doc "$URL"; then
             echo "Self-test nového úložiště selhal."
             exit 1
           fi
           {
-            echo "// URL globálního žebříčku (jsonblob.com) – vygenerováno workflow provision-hiscore."
+            echo "// URL globálního žebříčku (npoint.io) – vygenerováno workflow provision-hiscore."
             echo "// Hra funguje i bez ní; postup hráče je vždy primárně v jeho zařízení."
             echo "window.PXPLORE_HISCORE_URL = '${URL}';"
           } > pxplore/hiscore-config.js

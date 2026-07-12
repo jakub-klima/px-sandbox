@@ -19,7 +19,14 @@ jobs:
         run: |
           set -euo pipefail
           if grep -q "https://kvdb.io/" pxplore/hiscore-config.js; then
-            echo "Žebříček už je nastaven, nic nedělám."
+            # kyblík už existuje – jen ověř, že do něj jde zapsat a číst
+            BUCKET=$(grep -o "https://kvdb.io/[A-Za-z0-9]*" pxplore/hiscore-config.js | sed 's|.*/||')
+            echo "Žebříček už je nastaven (kyblík ${BUCKET}), spouštím jen self-test."
+            curl -sS -f -X POST "https://kvdb.io/${BUCKET}/selftest" -d '{"n":"selftest","s":0,"t":0}'
+            curl -sS -f "https://kvdb.io/${BUCKET}/selftest"; echo
+            curl -sS -f "https://kvdb.io/${BUCKET}/?values=true&format=json"; echo
+            curl -sS -f -X DELETE "https://kvdb.io/${BUCKET}/selftest" || true
+            echo "Self-test OK."
             exit 0
           fi
           BUCKET=""
@@ -28,7 +35,7 @@ jobs:
             CODE=$(printf '%s' "$RESP" | tail -n 1)
             BODY=$(printf '%s' "$RESP" | sed '$d' | tr -d '[:space:]')
             echo "Pokus data='$DATA' -> HTTP $CODE, tělo: $BODY"
-            if [ "$CODE" = "200" ] && printf '%s' "$BODY" | grep -Eq '^[A-Za-z0-9]{8,40}$'; then
+            if { [ "$CODE" = "200" ] || [ "$CODE" = "201" ]; } && printf '%s' "$BODY" | grep -Eq '^[A-Za-z0-9]{8,40}$'; then
               BUCKET="$BODY"
               break
             fi

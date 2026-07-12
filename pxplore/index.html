@@ -8,6 +8,7 @@
   <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta name="theme-color" content="#1c1712">
+  <script src="hiscore-config.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -223,16 +224,24 @@
     #hud-menu-actions button:active { transform: scale(.97); }
     .hud-menu-info { padding: 2px 4px; font-size: 13px; color: #caa84a; font-weight: 600; text-align: center; }
     /* kronika navštívených míst (přehled: seznam + mapa) */
-    #log-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
-    #log-overlay.hidden { display: none; }
-    #log-card { width: min(94vw,520px); max-height: 86vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); overflow: hidden; }
+    #log-overlay, #board-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
+    #log-overlay.hidden, #board-overlay.hidden { display: none; }
+    #log-card, #board-card { width: min(94vw,520px); max-height: 86vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); overflow: hidden; }
     .log-head { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid #4a3f29; }
     .log-title { font-family: Georgia, serif; font-size: 19px; color: #e8d8b0; font-weight: 700; }
     .log-x { margin-left: auto; width: 36px; height: 36px; border: 1px solid #6b5836; border-radius: 8px; background: #2a241d; color: #d9c7a3; font-size: 16px; cursor: pointer; }
     .log-tabs { display: flex; gap: 8px; padding: 12px 16px 0; }
     .log-tabs button { flex: 1; padding: 9px; border: 1px solid #6b5836; border-bottom: none; border-radius: 8px 8px 0 0; background: #1c1712; color: #a08c6a; font-weight: 700; cursor: pointer; }
     .log-tabs button.active { background: #2a231b; color: #e8d8b0; }
-    #log-list { padding: 4px 12px 14px; overflow: auto; }
+    #log-list, #board-list { padding: 4px 12px 14px; overflow: auto; }
+    /* řádky světového žebříčku */
+    .board-row { display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-bottom: 1px solid #332b1d; }
+    .board-row.me { background: rgba(202,168,74,.14); border-radius: 8px; border-bottom-color: transparent; }
+    .board-rank { width: 38px; text-align: center; font-weight: 800; color: #caa84a; flex-shrink: 0; }
+    .board-name { flex: 1; min-width: 0; color: #e8d8b0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .board-lv { font-size: 12px; color: #a08c6a; flex-shrink: 0; }
+    .board-score { color: #ffd166; font-weight: 700; flex-shrink: 0; }
+    .board-note { padding: 10px 6px 4px; font-size: 12px; color: #a08c6a; text-align: center; line-height: 1.5; }
     #log-map-wrap { padding: 12px 16px 16px; }
     #log-map { width: 100%; height: min(60vh,420px); border: 1px solid #6b5836; border-radius: 10px; display: block; background: #16324a; }
     .log-count { padding: 10px 6px 6px; font-size: 13px; color: #caa84a; font-weight: 600; }
@@ -353,6 +362,7 @@
         </div>
         <div id="hud-menu-actions">
           <div id="hud-menu-level-info" class="hud-menu-info"></div>
+          <button id="hud-menu-board">🏆 Světový žebříček</button>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
           <button id="hud-menu-rename">✏️ Změnit jméno</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
@@ -392,6 +402,16 @@
         <div class="ttl" id="levelup-title">Postup na úroveň 2!</div>
         <div class="sub" id="levelup-sub"></div>
         <button id="levelup-ok">Pokračovat v průzkumu</button>
+      </div>
+    </div>
+
+    <div id="board-overlay" class="hidden">
+      <div id="board-card">
+        <div class="log-head">
+          <div class="log-title">🏆 Světový žebříček</div>
+          <button id="board-close" class="log-x">✕</button>
+        </div>
+        <div id="board-list"></div>
       </div>
     </div>
 
@@ -473,6 +493,7 @@
       }
       saveVisited();
       updatePlacesHud();
+      submitScore();   // zrcadli nový stav do světového žebříčku (když je dostupný)
     }
     // úroveň průzkumníka z počtu unikátně navštívených míst: začíná se na úrovni 1,
     // na 2. úroveň je potřeba 5 míst, každá další je vždy o 5 míst dražší (+10, +15, +20…)
@@ -882,11 +903,96 @@
       savePlayerName(name);
       introOverlay.classList.add('hidden');
       updatePlacesHud();
+      submitScore();   // propiš nové jméno i do světového žebříčku
       showToast(isNew ? '🧭 Vítej na cestě, ' + name + '! Prozkoumej první místo na mapě.' : '✏️ Jméno změněno na ' + name, 3200);
     }
     introNameEl.addEventListener('input', () => { introStartBtn.disabled = !introNameEl.value.trim(); });
     introNameEl.addEventListener('keydown', e => { if (e.key === 'Enter') submitIntro(); });
     introStartBtn.addEventListener('click', submitIntro);
+
+    // --- globální světový žebříček (kvdb.io) ---
+    // Jen neoficiální zrcadlo pro zábavu: postup hráče je vždy primárně
+    // v localStorage jeho zařízení. Když žebříček nejde načíst/zapsat
+    // (offline, smazaný kyblík…), hra běží dál a o nic se nepřijde.
+    const HISCORE_URL = (window.PXPLORE_HISCORE_URL || '').replace(/\/+$/, '');
+    const PID_KEY = 'pxplore.playerId';
+    let playerId = '';
+    try { playerId = localStorage.getItem(PID_KEY) || ''; } catch (e) {}
+    if (!playerId) {
+      playerId = 'p' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+      try { localStorage.setItem(PID_KEY, playerId); } catch (e) {}
+    }
+    let lastSubmitted = '';
+    // pošli aktuální stav (jméno + počet míst); POST s textovým tělem nevyžaduje CORS preflight
+    function submitScore() {
+      if (!HISCORE_URL || !playerName) return;
+      const sig = playerName + '|' + visited.size;
+      if (sig === lastSubmitted) return;
+      const body = JSON.stringify({ n: playerName, s: visited.size, t: Date.now() });
+      fetch(HISCORE_URL + '/' + playerId, { method: 'POST', body })
+        .then(r => { if (r.ok) lastSubmitted = sig; })
+        .catch(() => {});
+    }
+
+    const boardOverlay = document.getElementById('board-overlay');
+    const boardListEl = document.getElementById('board-list');
+    function boardRow(rank, name, score, me) {
+      const row = document.createElement('div');
+      row.className = 'board-row' + (me ? ' me' : '');
+      const medal = rank === 1 ? '🥇' : (rank === 2 ? '🥈' : (rank === 3 ? '🥉' : rank + '.'));
+      row.innerHTML = '<div class="board-rank"></div><div class="board-name"></div><div class="board-lv"></div><div class="board-score"></div>';
+      row.querySelector('.board-rank').textContent = medal;
+      row.querySelector('.board-name').textContent = name + (me ? ' (ty)' : '');
+      row.querySelector('.board-lv').textContent = 'úr. ' + levelInfo(score).lv;
+      row.querySelector('.board-score').textContent = score + ' 📍';
+      return row;
+    }
+    async function openBoard() {
+      boardOverlay.classList.remove('hidden');
+      boardListEl.innerHTML = '<div class="log-empty">Načítám žebříček…</div>';
+      if (!HISCORE_URL) {
+        boardListEl.innerHTML = '<div class="log-empty">Světový žebříček zatím není zapnutý.</div>';
+        return;
+      }
+      submitScore();
+      try {
+        const res = await fetch(HISCORE_URL + '/?values=true&format=json&limit=1000');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const raw = await res.json();
+        const rows = [];
+        for (const it of (Array.isArray(raw) ? raw : [])) {
+          let k, v;
+          if (Array.isArray(it)) { k = it[0]; v = it[1]; }
+          else if (it && typeof it === 'object' && 'key' in it) { k = it.key; v = it.value; }
+          else continue;
+          try {
+            const d = JSON.parse(v);
+            if (d && typeof d.s === 'number' && d.s >= 0 && d.n) {
+              rows.push({ id: k, name: String(d.n).slice(0, 12), score: Math.floor(d.s), t: d.t || 0 });
+            }
+          } catch (e) {}
+        }
+        rows.sort((a, b) => b.score - a.score || a.t - b.t);
+        boardListEl.innerHTML = '';
+        if (!rows.length) {
+          boardListEl.innerHTML = '<div class="log-empty">Žebříček je zatím prázdný.<br>Buď první – prozkoumej nějaké místo!</div>';
+        } else {
+          let myRank = 0;
+          rows.forEach((r, i) => { if (r.id === playerId) myRank = i + 1; });
+          rows.slice(0, 100).forEach((r, i) => boardListEl.appendChild(boardRow(i + 1, r.name, r.score, r.id === playerId)));
+          if (myRank > 100) boardListEl.appendChild(boardRow(myRank, playerName, visited.size, true));
+        }
+        const note = document.createElement('div');
+        note.className = 'board-note';
+        note.textContent = 'Neoficiální žebříček jen pro zábavu – počítá se počet unikátně navštívených míst.';
+        boardListEl.appendChild(note);
+      } catch (e) {
+        boardListEl.innerHTML = '<div class="log-empty">Žebříček se nepodařilo načíst.<br>Zkus to prosím později.</div>';
+      }
+    }
+    function closeBoard() { boardOverlay.classList.add('hidden'); }
+    document.getElementById('board-close').addEventListener('click', closeBoard);
+    boardOverlay.addEventListener('click', e => { if (e.target === boardOverlay) closeBoard(); });
 
     const panel = document.getElementById('poi-panel');
     const collectBtn = document.getElementById('poi-collect');
@@ -1178,6 +1284,7 @@
       visited = new Map();
       saveVisited();
       updatePlacesHud();
+      submitScore();   // promítni reset i do světového žebříčku
       showToast('♻️ Postup byl resetován, kronika je prázdná', 3000);
     }
     document.getElementById('log-close').addEventListener('click', closeLog);
@@ -1197,6 +1304,7 @@
     function closeHudMenu() { hudMenuOverlay.classList.add('hidden'); }
     document.getElementById('hud').addEventListener('click', openHudMenu);
     document.getElementById('hud-menu-close').addEventListener('click', closeHudMenu);
+    document.getElementById('hud-menu-board').addEventListener('click', () => { closeHudMenu(); openBoard(); });
     document.getElementById('hud-menu-log').addEventListener('click', () => { closeHudMenu(); openLog(); });
     document.getElementById('hud-menu-rename').addEventListener('click', () => { closeHudMenu(); showIntro(); });
     document.getElementById('hud-menu-reset').addEventListener('click', () => { closeHudMenu(); resetProgress(); });
@@ -1255,6 +1363,7 @@
     // --- start ---
     updatePlacesHud();
     if (!playerName) showIntro();   // poprvé: představ hru a nech hráče se pojmenovat
+    submitScore();                  // obnov záznam v žebříčku (např. po jeho případném promazání)
     window.addEventListener('resize', resize);
     resize();
     loop();

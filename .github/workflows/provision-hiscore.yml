@@ -1,0 +1,42 @@
+name: Provision Pxplore high score bucket
+
+# Jednorázové založení free key-value kyblíku na kvdb.io pro globální
+# žebříček Pxplore. Spouští se ručně; pokud už je URL v configu vyplněná,
+# nic nedělá. Vzniklou URL commitne do pxplore/hiscore-config.js.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create kvdb.io bucket and commit its URL
+        run: |
+          set -euo pipefail
+          if grep -q "kvdb.io" pxplore/hiscore-config.js; then
+            echo "Žebříček už je nastaven, nic nedělám."
+            exit 0
+          fi
+          BUCKET=$(curl -sS -f -X POST https://kvdb.io -d 'email=pxplore-hiscore@example.com')
+          echo "Vytvořen kyblík: ${BUCKET}"
+          # sanity check – kvdb vrací krátký alfanumerický identifikátor
+          echo "${BUCKET}" | grep -Eq '^[A-Za-z0-9]{8,40}$'
+          # ověř, že do kyblíku jde zapsat a číst
+          curl -sS -f -X POST "https://kvdb.io/${BUCKET}/selftest" -d '{"n":"selftest","s":0,"t":0}'
+          curl -sS -f "https://kvdb.io/${BUCKET}/selftest"
+          curl -sS -f -X DELETE "https://kvdb.io/${BUCKET}/selftest" || true
+          {
+            echo "// URL globálního žebříčku (kvdb.io) – vygenerováno workflow provision-hiscore."
+            echo "// Hra funguje i bez ní; postup hráče je vždy primárně v jeho zařízení."
+            echo "window.PXPLORE_HISCORE_URL = 'https://kvdb.io/${BUCKET}';"
+          } > pxplore/hiscore-config.js
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pxplore/hiscore-config.js
+          git commit -m "Pxplore: nastavit URL globálního žebříčku"
+          git push

@@ -299,7 +299,7 @@
 
     <div id="topbar">
       <div id="hud">
-        <div id="level" class="bar" title="Úroveň průzkumníka"><i id="level-fill"></i><span id="level-text">⭐ Lv 1</span></div>
+        <div id="level" class="bar" title="Úroveň průzkumníka"><i id="level-fill"></i><span id="level-text">⭐ Úroveň 1</span></div>
         <div id="places" class="bar" title="Navštívená místa"><i id="places-fill"></i><span id="places-text">📍 0</span></div>
       </div>
     </div>
@@ -795,7 +795,7 @@
     function updatePlacesHud() {
       const count = visited.size;
       const info = levelInfo(count);
-      levelTextEl.textContent = '⭐ Lv ' + info.lv;
+      levelTextEl.textContent = '⭐ Úroveň ' + info.lv;
       levelFillEl.style.width = (info.into / info.need * 100) + '%';
       placesTextEl.textContent = '📍 ' + count + ' ' + mistaWord(count);
       levelMenuInfoEl.textContent = '⭐ Úroveň ' + info.lv + ' · do další ještě '

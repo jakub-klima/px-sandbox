@@ -1,7 +1,6 @@
 name: Diag Pxplore hiscore CORS
 
-# Dočasná diagnostika: otestuje kandidátní free úložiště pro žebříček
-# z pohledu prohlížeče (CORS hlavičky, anonymní založení).
+# Dočasná diagnostika: 2. kolo – detailní test npoint.io a textdb.online.
 on:
   workflow_dispatch:
 
@@ -9,37 +8,36 @@ jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe candidate storages
+      - name: Probe npoint and textdb
         run: |
           set +e
           O='Origin: https://jakub-klima.github.io'
 
-          echo "===== extendsclass json-storage ====="
-          R=$(curl -sS -m 20 -X POST https://json.extendsclass.com/bin -H 'Content-Type: application/json' -d '{}' || true)
-          echo "create: $R"
-          ID=$(printf '%s' "$R" | grep -o '"id" *: *"[^"]*"' | head -1 | grep -o '"[^"]*"$' | tr -d '"')
-          if [ -n "$ID" ]; then
-            U="https://json.extendsclass.com/bin/$ID"
-            echo "-- GET $U --"
-            curl -isS -m 20 -H "$O" "$U" | head -25
-            echo "-- OPTIONS PUT --"
-            curl -isS -m 20 -X OPTIONS -H "$O" -H 'Access-Control-Request-Method: PUT' -H 'Access-Control-Request-Headers: content-type' "$U" | head -25
+          echo "===== npoint.io ====="
+          R=$(curl -sS -m 20 -X POST https://www.npoint.io/documents -H 'Content-Type: application/json' -d '{"contents":"{}"}')
+          TOKEN=$(printf '%s' "$R" | grep -o '"token":"[^"]*"' | head -1 | cut -d'"' -f4)
+          echo "token: $TOKEN"
+          if [ -n "$TOKEN" ]; then
+            echo "-- POST update přes api.npoint.io --"
+            curl -isS -m 20 -X POST "https://api.npoint.io/$TOKEN" -H "$O" -H 'Content-Type: application/json' -d '{"p1":{"n":"Test","s":3,"t":1}}' | head -20
+            echo "-- GET s Origin --"
+            curl -isS -m 20 -H "$O" "https://api.npoint.io/$TOKEN" | head -20
+            echo "-- OPTIONS preflight pro POST --"
+            curl -isS -m 20 -X OPTIONS -H "$O" -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type' "https://api.npoint.io/$TOKEN" | head -20
           fi
 
-          echo "===== getpantry.cloud ====="
-          curl -isS -m 20 -X POST https://getpantry.cloud/apiv1/pantry -H 'Content-Type: application/json' -d '{"name":"pxplore","description":"t"}' | head -25
-
-          echo "===== npoint.io ====="
-          curl -isS -m 20 -X POST https://www.npoint.io/documents -H 'Content-Type: application/json' -d '{"contents":"{}"}' | head -25
-
-          echo "===== dreamlo ====="
-          curl -sS -m 20 -L https://www.dreamlo.com/new | grep -oE '(dreamlo.com)?/lb/[A-Za-z0-9_-]{8,}' | sort -u | head -6
-          echo "-- CORS na čtení --"
-          curl -isS -m 20 -H "$O" "https://www.dreamlo.com/lb/nonexistent/json" | head -15
-
           echo "===== textdb.online ====="
-          echo "-- update --"
-          curl -isS -m 20 -H "$O" "https://textdb.online/update/?key=pxplore-diag-42x&value=ahoj" | head -20
-          echo "-- read --"
-          curl -isS -m 20 -H "$O" "https://textdb.online/pxplore-diag-42x" | head -20
+          echo "-- POST update (form data, JSON hodnota) --"
+          curl -isS -m 20 -X POST -H "$O" "https://textdb.online/update/?key=pxplore-diag-42x" --data-urlencode 'value={"p1":{"n":"Test","s":3,"t":1}}' | head -12
+          echo "-- čtení --"
+          curl -sS -m 20 "https://textdb.online/pxplore-diag-42x"; echo
+          echo "-- velká hodnota (60 kB) --"
+          BIG=$(head -c 60000 /dev/zero | tr '\0' 'x')
+          curl -sS -m 30 -X POST "https://textdb.online/update/?key=pxplore-diag-42x" --data-urlencode "value=$BIG" | head -3; echo
+          echo "-- délka po zápisu: --"
+          curl -sS -m 20 "https://textdb.online/pxplore-diag-42x" | wc -c
+          echo "-- čtení neexistujícího klíče --"
+          curl -isS -m 20 "https://textdb.online/pxplore-neexistuje-99z" | head -8
+          echo "-- úklid --"
+          curl -sS -m 20 -X POST "https://textdb.online/update/?key=pxplore-diag-42x" --data-urlencode 'value=' | head -3
           exit 0

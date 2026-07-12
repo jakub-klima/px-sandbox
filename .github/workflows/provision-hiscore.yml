@@ -22,10 +22,23 @@ jobs:
             echo "Žebříček už je nastaven, nic nedělám."
             exit 0
           fi
-          BUCKET=$(curl -sS -f -X POST https://kvdb.io -d 'email=pxplore-hiscore@example.com')
+          BUCKET=""
+          for DATA in 'email=pxplore-hiscore@mailinator.com' 'email=pxplore@example.org' ''; do
+            RESP=$(curl -sS -m 20 -w '\n%{http_code}' -X POST https://kvdb.io -d "$DATA" || true)
+            CODE=$(printf '%s' "$RESP" | tail -n 1)
+            BODY=$(printf '%s' "$RESP" | sed '$d' | tr -d '[:space:]')
+            echo "Pokus data='$DATA' -> HTTP $CODE, tělo: $BODY"
+            if [ "$CODE" = "200" ] && printf '%s' "$BODY" | grep -Eq '^[A-Za-z0-9]{8,40}$'; then
+              BUCKET="$BODY"
+              break
+            fi
+            sleep 3
+          done
+          if [ -z "$BUCKET" ]; then
+            echo "Kyblík se nepodařilo založit, viz pokusy výše."
+            exit 1
+          fi
           echo "Vytvořen kyblík: ${BUCKET}"
-          # sanity check – kvdb vrací krátký alfanumerický identifikátor
-          echo "${BUCKET}" | grep -Eq '^[A-Za-z0-9]{8,40}$'
           # ověř, že do kyblíku jde zapsat a číst
           curl -sS -f -X POST "https://kvdb.io/${BUCKET}/selftest" -d '{"n":"selftest","s":0,"t":0}'
           curl -sS -f "https://kvdb.io/${BUCKET}/selftest"

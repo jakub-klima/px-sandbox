@@ -504,12 +504,51 @@
       if (rec) {
         rec.lastAt = now;
         rec.count = (rec.count || 1) + 1;
+        if (!rec.city && p.city) rec.city = p.city;
       } else {
-        visited.set(id, { id, name: p.name, type: p.type, icon: p.icon, color: p.color, lat: p.lat, lng: p.lng, firstAt: now, lastAt: now, count: 1 });
+        visited.set(id, { id, name: p.name, type: p.type, icon: p.icon, color: p.color, city: p.city || '', lat: p.lat, lng: p.lng, firstAt: now, lastAt: now, count: 1 });
       }
       saveVisited();
+      queueCityLookup(visited.get(id));
       updatePlacesHud();
       submitScore();   // zrcadli nový stav do světového žebříčku (když je dostupný)
+    }
+
+    // --- město/obec k místům v kronice ---
+    // addr:city má v OSM jen část míst; zbytku ho doplní reverzní geokódování
+    // přes Nominatim. Výsledek se uloží do kroniky, takže se každé místo
+    // geokóduje nejvýš jednou; požadavky jdou po jednom s rozestupem
+    // (usage policy Nominatim: max 1 požadavek/s).
+    const cityQueue = [];
+    const cityQueued = new Set();
+    let cityBusy = false;
+    function queueCityLookup(rec) {
+      if (!rec || rec.city || cityQueued.has(rec.id)) return;
+      cityQueued.add(rec.id);
+      cityQueue.push(rec);
+      processCityQueue();
+    }
+    function processCityQueue() {
+      if (cityBusy || !cityQueue.length) return;
+      cityBusy = true;
+      const rec = cityQueue.shift();
+      const url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&accept-language=cs'
+        + '&lat=' + rec.lat + '&lon=' + rec.lng;
+      fetch(url)
+        .then(res => res.ok ? res.json() : null)
+        .then(j => {
+          const a = (j && j.address) || {};
+          const city = a.city || a.town || a.village || a.municipality || a.suburb || '';
+          if (city) {
+            rec.city = city;
+            saveVisited();
+            refreshLogListIfOpen();
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          setTimeout(() => { cityBusy = false; processCityQueue(); }, 1100);
+        });
     }
     // úroveň průzkumníka z počtu unikátně navštívených míst: začíná se na úrovni 1,
     // na 2. úroveň je potřeba 5 míst, každá další je vždy o 5 míst dražší (+10, +15, +20…)
@@ -694,6 +733,7 @@
             list.push({
               lat, lng, ...cls,
               name: (el.tags && el.tags.name) ? el.tags.name : cls.type,
+              city: (el.tags && el.tags['addr:city']) || '',
               cooldownUntil: 0,
             });
           }
@@ -1250,7 +1290,8 @@
         row.querySelector('.log-ic').textContent = r.icon || '📍';
         row.querySelector('.log-name').textContent = r.name || 'Místo';
         row.querySelector('.log-meta').textContent =
-          (r.type ? r.type + ' · ' : '') + 'poprvé ' + fmtTime(r.firstAt) + (r.count > 1 ? ' · ' + r.count + '×' : '');
+          (r.type ? r.type + ' · ' : '') + (r.city ? r.city + ' · ' : '')
+          + 'poprvé ' + fmtTime(r.firstAt) + (r.count > 1 ? ' · ' + r.count + '×' : '');
         row.addEventListener('click', function () {
           view = { lat: r.lat, lng: r.lng };
           following = false;
@@ -1325,8 +1366,14 @@
         logMapTimer = setInterval(() => renderLogMap(logMapCanvas, recs), 700);
       }
     }
+    // když geokódování doplní město, promítni ho do právě otevřeného seznamu
+    function refreshLogListIfOpen() {
+      if (!logOverlay.classList.contains('hidden') && logListEl.style.display !== 'none') buildLogList();
+    }
     function openLog() {
       buildLogList();
+      // starším záznamům bez města ho postupně doplň na pozadí
+      for (const r of visited.values()) queueCityLookup(r);
       logOverlay.classList.remove('hidden');
       showLogTab('list');
     }

@@ -645,6 +645,12 @@
       return arr;
     }
 
+    // Overpass servery – když hlavní neodpoví, zkusí se automaticky zrcadlo a pak znovu hlavní
+    const OVERPASS_ENDPOINTS = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass-api.de/api/interpreter',
+    ];
     let loadingPois = false;
     async function loadPois(center, radius = 800) {
       if (loadingPois) return;
@@ -661,41 +667,54 @@
         + `way["tourism"](around:${R},${center.lat},${center.lng});`
         + `way["historic"](around:${R},${center.lat},${center.lng});`
         + `);out center 120;`;
-      try {
-        const res = await fetch('https://overpass-api.de/api/interpreter', {
-          method: 'POST',
-          body: 'data=' + encodeURIComponent(q),
-        });
-        if (!res.ok) throw new Error('Overpass ' + res.status);
-        const json = await res.json();
-        const seen = new Set();
-        const list = [];
-        for (const el of json.elements || []) {
-          const lat = el.lat != null ? el.lat : (el.center && el.center.lat);
-          const lng = el.lon != null ? el.lon : (el.center && el.center.lon);
-          if (lat == null || lng == null) continue;
-          const cls = classify(el.tags || {});
-          if (!cls) continue;
-          const key = lat.toFixed(5) + ',' + lng.toFixed(5);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          list.push({
-            lat, lng, ...cls,
-            name: (el.tags && el.tags.name) ? el.tags.name : cls.type,
-            cooldownUntil: 0,
-          });
+      let list = null;   // null = zatím se nepodařilo stáhnout data
+      for (let attempt = 0; attempt < OVERPASS_ENDPOINTS.length; attempt++) {
+        if (attempt > 0) {
+          showToast('🔎 Hledám místa v okolí… (pokus ' + (attempt + 1) + ')');
+          await new Promise(r => setTimeout(r, 1500 * attempt));
         }
-        if (!list.length) throw new Error('žádná místa');
+        try {
+          const res = await fetch(OVERPASS_ENDPOINTS[attempt], {
+            method: 'POST',
+            body: 'data=' + encodeURIComponent(q),
+          });
+          if (!res.ok) throw new Error('Overpass ' + res.status);
+          const json = await res.json();
+          const seen = new Set();
+          list = [];
+          for (const el of json.elements || []) {
+            const lat = el.lat != null ? el.lat : (el.center && el.center.lat);
+            const lng = el.lon != null ? el.lon : (el.center && el.center.lon);
+            if (lat == null || lng == null) continue;
+            const cls = classify(el.tags || {});
+            if (!cls) continue;
+            const key = lat.toFixed(5) + ',' + lng.toFixed(5);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            list.push({
+              lat, lng, ...cls,
+              name: (el.tags && el.tags.name) ? el.tags.name : cls.type,
+              cooldownUntil: 0,
+            });
+          }
+          break;   // data dorazila (klidně i prázdná oblast) – další pokusy nemají smysl
+        } catch (e) {
+          console.warn('Overpass pokus ' + (attempt + 1) + ' selhal:', e);
+          list = null;
+        }
+      }
+      if (list === null) {
+        pois = [];
+        showToast('⚠️ Místa se nenačetla. Zkus to znovu tlačítkem 🔄', 2800);
+      } else if (!list.length) {
+        pois = [];
+        showToast('🤷 V tomhle okolí se žádná místa nenašla', 2800);
+      } else {
         // promíchat a omezit počet, ať není mapa přeplněná
         pois = shuffle(list).slice(0, 45);
         showToast('✅ Načteno ' + pois.length + ' míst z okolí', 2200);
-      } catch (e) {
-        console.warn('Overpass selhal, žádná místa se nenačetla:', e);
-        pois = [];
-        showToast('⚠️ Místa se nenačetla. Zkus to znovu tlačítkem 🔄', 2800);
-      } finally {
-        loadingPois = false;
       }
+      loadingPois = false;
     }
 
     // --- vykreslení ---
@@ -941,12 +960,14 @@
     }
     let lastSubmitted = '';
     let submittingScore = false;
+    let boardCache = null;   // poslední úspěšně stažený žebříček – karta se z něj ukáže okamžitě
     async function fetchBoardData() {
       // ?t=… + no-store: npoint posílá max-age=3600 a prohlížeč by jinak servíroval starý žebříček
       const res = await fetch(HISCORE_URL + '?t=' + Date.now(), { cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
-      return (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
+      boardCache = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
+      return boardCache;
     }
     // načti žebříček, přepiš svůj záznam a ulož zpět (souběh dvou hráčů může
     // vzácně jeden zápis zahodit – opraví se při jejich příštím odeslání)
@@ -981,45 +1002,56 @@
       row.querySelector('.board-score').textContent = score + ' 📍';
       return row;
     }
+    function renderBoardList(data) {
+      const rows = [];
+      for (const k of Object.keys(data)) {
+        const d = data[k];
+        if (d && typeof d.s === 'number' && d.s >= 0 && d.n) {
+          rows.push({ id: k, name: String(d.n).slice(0, 12), score: Math.floor(d.s), t: d.t || 0 });
+        }
+      }
+      rows.sort((a, b) => b.score - a.score || a.t - b.t);
+      boardListEl.innerHTML = '';
+      if (!rows.length) {
+        boardListEl.innerHTML = '<div class="log-empty">Žebříček je zatím prázdný.<br>Buď první – prozkoumej nějaké místo!</div>';
+      } else {
+        let myRank = 0;
+        rows.forEach((r, i) => { if (r.id === playerId) myRank = i + 1; });
+        rows.slice(0, 100).forEach((r, i) => boardListEl.appendChild(boardRow(i + 1, r.name, r.score, r.id === playerId)));
+        if (myRank > 100) boardListEl.appendChild(boardRow(myRank, playerName, visited.size, true));
+      }
+      const note = document.createElement('div');
+      note.className = 'board-note';
+      note.textContent = 'Počítá se počet unikátně navštívených míst.';
+      boardListEl.appendChild(note);
+    }
     async function openBoard() {
       boardOverlay.classList.remove('hidden');
-      boardListEl.innerHTML = '<div class="log-empty">Načítám žebříček…</div>';
       if (!HISCORE_URL) {
         boardListEl.innerHTML = '<div class="log-empty">Žebříček zatím není zapnutý.</div>';
         return;
       }
+      // ukaž hned poslední známý stav a na pozadí dotáhni čerstvý
+      if (boardCache) renderBoardList(boardCache);
+      else boardListEl.innerHTML = '<div class="log-empty">Načítám žebříček…</div>';
       submitScore();
       try {
-        const data = await fetchBoardData();
-        const rows = [];
-        for (const k of Object.keys(data)) {
-          const d = data[k];
-          if (d && typeof d.s === 'number' && d.s >= 0 && d.n) {
-            rows.push({ id: k, name: String(d.n).slice(0, 12), score: Math.floor(d.s), t: d.t || 0 });
-          }
-        }
-        rows.sort((a, b) => b.score - a.score || a.t - b.t);
-        boardListEl.innerHTML = '';
-        if (!rows.length) {
-          boardListEl.innerHTML = '<div class="log-empty">Žebříček je zatím prázdný.<br>Buď první – prozkoumej nějaké místo!</div>';
-        } else {
-          let myRank = 0;
-          rows.forEach((r, i) => { if (r.id === playerId) myRank = i + 1; });
-          rows.slice(0, 100).forEach((r, i) => boardListEl.appendChild(boardRow(i + 1, r.name, r.score, r.id === playerId)));
-          if (myRank > 100) boardListEl.appendChild(boardRow(myRank, playerName, visited.size, true));
-        }
-        const note = document.createElement('div');
-        note.className = 'board-note';
-        note.textContent = 'Počítá se počet unikátně navštívených míst.';
-        boardListEl.appendChild(note);
+        renderBoardList(await fetchBoardData());
       } catch (e) {
-        boardListEl.innerHTML = '<div class="log-empty">Žebříček se nepodařilo načíst.<br>Zkus to prosím později.</div>';
+        if (!boardCache) boardListEl.innerHTML = '<div class="log-empty">Žebříček se nepodařilo načíst.<br>Zkus to prosím později.</div>';
       }
     }
     function closeBoard() { boardOverlay.classList.add('hidden'); }
     document.getElementById('board-btn').addEventListener('click', openBoard);
     document.getElementById('board-close').addEventListener('click', closeBoard);
     boardOverlay.addEventListener('click', e => { if (e.target === boardOverlay) closeBoard(); });
+    // npoint (free hosting) po delší nečinnosti „usne" a první požadavek pak trvá dlouho –
+    // nažhav ho hned při startu a pak ho drž vzhůru občasným pingnutím; zároveň se tím
+    // průběžně obnovuje cache, takže karta žebříčku naskočí okamžitě
+    if (HISCORE_URL) {
+      fetchBoardData().catch(() => {});
+      setInterval(() => { fetchBoardData().catch(() => {}); }, 240000);
+    }
 
     const panel = document.getElementById('poi-panel');
     const collectBtn = document.getElementById('poi-collect');

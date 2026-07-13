@@ -35,12 +35,27 @@
       position: absolute;
       top: 0; left: 0; right: 0;
       display: flex;
-      justify-content: flex-start;
+      justify-content: space-between;
+      align-items: flex-start;
       padding: 12px 16px;
       background: linear-gradient(180deg, rgba(13,27,42,.9), rgba(13,27,42,0));
       color: #fff;
       pointer-events: none;
     }
+    /* pohár vpravo nahoře – rychlý přístup k žebříčku */
+    #board-btn {
+      pointer-events: auto;
+      width: 44px; height: 44px;
+      border: 1px solid #6b5836;
+      border-radius: 10px;
+      background: linear-gradient(180deg,#2a231b,#1c1712);
+      color: #e8d8b0;
+      font-size: 22px;
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(0,0,0,.5);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #board-btn:active { transform: scale(.92); }
     /* úroveň a počítadlo míst jako jeden svázaný HUD blok */
     #hud {
       display: flex;
@@ -323,6 +338,7 @@
         <div id="level" class="bar" title="Úroveň průzkumníka"><i id="level-fill"></i><span id="level-text">⭐ Úroveň 1</span></div>
         <div id="places" class="bar" title="Navštívená místa"><i id="places-fill"></i><span id="places-text">📍 0</span></div>
       </div>
+      <button id="board-btn" title="Žebříček">🏆</button>
     </div>
 
     <div id="toast"></div>
@@ -362,7 +378,7 @@
         </div>
         <div id="hud-menu-actions">
           <div id="hud-menu-level-info" class="hud-menu-info"></div>
-          <button id="hud-menu-board">🏆 Světový žebříček</button>
+          <button id="hud-menu-board">🏆 Žebříček</button>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
           <button id="hud-menu-rename">✏️ Změnit jméno</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
@@ -408,7 +424,7 @@
     <div id="board-overlay" class="hidden">
       <div id="board-card">
         <div class="log-head">
-          <div class="log-title">🏆 Světový žebříček</div>
+          <div class="log-title">🏆 Žebříček</div>
           <button id="board-close" class="log-x">✕</button>
         </div>
         <div id="board-list"></div>
@@ -969,7 +985,7 @@
       boardOverlay.classList.remove('hidden');
       boardListEl.innerHTML = '<div class="log-empty">Načítám žebříček…</div>';
       if (!HISCORE_URL) {
-        boardListEl.innerHTML = '<div class="log-empty">Světový žebříček zatím není zapnutý.</div>';
+        boardListEl.innerHTML = '<div class="log-empty">Žebříček zatím není zapnutý.</div>';
         return;
       }
       submitScore();
@@ -1001,6 +1017,7 @@
       }
     }
     function closeBoard() { boardOverlay.classList.add('hidden'); }
+    document.getElementById('board-btn').addEventListener('click', openBoard);
     document.getElementById('board-close').addEventListener('click', closeBoard);
     boardOverlay.addEventListener('click', e => { if (e.target === boardOverlay) closeBoard(); });
 

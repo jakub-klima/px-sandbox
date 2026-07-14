@@ -465,7 +465,6 @@
     let heading = 0;          // animovaný úhel pro pulzování
 
     // --- postup (ukládá se do localStorage) ---
-    const COOLDOWN_MS = 1800000;  // jak dlouho se místo po prozkoumání regeneruje
     const REACH_M = 120;        // dosah interakce s místy (m)
 
     // jméno průzkumníka – zadává se na úvodní obrazovce
@@ -477,7 +476,7 @@
       try { localStorage.setItem(NAME_KEY, name); } catch (e) {}
     }
 
-    // navštívená místa – kronika: id -> { name, type, icon, color, lat, lng, firstAt, lastAt, count }
+    // navštívená místa – kronika: id -> { name, type, icon, color, city, lat, lng, firstAt }
     const VISIT_KEY = 'pxplore.visited';
     let visited = loadVisited();
     function loadVisited() {
@@ -499,18 +498,11 @@
     }
     function placeId(p) { return p.lat.toFixed(5) + ',' + p.lng.toFixed(5); }
     function isVisited(p) { return visited.has(placeId(p)); }
-    // zaznamenej návštěvu místa (první i opakovanou)
+    // zapiš objevené místo do kroniky (každé místo jen jednou)
     function recordVisit(p) {
       const id = placeId(p);
-      const now = Date.now();
-      const rec = visited.get(id);
-      if (rec) {
-        rec.lastAt = now;
-        rec.count = (rec.count || 1) + 1;
-        if (!rec.city && p.city) rec.city = p.city;
-      } else {
-        visited.set(id, { id, name: p.name, type: p.type, icon: p.icon, color: p.color, city: p.city || '', lat: p.lat, lng: p.lng, firstAt: now, lastAt: now, count: 1 });
-      }
+      if (visited.has(id)) return;
+      visited.set(id, { id, name: p.name, type: p.type, icon: p.icon, color: p.color, city: p.city || '', lat: p.lat, lng: p.lng, firstAt: Date.now() });
       saveVisited();
       queueCityLookup(visited.get(id));
       updatePlacesHud();
@@ -562,8 +554,6 @@
     }
     // české skloňování "místo/místa/míst"
     function mistaWord(n) { return n === 1 ? 'místo' : (n >= 2 && n <= 4 ? 'místa' : 'míst'); }
-    // místo je připravené k prozkoumání (není v regeneraci)
-    function isReady(p) { return !p.cooldownUntil || Date.now() >= p.cooldownUntil; }
 
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
 
@@ -737,7 +727,6 @@
               lat, lng, ...cls,
               name: (el.tags && el.tags.name) ? el.tags.name : cls.type,
               city: (el.tags && el.tags['addr:city']) || '',
-              cooldownUntil: 0,
             });
           }
           break;   // data dorazila (klidně i prázdná oblast) – další pokusy nemají smysl
@@ -813,7 +802,6 @@
       const s = worldToScreen(p);
       if (s.x < -40 || s.x > canvas.width + 40 || s.y < -40 || s.y > canvas.height + 40) return;
       const r = 16 * DPR;
-      const ready = isReady(p);
       const cy = s.y - r * .2;
       // stín / podstavec
       ctx.beginPath();
@@ -823,27 +811,16 @@
       // kolečko
       ctx.beginPath();
       ctx.arc(s.x, cy, r, 0, Math.PI * 2);
-      ctx.fillStyle = ready ? p.color : '#3a4a5a';
+      ctx.fillStyle = p.color;
       ctx.fill();
       ctx.lineWidth = 3 * DPR;
       ctx.strokeStyle = selected === p ? '#fff' : 'rgba(255,255,255,.6)';
       ctx.stroke();
-      // při regeneraci – ubývající prstenec ukazující zbývající čas
-      if (!ready) {
-        const frac = (p.cooldownUntil - Date.now()) / COOLDOWN_MS;
-        ctx.beginPath();
-        ctx.arc(s.x, cy, r + 3 * DPR, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, frac));
-        ctx.strokeStyle = '#ffd166';
-        ctx.lineWidth = 3 * DPR;
-        ctx.stroke();
-      }
       // ikona
       ctx.font = (18 * DPR) + 'px system-ui';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.globalAlpha = ready ? 1 : 0.45;
       ctx.fillText(p.icon, s.x, cy);
-      ctx.globalAlpha = 1;
       // odznáček navštíveného místa (zlatá hvězdička v rohu)
       if (isVisited(p)) {
         const bx = s.x + r * .72, by = cy - r * .72;
@@ -1110,9 +1087,8 @@
       const d = player ? Math.round(metersBetween(player, p)) : null;
       if (d === null) { distEl.textContent = ''; collectBtn.disabled = true; collectBtn.textContent = 'Prozkoumat'; return; }
       distEl.textContent = '📏 Vzdálenost: ' + d + ' m';
-      if (!isReady(p)) {
-        const sec = Math.ceil((p.cooldownUntil - Date.now()) / 1000);
-        collectBtn.textContent = '⏳ Regeneruje se… ' + sec + ' s';
+      if (isVisited(p)) {
+        collectBtn.textContent = '✔️ Prozkoumáno';
         collectBtn.disabled = true;
       } else if (d <= reachLimit(16)) {
         collectBtn.textContent = 'Prozkoumat';
@@ -1151,27 +1127,20 @@
 
     collectBtn.addEventListener('click', function () {
       const p = selected;
-      if (!p || !isReady(p)) return;
+      if (!p || isVisited(p)) return;
       const d = player ? metersBetween(player, p) : Infinity;
       if (d > reachLimit(16)) return;
-      const first = !isVisited(p);
       const lvBefore = levelInfo(visited.size).lv;
-      spawnFloat(p, first ? '📍 +1 místo' : '✔️ Prozkoumáno', first ? 'first' : '');
-      recordVisit(p);   // zapiš do kroniky (čas, počet návštěv) a obnov počítadlo/úroveň
+      spawnFloat(p, '📍 +1 místo', 'first');
+      recordVisit(p);   // zapiš do kroniky a obnov počítadlo/úroveň
       const lvAfter = levelInfo(visited.size).lv;
       if (lvAfter > lvBefore) {
         showLevelUp(lvAfter);
-      } else if (first) {
+      } else {
         showToast('🏅 Nové místo objeveno a zapsáno do kroniky!', 2800);
       }
-      p.cooldownUntil = Date.now() + COOLDOWN_MS;  // místo se začne regenerovat
       updatePoiButtons();
     });
-
-    // průběžně obnovuj odpočet regenerace / vzdálenost v otevřeném panelu
-    setInterval(() => {
-      if (selected) updatePoiButtons();
-    }, 500);
 
     // klik / tap na mapu – najdi nejbližší místo v dosahu
     function pickAt(clientX, clientY) {
@@ -1267,7 +1236,7 @@
     let logMapTimer = null;
 
     function visitedRecords() {
-      return [...visited.values()].sort((a, b) => (b.lastAt || b.firstAt || 0) - (a.lastAt || a.firstAt || 0));
+      return [...visited.values()].sort((a, b) => (b.firstAt || 0) - (a.firstAt || 0));
     }
     function fmtTime(t) {
       if (!t) return 'neznámo kdy';
@@ -1294,7 +1263,7 @@
         row.querySelector('.log-name').textContent = r.name || 'Místo';
         row.querySelector('.log-meta').textContent =
           (r.type ? r.type + ' · ' : '') + (r.city ? r.city + ' · ' : '')
-          + 'poprvé ' + fmtTime(r.firstAt) + (r.count > 1 ? ' · ' + r.count + '×' : '');
+          + 'objeveno ' + fmtTime(r.firstAt);
         row.addEventListener('click', function () {
           view = { lat: r.lat, lng: r.lng };
           following = false;

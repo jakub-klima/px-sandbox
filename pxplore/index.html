@@ -260,7 +260,8 @@
     .board-score { color: #ffd166; font-weight: 700; flex-shrink: 0; }
     .board-note { padding: 10px 6px 4px; font-size: 12px; color: #a08c6a; text-align: center; line-height: 1.5; }
     #log-map-wrap { padding: 12px 16px 16px; }
-    #log-map { width: 100%; height: min(60vh,420px); border: 1px solid #6b5836; border-radius: 10px; display: block; background: #16324a; }
+    #log-map { width: 100%; height: min(60vh,420px); border: 1px solid #6b5836; border-radius: 10px; display: block; background: #16324a; touch-action: none; cursor: grab; }
+    #log-map:active { cursor: grabbing; }
     .log-count { padding: 10px 6px 6px; font-size: 13px; color: #caa84a; font-weight: 600; }
     .log-row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid #332b1d; cursor: pointer; }
     .log-row:active { background: rgba(255,255,255,.05); }
@@ -1309,36 +1310,52 @@
       const s = Math.sin(lat * Math.PI / 180);
       return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * TILE * Math.pow(2, z);
     }
+    // pohled náhledové mapy {lat, lng, z}; null = při dalším vykreslení se napasuje na všechna místa
+    let logMapView = null;
+    let logMapRecs = [];
+    const LOGZ_MIN = 2, LOGZ_MAX = ZMAX;
+    function logInvGx(x, z) { return x / (TILE * Math.pow(2, z)) * 360 - 180; }
+    function logInvGy(y, z) {
+      const n = Math.PI - 2 * Math.PI * y / (TILE * Math.pow(2, z));
+      return 180 / Math.PI * Math.atan(Math.sinh(n));
+    }
+    // zvol střed a zoom tak, aby se všechny body vešly
+    function fitLogMap(recs, cssW, cssH) {
+      let minLa = 90, maxLa = -90, minLn = 180, maxLn = -180;
+      for (const r of recs) {
+        minLa = Math.min(minLa, r.lat); maxLa = Math.max(maxLa, r.lat);
+        minLn = Math.min(minLn, r.lng); maxLn = Math.max(maxLn, r.lng);
+      }
+      let z = 18;
+      for (; z > LOGZ_MIN; z--) {
+        const wpx = Math.abs(gx(maxLn, z) - gx(minLn, z));
+        const hpx = Math.abs(gy(minLa, z) - gy(maxLa, z));
+        if (wpx < cssW * 0.8 && hpx < cssH * 0.8) break;
+      }
+      logMapView = { lat: (minLa + maxLa) / 2, lng: (minLn + maxLn) / 2, z };
+    }
     function renderLogMap(cv, recs) {
       const cssW = cv.clientWidth || 300, cssH = cv.clientHeight || 300;
       cv.width = cssW * DPR; cv.height = cssH * DPR;
       const c = cv.getContext('2d');
       c.fillStyle = '#16324a'; c.fillRect(0, 0, cv.width, cv.height);
       if (!recs.length) return;
-      let minLa = 90, maxLa = -90, minLn = 180, maxLn = -180;
-      for (const r of recs) {
-        minLa = Math.min(minLa, r.lat); maxLa = Math.max(maxLa, r.lat);
-        minLn = Math.min(minLn, r.lng); maxLn = Math.max(maxLn, r.lng);
-      }
-      const cLat = (minLa + maxLa) / 2, cLng = (minLn + maxLn) / 2;
-      // zvol zoom tak, aby se všechny body vešly
-      let z = 18;
-      for (; z > 2; z--) {
-        const wpx = Math.abs(gx(maxLn, z) - gx(minLn, z));
-        const hpx = Math.abs(gy(minLa, z) - gy(maxLa, z));
-        if (wpx < cssW * 0.8 && hpx < cssH * 0.8) break;
-      }
-      const vx = gx(cLng, z), vy = gy(cLat, z), n = Math.pow(2, z);
-      const halfW = cssW / 2, halfH = cssH / 2, ts = TILE * DPR;
-      const x0 = Math.floor((vx - halfW) / TILE), x1 = Math.floor((vx + halfW) / TILE);
-      const y0 = Math.floor((vy - halfH) / TILE), y1 = Math.floor((vy + halfH) / TILE);
+      if (!logMapView) fitLogMap(recs, cssW, cssH);
+      const z = logMapView.z;
+      const tz = Math.max(0, Math.min(19, Math.round(z)));   // celočíselná úroveň dlaždic
+      const tileWorld = TILE * Math.pow(2, z - tz);           // velikost dlaždice ve world px
+      const n = Math.pow(2, tz);
+      const vx = gx(logMapView.lng, z), vy = gy(logMapView.lat, z);
+      const halfW = cssW / 2, halfH = cssH / 2, ts = tileWorld * DPR;
+      const x0 = Math.floor((vx - halfW) / tileWorld), x1 = Math.floor((vx + halfW) / tileWorld);
+      const y0 = Math.floor((vy - halfH) / tileWorld), y1 = Math.floor((vy + halfH) / tileWorld);
       for (let tx = x0; tx <= x1; tx++) {
         for (let ty = y0; ty <= y1; ty++) {
           if (ty < 0 || ty >= n) continue;
           const wrapX = ((tx % n) + n) % n;
-          const img = getTile(z, wrapX, ty);
-          const sx = (tx * TILE - vx) * DPR + cv.width / 2;
-          const sy = (ty * TILE - vy) * DPR + cv.height / 2;
+          const img = getTile(tz, wrapX, ty);
+          const sx = (tx * tileWorld - vx) * DPR + cv.width / 2;
+          const sy = (ty * tileWorld - vy) * DPR + cv.height / 2;
           if (img.complete && img.naturalWidth) c.drawImage(img, sx, sy, ts + 1, ts + 1);
         }
       }
@@ -1354,6 +1371,74 @@
       }
     }
 
+    // --- posun tažením a zoom (kolečko / pinch) na náhledové mapě ---
+    function logRedraw() { renderLogMap(logMapCanvas, logMapRecs); }
+    function logPan(dx, dy) {
+      const v = logMapView;
+      v.lng = logInvGx(gx(v.lng, v.z) - dx, v.z);
+      v.lat = logInvGy(gy(v.lat, v.z) - dy, v.z);
+    }
+    // změna zoomu tak, aby bod (CSS px v rámci canvasu) zůstal na místě
+    function logSetZoom(nz, sx, sy) {
+      const v = logMapView;
+      nz = Math.max(LOGZ_MIN, Math.min(LOGZ_MAX, nz));
+      if (nz === v.z) return;
+      const cssW = logMapCanvas.clientWidth, cssH = logMapCanvas.clientHeight;
+      const aLng = logInvGx(gx(v.lng, v.z) + (sx - cssW / 2), v.z);
+      const aLat = logInvGy(gy(v.lat, v.z) + (sy - cssH / 2), v.z);
+      v.z = nz;
+      v.lng = logInvGx(gx(aLng, nz) - (sx - cssW / 2), nz);
+      v.lat = logInvGy(gy(aLat, nz) - (sy - cssH / 2), nz);
+    }
+    let logDragging = false, logLastX = 0, logLastY = 0, logPinchDist = 0, logPinchZoom = 0;
+    logMapCanvas.addEventListener('mousedown', e => {
+      if (!logMapView) return;
+      logDragging = true; logLastX = e.clientX; logLastY = e.clientY;
+    });
+    window.addEventListener('mousemove', e => {
+      if (!logDragging) return;
+      logPan(e.clientX - logLastX, e.clientY - logLastY);
+      logLastX = e.clientX; logLastY = e.clientY;
+      logRedraw();
+    });
+    window.addEventListener('mouseup', () => { logDragging = false; });
+    logMapCanvas.addEventListener('wheel', e => {
+      if (!logMapView) return;
+      e.preventDefault();
+      const r = logMapCanvas.getBoundingClientRect();
+      logSetZoom(logMapView.z - Math.sign(e.deltaY) * 0.5, e.clientX - r.left, e.clientY - r.top);
+      logRedraw();
+    }, { passive: false });
+    logMapCanvas.addEventListener('touchstart', e => {
+      if (!logMapView) return;
+      if (e.touches.length === 2) {
+        logDragging = false;
+        logPinchDist = tDist(e.touches[0], e.touches[1]);
+        logPinchZoom = logMapView.z;
+      } else {
+        logDragging = true;
+        logLastX = e.touches[0].clientX; logLastY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+    logMapCanvas.addEventListener('touchmove', e => {
+      if (!logMapView) return;
+      if (e.touches.length === 2 && logPinchDist > 0) {
+        const d = tDist(e.touches[0], e.touches[1]);
+        const mid = tMid(e.touches[0], e.touches[1]);
+        const r = logMapCanvas.getBoundingClientRect();
+        logSetZoom(logPinchZoom + Math.log2(d / logPinchDist), mid.x - r.left, mid.y - r.top);
+        logRedraw();
+      } else if (e.touches.length === 1 && logDragging && !logPinchDist) {
+        const t = e.touches[0];
+        logPan(t.clientX - logLastX, t.clientY - logLastY);
+        logLastX = t.clientX; logLastY = t.clientY;
+        logRedraw();
+      }
+    }, { passive: true });
+    logMapCanvas.addEventListener('touchend', e => {
+      if (e.touches.length === 0) { logDragging = false; logPinchDist = 0; }
+    });
+
     function showLogTab(which) {
       const isMap = which === 'map';
       logTabMap.classList.toggle('active', isMap);
@@ -1362,10 +1447,11 @@
       logListEl.style.display = isMap ? 'none' : 'block';
       clearInterval(logMapTimer); logMapTimer = null;
       if (isMap) {
-        const recs = visitedRecords();
-        renderLogMap(logMapCanvas, recs);
+        logMapRecs = visitedRecords();
+        logMapView = null;   // znovu napasovat pohled na všechna místa
+        renderLogMap(logMapCanvas, logMapRecs);
         // dlaždice se načítají asynchronně – chvíli překresluj
-        logMapTimer = setInterval(() => renderLogMap(logMapCanvas, recs), 700);
+        logMapTimer = setInterval(logRedraw, 700);
       }
     }
     // když geokódování doplní město, promítni ho do právě otevřeného seznamu

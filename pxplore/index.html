@@ -239,9 +239,9 @@
     #hud-menu-actions button:active { transform: scale(.97); }
     .hud-menu-info { padding: 2px 4px; font-size: 13px; color: #caa84a; font-weight: 600; text-align: center; }
     /* kronika navštívených míst (přehled: seznam + mapa) */
-    #log-overlay, #board-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
-    #log-overlay.hidden, #board-overlay.hidden { display: none; }
-    #log-card, #board-card { width: min(94vw,520px); max-height: 86vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); overflow: hidden; }
+    #log-overlay, #board-overlay, #badges-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
+    #log-overlay.hidden, #board-overlay.hidden, #badges-overlay.hidden { display: none; }
+    #log-card, #board-card, #badges-card { width: min(94vw,520px); max-height: 86vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); overflow: hidden; }
     .log-head { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid #4a3f29; }
     .log-title { font-family: Georgia, serif; font-size: 19px; color: #e8d8b0; font-weight: 700; }
     .log-x { margin-left: auto; width: 36px; height: 36px; border: 1px solid #6b5836; border-radius: 8px; background: #2a241d; color: #d9c7a3; font-size: 16px; cursor: pointer; }
@@ -250,7 +250,11 @@
     .log-tabs { display: flex; gap: 8px; padding: 12px 16px 0; border-bottom: 1px solid #6b5836; }
     .log-tabs button { flex: 1; padding: 9px; margin-bottom: -1px; border: 1px solid #6b5836; border-radius: 8px 8px 0 0; background: #1c1712; color: #a08c6a; font-weight: 700; cursor: pointer; }
     .log-tabs button.active { background: #2a231b; color: #e8d8b0; border-bottom-color: transparent; }
-    #log-list, #board-list { padding: 4px 12px 14px; overflow: auto; }
+    #log-list, #board-list, #badges-list { padding: 4px 12px 14px; overflow: auto; }
+    /* přehled odznaků: druh místa + dosažená medaile a postup k další */
+    .badge-row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid #332b1d; }
+    .badge-tier { font-size: 24px; width: 36px; text-align: center; flex-shrink: 0; }
+    .badge-tier.none { color: #5a4d38; font-size: 18px; }
     /* řádky světového žebříčku */
     .board-row { display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-bottom: 1px solid #332b1d; }
     .board-row.me { background: rgba(202,168,74,.14); border-radius: 8px; border-bottom-color: transparent; }
@@ -300,16 +304,17 @@
     #reset-card .btns button { flex: 1; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; }
     #reset-cancel { background: #2a231b; border: 1px solid #6b5836; color: #e8d8b0; }
     #reset-confirm { background: linear-gradient(180deg,#8c2f2a,#5c1e1b); border: 1px solid #7a3a30; color: #f2e6c8; }
-    /* slavnostní karta postupu na novou úroveň */
-    #levelup-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    #levelup-overlay.hidden { display: none; }
-    #levelup-card { width: min(86vw,340px); background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #caa84a; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7), 0 0 60px rgba(232,195,74,.35); padding: 26px 20px; text-align: center; animation: lvlpop .45s cubic-bezier(.2,1.4,.4,1); }
+    /* slavnostní karta postupu na novou úroveň / získaného odznaku */
+    #levelup-overlay, #badge-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    #levelup-overlay.hidden, #badge-overlay.hidden { display: none; }
+    #levelup-card, #badge-card { width: min(86vw,340px); background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #caa84a; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7), 0 0 60px rgba(232,195,74,.35); padding: 26px 20px; text-align: center; animation: lvlpop .45s cubic-bezier(.2,1.4,.4,1); }
     @keyframes lvlpop { 0% { transform: scale(.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-    #levelup-card .big { font-size: 58px; animation: lvlglow 1.6s infinite; }
+    #levelup-card .big, #badge-card .big { font-size: 58px; animation: lvlglow 1.6s infinite; }
     @keyframes lvlglow { 0%,100% { text-shadow: 0 0 10px rgba(232,195,74,.6); } 50% { text-shadow: 0 0 32px rgba(232,195,74,1); } }
-    #levelup-card .ttl { font-family: Georgia, serif; font-size: 24px; color: #ffe08a; font-weight: 700; margin-top: 10px; }
-    #levelup-card .sub { font-size: 14px; color: #c2b18d; margin-top: 10px; line-height: 1.5; }
-    #levelup-card button { margin-top: 18px; width: 100%; padding: 12px; border: 1px solid #6b5836; border-radius: 8px; background: linear-gradient(180deg,#3a5a2e,#26401d); color: #f2e6c8; font-size: 15px; font-weight: 700; cursor: pointer; }
+    #levelup-card .ttl, #badge-card .ttl { font-family: Georgia, serif; font-size: 24px; color: #ffe08a; font-weight: 700; margin-top: 10px; }
+    #badge-card .what { font-family: Georgia, serif; font-size: 19px; color: #e8d8b0; margin-top: 8px; }
+    #levelup-card .sub, #badge-card .sub { font-size: 14px; color: #c2b18d; margin-top: 10px; line-height: 1.5; }
+    #levelup-card button, #badge-card button { margin-top: 18px; width: 100%; padding: 12px; border: 1px solid #6b5836; border-radius: 8px; background: linear-gradient(180deg,#3a5a2e,#26401d); color: #f2e6c8; font-size: 15px; font-weight: 700; cursor: pointer; }
     .confetti { position: absolute; top: 0; pointer-events: none; animation: confettifall linear forwards; }
     @keyframes confettifall {
       0%   { transform: translateY(-8vh) rotate(0deg); opacity: 1; }
@@ -382,6 +387,7 @@
         <div id="hud-menu-actions">
           <div id="hud-menu-level-info" class="hud-menu-info"></div>
           <button id="hud-menu-board">🏆 Žebříček</button>
+          <button id="hud-menu-badges">🎖️ Odznaky</button>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
           <button id="hud-menu-rename">✏️ Změnit jméno</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
@@ -431,6 +437,26 @@
           <button id="board-close" class="log-x">✕</button>
         </div>
         <div id="board-list"></div>
+      </div>
+    </div>
+
+    <div id="badges-overlay" class="hidden">
+      <div id="badges-card">
+        <div class="log-head">
+          <div class="log-title">🎖️ Odznaky</div>
+          <button id="badges-close" class="log-x">✕</button>
+        </div>
+        <div id="badges-list"></div>
+      </div>
+    </div>
+
+    <div id="badge-overlay" class="hidden">
+      <div id="badge-card">
+        <div class="big" id="badge-medal">🥉</div>
+        <div class="ttl" id="badge-title">Bronzový odznak</div>
+        <div class="what" id="badge-what"></div>
+        <div class="sub" id="badge-sub"></div>
+        <button id="badge-ok">Pokračovat v průzkumu</button>
       </div>
     </div>
 
@@ -503,10 +529,43 @@
       const id = placeId(p);
       if (visited.has(id)) return;
       visited.set(id, { id, name: p.name, type: p.type, icon: p.icon, color: p.color, city: p.city || '', lat: p.lat, lng: p.lng, firstAt: Date.now() });
+      // nově dosažený stupeň odznaku za tento druh místa? (karta se ukáže
+      // až po případné level-up kartě, viz maybeShowBadge)
+      const tc = typeCounts().get(p.type);
+      if (tc && badgeTier(tc.n) > badgeTier(tc.n - 1)) {
+        badgeQueue.push({ type: p.type, icon: p.icon, tier: badgeTier(tc.n), count: tc.n });
+      }
       saveVisited();
       queueCityLookup(visited.get(id));
       updatePlacesHud();
       submitScore();   // zrcadli nový stav do světového žebříčku (když je dostupný)
+    }
+
+    // --- odznaky za navštívení více míst stejného druhu ---
+    // žádné XP navíc – jen stupňující se medaile za každý druh (kavárny, muzea…),
+    // odvozené z kroniky, takže se resetem postupu resetují i ony
+    const BADGE_TIERS = [
+      { n: 3,  name: 'Bronzový',   medal: '🥉', color: '#cd7f32' },
+      { n: 10, name: 'Stříbrný',   medal: '🥈', color: '#c9ccd4' },
+      { n: 25, name: 'Zlatý',      medal: '🥇', color: '#e8c34a' },
+      { n: 50, name: 'Diamantový', medal: '💎', color: '#7fd8e8' },
+    ];
+    const badgeQueue = [];   // získané odznaky čekající na slavnostní kartu
+    // počty navštívených míst podle druhu: type -> { n, icon }
+    function typeCounts() {
+      const m = new Map();
+      for (const r of visited.values()) {
+        if (!r.type) continue;
+        const e = m.get(r.type);
+        if (e) e.n++; else m.set(r.type, { n: 1, icon: r.icon || '📍' });
+      }
+      return m;
+    }
+    // index nejvyššího dosaženého stupně pro daný počet (-1 = zatím žádný)
+    function badgeTier(n) {
+      let t = -1;
+      for (let i = 0; i < BADGE_TIERS.length; i++) if (n >= BADGE_TIERS[i].n) t = i;
+      return t;
     }
 
     // --- město/obec k místům v kronice ---
@@ -916,6 +975,19 @@
     // slavnostní karta postupu na novou úroveň – zlatá záře a sprška konfet
     const levelupOverlay = document.getElementById('levelup-overlay');
     const CONFETTI = ['🎉', '✨', '⭐', '🎊', '🏅'];
+    function spawnConfetti(overlay, chars) {
+      for (let i = 0; i < 28; i++) {
+        const c = document.createElement('div');
+        c.className = 'confetti';
+        c.textContent = chars[Math.floor(Math.random() * chars.length)];
+        c.style.left = Math.random() * 100 + '%';
+        c.style.fontSize = (14 + Math.random() * 16) + 'px';
+        c.style.animationDuration = (1.8 + Math.random() * 1.8) + 's';
+        c.style.animationDelay = (Math.random() * 0.9) + 's';
+        overlay.appendChild(c);
+        setTimeout(() => c.remove(), 4800);
+      }
+    }
     function showLevelUp(lv) {
       document.getElementById('levelup-title').textContent = 'Postup na úroveň ' + lv + '!';
       const info = levelInfo(visited.size);
@@ -924,22 +996,70 @@
         (playerName ? 'Skvělá práce, ' + playerName + '! ' : '')
         + 'Prozkoumáno už ' + visited.size + ' ' + mistaWord(visited.size)
         + '. Do úrovně ' + (lv + 1) + ' zbývá ' + left + ' ' + mistaWord(left) + '.';
-      for (let i = 0; i < 28; i++) {
-        const c = document.createElement('div');
-        c.className = 'confetti';
-        c.textContent = CONFETTI[Math.floor(Math.random() * CONFETTI.length)];
-        c.style.left = Math.random() * 100 + '%';
-        c.style.fontSize = (14 + Math.random() * 16) + 'px';
-        c.style.animationDuration = (1.8 + Math.random() * 1.8) + 's';
-        c.style.animationDelay = (Math.random() * 0.9) + 's';
-        levelupOverlay.appendChild(c);
-        setTimeout(() => c.remove(), 4800);
-      }
+      spawnConfetti(levelupOverlay, CONFETTI);
       levelupOverlay.classList.remove('hidden');
     }
-    function closeLevelUp() { levelupOverlay.classList.add('hidden'); }
+    function closeLevelUp() { levelupOverlay.classList.add('hidden'); maybeShowBadge(); }
     document.getElementById('levelup-ok').addEventListener('click', closeLevelUp);
     levelupOverlay.addEventListener('click', e => { if (e.target === levelupOverlay) closeLevelUp(); });
+
+    // slavnostní karta získaného odznaku – aby se oslavy nepřekrývaly, ukazuje se
+    // až po zavření level-up karty; další čekající odznak naváže po odkliknutí
+    const badgeOverlay = document.getElementById('badge-overlay');
+    const badgeCardEl = document.getElementById('badge-card');
+    function maybeShowBadge() {
+      if (!badgeQueue.length) return false;
+      if (!levelupOverlay.classList.contains('hidden') || !badgeOverlay.classList.contains('hidden')) return false;
+      const b = badgeQueue.shift();
+      const tier = BADGE_TIERS[b.tier], next = BADGE_TIERS[b.tier + 1];
+      document.getElementById('badge-medal').textContent = tier.medal;
+      document.getElementById('badge-title').textContent = tier.name + ' odznak!';
+      document.getElementById('badge-what').textContent = b.icon + ' ' + b.type;
+      document.getElementById('badge-sub').textContent =
+        'Objevil jsi už ' + b.count + ' ' + mistaWord(b.count) + ' tohoto druhu.'
+        + (next ? ' ' + next.name + ' odznak tě čeká za ' + next.n + '.' : ' Výš už to nejde – jsi legenda!');
+      badgeCardEl.style.borderColor = tier.color;
+      badgeCardEl.style.boxShadow = '0 16px 40px rgba(0,0,0,.7), 0 0 60px ' + tier.color + '59';
+      spawnConfetti(badgeOverlay, [tier.medal, '✨', '🎉']);
+      badgeOverlay.classList.remove('hidden');
+      return true;
+    }
+    function closeBadge() { badgeOverlay.classList.add('hidden'); maybeShowBadge(); }
+    document.getElementById('badge-ok').addEventListener('click', closeBadge);
+    badgeOverlay.addEventListener('click', e => { if (e.target === badgeOverlay) closeBadge(); });
+
+    // přehled odznaků (menu → 🎖️ Odznaky)
+    const badgesOverlay = document.getElementById('badges-overlay');
+    const badgesListEl = document.getElementById('badges-list');
+    function openBadges() {
+      const rows = [...typeCounts().entries()]
+        .map(([type, e]) => ({ type, n: e.n, icon: e.icon, tier: badgeTier(e.n) }))
+        .sort((a, b) => b.tier - a.tier || b.n - a.n || a.type.localeCompare(b.type, 'cs'));
+      badgesListEl.innerHTML = '';
+      if (!rows.length) {
+        badgesListEl.innerHTML = '<div class="log-empty">Zatím žádné odznaky.<br>Bronzový odznak získáš za '
+          + BADGE_TIERS[0].n + ' místa stejného druhu.</div>';
+      }
+      for (const b of rows) {
+        const tier = b.tier >= 0 ? BADGE_TIERS[b.tier] : null;
+        const next = BADGE_TIERS[b.tier + 1];
+        const row = document.createElement('div');
+        row.className = 'badge-row';
+        row.innerHTML = '<div class="log-ic"></div><div class="log-info"><div class="log-name"></div><div class="log-meta"></div></div><div class="badge-tier"></div>';
+        row.querySelector('.log-ic').textContent = b.icon;
+        row.querySelector('.log-name').textContent = b.type;
+        row.querySelector('.log-meta').textContent = b.n + ' ' + mistaWord(b.n) + ' · '
+          + (next ? next.name.toLowerCase() + ' za ' + next.n : 'nejvyšší stupeň');
+        const tierEl = row.querySelector('.badge-tier');
+        if (tier) { tierEl.textContent = tier.medal; }
+        else { tierEl.textContent = '—'; tierEl.classList.add('none'); }
+        badgesListEl.appendChild(row);
+      }
+      badgesOverlay.classList.remove('hidden');
+    }
+    function closeBadges() { badgesOverlay.classList.add('hidden'); }
+    document.getElementById('badges-close').addEventListener('click', closeBadges);
+    badgesOverlay.addEventListener('click', e => { if (e.target === badgesOverlay) closeBadges(); });
 
     // úvodní obrazovka – poprvé při startu, později i pro změnu jména z menu
     const introOverlay = document.getElementById('intro-overlay');
@@ -1135,8 +1255,8 @@
       recordVisit(p);   // zapiš do kroniky a obnov počítadlo/úroveň
       const lvAfter = levelInfo(visited.size).lv;
       if (lvAfter > lvBefore) {
-        showLevelUp(lvAfter);
-      } else {
+        showLevelUp(lvAfter);   // případný nový odznak naváže po zavření karty
+      } else if (!maybeShowBadge()) {
         showToast('🏅 Nové místo objeveno a zapsáno do kroniky!', 2800);
       }
       updatePoiButtons();
@@ -1468,6 +1588,7 @@
     document.getElementById('hud').addEventListener('click', openHudMenu);
     document.getElementById('hud-menu-close').addEventListener('click', closeHudMenu);
     document.getElementById('hud-menu-board').addEventListener('click', () => { closeHudMenu(); openBoard(); });
+    document.getElementById('hud-menu-badges').addEventListener('click', () => { closeHudMenu(); openBadges(); });
     document.getElementById('hud-menu-log').addEventListener('click', () => { closeHudMenu(); openLog(); });
     document.getElementById('hud-menu-rename').addEventListener('click', () => { closeHudMenu(); showIntro(); });
     document.getElementById('hud-menu-reset').addEventListener('click', () => { closeHudMenu(); resetProgress(); });

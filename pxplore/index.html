@@ -294,15 +294,18 @@
     #poi-panel .collect:disabled { background: #2a241d; color: #7a6f5a; border-color: #473a26; }
     #poi-panel .close { background: #2a241d; color: #d9c7a3; border: 1px solid #6b5836; border-radius: 8px; }
 
-    /* potvrzení resetu postupu – tématický dialog místo nativního confirm() */
-    #reset-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; }
-    #reset-overlay.hidden { display: none; }
-    #reset-card { width: min(86vw,340px); background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); padding: 22px 20px; }
-    #reset-card .ttl { font-family: Georgia, serif; font-size: 20px; color: #e8d8b0; font-weight: 700; text-align: center; }
-    #reset-card .txt { margin-top: 12px; font-size: 14px; line-height: 1.55; color: #c2b18d; text-align: center; }
-    #reset-card .btns { margin-top: 18px; display: flex; gap: 10px; }
-    #reset-card .btns button { flex: 1; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; }
-    #reset-cancel { background: #2a231b; border: 1px solid #6b5836; color: #e8d8b0; }
+    /* potvrzení resetu postupu / nový špendlík – tématické dialogy místo nativních */
+    #reset-overlay, #pin-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; }
+    #reset-overlay.hidden, #pin-overlay.hidden { display: none; }
+    #reset-card, #pin-card { width: min(86vw,340px); background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); padding: 22px 20px; }
+    #reset-card .ttl, #pin-card .ttl { font-family: Georgia, serif; font-size: 20px; color: #e8d8b0; font-weight: 700; text-align: center; }
+    #reset-card .txt, #pin-card .txt { margin-top: 12px; font-size: 14px; line-height: 1.55; color: #c2b18d; text-align: center; }
+    #reset-card .btns, #pin-card .btns { margin-top: 18px; display: flex; gap: 10px; }
+    #reset-card .btns button, #pin-card .btns button { flex: 1; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; }
+    #reset-cancel, #pin-cancel { background: #2a231b; border: 1px solid #6b5836; color: #e8d8b0; }
+    #pin-name { width: 100%; margin-top: 14px; padding: 12px; border: 1px solid #6b5836; border-radius: 8px; background: #14100c; color: #e8d8b0; font-size: 16px; text-align: center; outline: none; }
+    #pin-name:focus { border-color: #caa84a; box-shadow: 0 0 12px rgba(202,168,74,.35); }
+    #pin-save { background: linear-gradient(180deg,#3a5a2e,#26401d); border: 1px solid #6b5836; color: #f2e6c8; }
     #reset-confirm { background: linear-gradient(180deg,#8c2f2a,#5c1e1b); border: 1px solid #7a3a30; color: #f2e6c8; }
     /* slavnostní karta postupu na novou úroveň / získaného odznaku */
     #levelup-overlay, #badge-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; overflow: hidden; }
@@ -421,6 +424,18 @@
       </div>
     </div>
 
+    <div id="pin-overlay" class="hidden">
+      <div id="pin-card">
+        <div class="ttl">📌 Nový špendlík</div>
+        <div class="txt">Označ si bod na mapě, ke kterému se chceš vrátit.</div>
+        <input id="pin-name" maxlength="24" placeholder="Název (nepovinný)" autocomplete="off">
+        <div class="btns">
+          <button id="pin-cancel">Zrušit</button>
+          <button id="pin-save">📌 Uložit</button>
+        </div>
+      </div>
+    </div>
+
     <div id="levelup-overlay" class="hidden">
       <div id="levelup-card">
         <div class="big">⭐</div>
@@ -487,6 +502,7 @@
     let view = null;          // {lat, lng} střed pohledu (kvůli posunu mapy)
     let pois = [];            // seznam point of interest
     let selected = null;      // právě otevřený PoI
+    let selectedPin = null;   // právě otevřený špendlík
     let following = true;     // mapa sleduje hráče?
     let heading = 0;          // animovaný úhel pro pulzování
 
@@ -566,6 +582,20 @@
       let t = -1;
       for (let i = 0; i < BADGE_TIERS.length; i++) if (n >= BADGE_TIERS[i].n) t = i;
       return t;
+    }
+
+    // --- špendlíky: vlastní značky hráče na mapě (přetrvají v localStorage) ---
+    const PINS_KEY = 'pxplore.pins';
+    let pins = loadPins();
+    function loadPins() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(PINS_KEY) || 'null');
+        if (Array.isArray(raw)) return raw.filter(p => p && typeof p.lat === 'number' && typeof p.lng === 'number');
+      } catch (e) {}
+      return [];
+    }
+    function savePins() {
+      try { localStorage.setItem(PINS_KEY, JSON.stringify(pins)); } catch (e) {}
     }
 
     // --- město/obec k místům v kronice ---
@@ -918,6 +948,28 @@
       }
     }
 
+    // špendlík hráče – tečka v přesném bodě a 📌 nad ní
+    function drawPin(p) {
+      const s = worldToScreen(p);
+      if (s.x < -40 || s.x > canvas.width + 40 || s.y < -40 || s.y > canvas.height + 40) return;
+      if (selectedPin === p) {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 8 * DPR, 0, Math.PI * 2);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2 * DPR;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 3 * DPR, 0, Math.PI * 2);
+      ctx.fillStyle = '#e25b45';
+      ctx.fill();
+      ctx.font = (24 * DPR) + 'px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('📌', s.x + 7 * DPR, s.y);
+      ctx.textBaseline = 'middle';
+    }
+
     function drawPlayer() {
       const s = worldToScreen(player);
       const pulse = (Math.sin(heading) + 1) / 2; // 0..1
@@ -950,6 +1002,7 @@
       if (!view) return;
       drawTiles();
       pois.forEach(drawPoi);
+      pins.forEach(drawPin);
       if (player) drawPlayer();
     }
 
@@ -1222,6 +1275,14 @@
     const badgeEl = document.getElementById('poi-badge');
     // přepočítá dynamickou část panelu (vzdálenost + tlačítko + odznáček) podle stavu
     function updatePoiButtons() {
+      if (selectedPin) {
+        badgeEl.textContent = '';
+        const d = player ? Math.round(metersBetween(player, selectedPin)) : null;
+        distEl.textContent = d === null ? '' : '📏 Vzdálenost: ' + d + ' m';
+        collectBtn.textContent = '🗑️ Odstranit špendlík';
+        collectBtn.disabled = false;
+        return;
+      }
       const p = selected;
       if (!p) return;
       badgeEl.textContent = isVisited(p)
@@ -1243,6 +1304,7 @@
     }
     function openPoi(p) {
       selected = p;
+      selectedPin = null;
       document.getElementById('poi-icon').textContent = p.icon;
       document.getElementById('poi-title').textContent = p.name;
       document.getElementById('poi-type').textContent = p.type;
@@ -1250,8 +1312,19 @@
       updatePoiButtons();
       panel.classList.add('open');
     }
+    function openPinPanel(pin) {
+      selected = null;
+      selectedPin = pin;
+      document.getElementById('poi-icon').textContent = '📌';
+      document.getElementById('poi-title').textContent = pin.name;
+      document.getElementById('poi-type').textContent = 'Špendlík';
+      document.getElementById('poi-desc').textContent = 'Vlastní značka – uloženo ' + fmtTime(pin.createdAt) + '.';
+      updatePoiButtons();
+      panel.classList.add('open');
+    }
     function closePoi() {
       selected = null;
+      selectedPin = null;
       panel.classList.remove('open');
     }
     document.getElementById('poi-close').addEventListener('click', closePoi);
@@ -1269,6 +1342,13 @@
     }
 
     collectBtn.addEventListener('click', function () {
+      if (selectedPin) {
+        pins = pins.filter(x => x !== selectedPin);
+        savePins();
+        closePoi();
+        showToast('🗑️ Špendlík odstraněn', 2200);
+        return;
+      }
       const p = selected;
       if (!p || isVisited(p)) return;
       const d = player ? metersBetween(player, p) : Infinity;
@@ -1285,32 +1365,53 @@
       updatePoiButtons();
     });
 
-    // klik / tap na mapu – najdi nejbližší místo v dosahu
+    // klik / tap na mapu – najdi nejbližší místo nebo špendlík v dosahu
     function pickAt(clientX, clientY) {
       const px = clientX * DPR;
       const py = clientY * DPR;
-      let best = null, bestD = 30 * DPR;
+      let best = null, bestPin = null, bestD = 30 * DPR;
       for (const p of pois) {
         const s = worldToScreen(p);
         const d = Math.hypot(s.x - px, s.y - py);
         if (d < bestD) { bestD = d; best = p; }
       }
+      for (const p of pins) {
+        const s = worldToScreen(p);
+        const d = Math.hypot(s.x - px, s.y - py);
+        if (d < bestD) { bestD = d; bestPin = p; best = null; }
+      }
       closePoi();
-      if (best) openPoi(best);
+      if (bestPin) openPinPanel(bestPin);
+      else if (best) openPoi(best);
     }
+
+    // dlouhé podržení na mapě = založení nového špendlíku
+    const LONGPRESS_MS = 550;
+    let pressTimer = null;
+    function startPress(x, y) {
+      cancelPress();
+      if (!view) return;   // mapa ještě neběží (čeká se na polohu)
+      pressTimer = setTimeout(() => {
+        pressTimer = null;
+        dragging = false;   // podržení už není tah ani tap
+        openPinDialog(screenToLatLng(x * DPR, y * DPR));
+      }, LONGPRESS_MS);
+    }
+    function cancelPress() { clearTimeout(pressTimer); pressTimer = null; }
 
     // tažení mapy (myš i dotyk)
     let dragging = false, dragMoved = false, lastX = 0, lastY = 0;
-    function onDown(x, y) { dragging = true; dragMoved = false; lastX = x; lastY = y; }
+    function onDown(x, y) { dragging = true; dragMoved = false; lastX = x; lastY = y; startPress(x, y); }
     function onMove(x, y) {
       if (!dragging) return;
       const dx = x - lastX, dy = y - lastY;
-      if (Math.abs(dx) + Math.abs(dy) > 3) dragMoved = true;
+      if (Math.abs(dx) + Math.abs(dy) > 3) { dragMoved = true; cancelPress(); }
       lastX = x; lastY = y;
       following = false;
       panView(dx, dy);
     }
     function onUp(x, y) {
+      cancelPress();
       if (dragging && !dragMoved) pickAt(x, y);
       dragging = false;
     }
@@ -1332,6 +1433,7 @@
     canvas.addEventListener('touchstart', e => {
       if (e.touches.length === 2) {
         dragging = false;
+        cancelPress();
         pinchDist = tDist(e.touches[0], e.touches[1]);
         pinchZoom = zoom;
       } else {
@@ -1601,6 +1703,33 @@
     document.getElementById('reset-cancel').addEventListener('click', closeResetDialog);
     resetOverlay.addEventListener('click', e => { if (e.target === resetOverlay) closeResetDialog(); });
 
+    // dialog nového špendlíku (otevírá se dlouhým podržením na mapě)
+    const pinOverlay = document.getElementById('pin-overlay');
+    const pinNameEl = document.getElementById('pin-name');
+    let pendingPin = null;   // souřadnice z dlouhého podržení, čekající na uložení
+    function openPinDialog(at) {
+      pendingPin = at;
+      pinNameEl.value = '';
+      pinOverlay.classList.remove('hidden');
+    }
+    function closePinDialog() { pendingPin = null; pinOverlay.classList.add('hidden'); }
+    function savePendingPin() {
+      if (!pendingPin) return;
+      pins.push({
+        id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        name: pinNameEl.value.trim() || 'Špendlík',
+        lat: pendingPin.lat, lng: pendingPin.lng,
+        createdAt: Date.now(),
+      });
+      savePins();
+      closePinDialog();
+      showToast('📌 Špendlík uložen', 2200);
+    }
+    document.getElementById('pin-save').addEventListener('click', savePendingPin);
+    document.getElementById('pin-cancel').addEventListener('click', closePinDialog);
+    pinNameEl.addEventListener('keydown', e => { if (e.key === 'Enter') savePendingPin(); });
+    pinOverlay.addEventListener('click', e => { if (e.target === pinOverlay) closePinDialog(); });
+
     // --- menu otevřené klepnutím na HUD ---
     const hudMenuOverlay = document.getElementById('hud-menu-overlay');
     function openHudMenu() {
@@ -1630,7 +1759,7 @@
       }
       if (!first) maybeReloadPois();   // hráč se mohl vzdálit od načtené oblasti
       // pokud je panel otevřený, aktualizuj vzdálenost/tlačítko
-      if (selected) updatePoiButtons();
+      if (selected || selectedPin) updatePoiButtons();
     }
 
     // bez polohy se hrát nedá – místo hry řekni hráči, co potřebuje udělat

@@ -151,7 +151,7 @@
         <span>🧲 magnet — mince létají k tobě</span>
         <span>💥 těsné minutí překážky = bonusové body</span>
       </div>
-      <div class="sub">Ovládání: <b>← →</b> nebo <b>A / D</b>, na mobilu ťukni na levou / pravou půlku.</div>
+      <div class="sub">Ovládání: <b>← →</b> nebo <b>A / D</b>, na mobilu <b>naklápěj telefon</b> do stran nebo ťukni na levou / pravou půlku.</div>
       <div id="menuBest" class="best"></div>
       <button id="startBtn">Odstartovat</button>
     </div>
@@ -328,6 +328,44 @@
       const rect = canvas.getBoundingClientRect();
       move(e.clientX - rect.left < rect.width / 2 ? -1 : 1);
     });
+
+    // náklon telefonu: naklonění do strany přehodí pruh, další přehození
+    // až po vrácení telefonu zpět k rovině (aby to neskákalo)
+    const TILT_ON = 12, TILT_OFF = 5;
+    let tiltNeutral = true;
+    let tiltEnabled = false;
+
+    function handleTilt(e) {
+      // gamma = náklon do stran na výšku; při otočení na šířku vezmi beta
+      let g;
+      const angle = (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0;
+      if (angle === 90) g = e.beta;
+      else if (angle === -90 || angle === 270) g = e.beta == null ? null : -e.beta;
+      else if (angle === 180) g = e.gamma == null ? null : -e.gamma;
+      else g = e.gamma;
+      if (g == null) return;
+
+      if (tiltNeutral) {
+        if (g > TILT_ON) { move(1); tiltNeutral = false; }
+        else if (g < -TILT_ON) { move(-1); tiltNeutral = false; }
+      } else if (Math.abs(g) < TILT_OFF) {
+        tiltNeutral = true;
+      }
+    }
+
+    function enableTilt() {
+      if (tiltEnabled) return;
+      tiltEnabled = true;
+      // iOS 13+ vyžaduje souhlas, jde vyžádat jen z gesta uživatele
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then((p) => {
+          if (p === 'granted') window.addEventListener('deviceorientation', handleTilt);
+        }).catch(() => {});
+      } else if ('DeviceOrientationEvent' in window) {
+        window.addEventListener('deviceorientation', handleTilt);
+      }
+    }
 
     // ----- kolize -----
     function overlap(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -710,6 +748,7 @@
     }
 
     function start() {
+      enableTilt();
       reset();
       menuEl.classList.add('hidden');
       overEl.classList.add('hidden');

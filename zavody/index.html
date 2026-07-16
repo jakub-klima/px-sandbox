@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Turbo Závody</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(160deg, #05060a, #0a0b12 55%, #030304);
+      color: #d8f4ee;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #wrap {
+      position: relative;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    canvas {
+      display: block;
+      border-radius: 12px;
+      box-shadow: 0 0 40px rgba(0, 255, 200, 0.12);
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.8rem;
+      background: rgba(3, 4, 6, 0.72);
+      backdrop-filter: blur(3px);
+      text-align: center;
+      padding: 1rem;
+      z-index: 5;
+    }
+
+    .overlay.hidden {
+      display: none;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.8rem, 6vw, 2.8rem);
+      letter-spacing: 0.04em;
+      background: linear-gradient(90deg, #00ffc8, #7cf5ff, #b06bff);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      filter: drop-shadow(0 0 12px rgba(0, 255, 200, 0.35));
+    }
+
+    .sub {
+      color: #8fb5af;
+      font-size: 0.95rem;
+      max-width: 26rem;
+      line-height: 1.5;
+    }
+
+    .sub b { color: #d8f4ee; }
+
+    .big-score {
+      font-size: clamp(2rem, 8vw, 3.2rem);
+      font-weight: 700;
+      color: #ffd75e;
+      text-shadow: 0 0 18px rgba(255, 215, 94, 0.45);
+    }
+
+    .best {
+      color: #8fb5af;
+      font-size: 1rem;
+    }
+
+    .best.record {
+      color: #ffd75e;
+      font-weight: 600;
+    }
+
+    button {
+      font: inherit;
+      font-size: 1.1rem;
+      font-weight: 600;
+      padding: 0.7rem 2.4rem;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 255, 200, 0.5);
+      background: rgba(0, 255, 200, 0.08);
+      color: #d8f4ee;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    button:hover {
+      background: rgba(0, 255, 200, 0.16);
+      box-shadow: 0 0 20px rgba(0, 255, 200, 0.35);
+      transform: translateY(-2px);
+    }
+
+    .legend {
+      display: grid;
+      gap: 0.3rem;
+      font-size: 0.9rem;
+      color: #8fb5af;
+      text-align: left;
+    }
+
+    a.back {
+      position: absolute;
+      top: 0.7rem;
+      left: 0.9rem;
+      color: #6b8a86;
+      text-decoration: none;
+      font-size: 0.9rem;
+      z-index: 6;
+    }
+
+    a.back:hover { color: #00ffc8; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <a class="back" href="../index.html">← zpět</a>
+    <canvas id="game"></canvas>
+
+    <div id="menu" class="overlay">
+      <h1>🏎️ Turbo Závody</h1>
+      <div class="sub">Kličkuj ve třech pruzích, vyhýbej se autům a překážkám a sbírej bonusy!</div>
+      <div class="legend">
+        <span>🪙 mince — body navíc</span>
+        <span>🛡️ štít — přežiješ jeden náraz</span>
+        <span>⭐ hvězda — chvíli nesmrtelnost a dvojité body</span>
+        <span>🧲 magnet — mince létají k tobě</span>
+        <span>💥 těsné minutí překážky = bonusové body</span>
+      </div>
+      <div class="sub">Ovládání: <b>← →</b> nebo <b>A / D</b>, na mobilu ťukni na levou / pravou půlku.</div>
+      <div id="menuBest" class="best"></div>
+      <button id="startBtn">Odstartovat</button>
+    </div>
+
+    <div id="gameover" class="overlay hidden">
+      <h1>💥 Bouračka!</h1>
+      <div class="big-score" id="finalScore">0</div>
+      <div id="finalBest" class="best"></div>
+      <div id="finalStats" class="sub"></div>
+      <button id="restartBtn">Jet znovu</button>
+    </div>
+  </div>
+
+  <script>
+    'use strict';
+
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    // ----- rozměry -----
+    const LANES = 3;
+    let W = 420, H = 700, laneW = W / LANES;
+
+    function resize() {
+      const maxW = Math.min(window.innerWidth, 480);
+      const maxH = window.innerHeight;
+      // poměr cca 3:5, přizpůsobit obrazovce
+      H = Math.min(maxH - 8, Math.round(maxW * 1.66));
+      W = Math.min(maxW - 8, Math.round(H * 0.62));
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      laneW = W / LANES;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ----- stav hry -----
+    const BEST_KEY = 'zavody.best';
+    let best = Number(localStorage.getItem(BEST_KEY) || 0);
+
+    const state = {
+      running: false,
+      time: 0,
+      speed: 0,          // px/s posun světa
+      score: 0,
+      coins: 0,
+      nearMisses: 0,
+      distance: 0,
+      lane: 1,           // cílový pruh 0..2
+      carX: 0,           // plynulá pozice auta (px, střed)
+      shield: false,
+      starT: 0,          // zbývající čas hvězdy
+      magnetT: 0,
+      shakeT: 0,
+      obstacles: [],
+      pickups: [],
+      particles: [],
+      floats: [],        // plovoucí texty (+50 apod.)
+      dashOffset: 0,
+      spawnT: 0,
+      pickupT: 0,
+    };
+
+    const laneCenter = (l) => (l + 0.5) * laneW;
+    const carW = () => laneW * 0.52;
+    const carH = () => laneW * 0.95;
+    const carY = () => H - carH() * 1.35;
+
+    function reset() {
+      state.time = 0;
+      state.speed = 260;
+      state.score = 0;
+      state.coins = 0;
+      state.nearMisses = 0;
+      state.distance = 0;
+      state.lane = 1;
+      state.carX = laneCenter(1);
+      state.shield = false;
+      state.starT = 0;
+      state.magnetT = 0;
+      state.shakeT = 0;
+      state.obstacles = [];
+      state.pickups = [];
+      state.particles = [];
+      state.floats = [];
+      state.spawnT = 0.8;
+      state.pickupT = 2.2;
+    }
+
+    // ----- překážky a bonusy -----
+    const OBSTACLE_TYPES = [
+      { kind: 'car',  color: '#ff5470', w: 0.52, h: 0.95 },
+      { kind: 'car',  color: '#ff9f43', w: 0.52, h: 0.95 },
+      { kind: 'car',  color: '#54a0ff', w: 0.52, h: 0.95 },
+      { kind: 'cone', color: '#ff9f43', w: 0.34, h: 0.36 },
+      { kind: 'oil',  color: '#222831', w: 0.5,  h: 0.4  },
+    ];
+
+    function spawnObstacle() {
+      // vyber 1–2 pruhy, ale nikdy nezablokuj všechny tři
+      const free = [0, 1, 2];
+      const count = state.time > 25 && Math.random() < 0.45 ? 2 : 1;
+      for (let i = 0; i < count && free.length > 1; i++) {
+        const idx = Math.floor(Math.random() * free.length);
+        const lane = free.splice(idx, 1)[0];
+        const t = OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
+        state.obstacles.push({
+          type: t,
+          lane,
+          x: laneCenter(lane),
+          y: -laneW,
+          counted: false, // pro near-miss
+          hit: false,
+        });
+      }
+    }
+
+    function spawnPickup() {
+      const r = Math.random();
+      let kind;
+      if (r < 0.62) kind = 'coin';
+      else if (r < 0.78) kind = 'shield';
+      else if (r < 0.92) kind = 'magnet';
+      else kind = 'star';
+
+      const lane = Math.floor(Math.random() * LANES);
+      if (kind === 'coin') {
+        // řádka 3–5 mincí za sebou
+        const n = 3 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < n; i++) {
+          state.pickups.push({ kind, lane, x: laneCenter(lane), y: -laneW - i * laneW * 0.8 });
+        }
+      } else {
+        state.pickups.push({ kind, lane, x: laneCenter(lane), y: -laneW });
+      }
+    }
+
+    // ----- efekty -----
+    function addFloat(text, x, y, color) {
+      state.floats.push({ text, x, y, t: 0, color });
+    }
+
+    function addBurst(x, y, color, n = 14) {
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const v = 60 + Math.random() * 180;
+        state.particles.push({
+          x, y,
+          vx: Math.cos(a) * v,
+          vy: Math.sin(a) * v,
+          t: 0,
+          life: 0.4 + Math.random() * 0.4,
+          color,
+        });
+      }
+    }
+
+    // ----- ovládání -----
+    function move(dir) {
+      if (!state.running) return;
+      state.lane = Math.max(0, Math.min(LANES - 1, state.lane + dir));
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { move(-1); e.preventDefault(); }
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { move(1); e.preventDefault(); }
+    });
+
+    canvas.addEventListener('pointerdown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      move(e.clientX - rect.left < rect.width / 2 ? -1 : 1);
+    });
+
+    // ----- kolize -----
+    function overlap(ax, ay, aw, ah, bx, by, bw, bh) {
+      return Math.abs(ax - bx) * 2 < aw + bw && Math.abs(ay - by) * 2 < ah + bh;
+    }
+
+    // ----- hlavní smyčka -----
+    let lastT = 0;
+
+    function update(dt) {
+      state.time += dt;
+      state.speed = 260 + state.time * 7 + Math.min(state.time * state.time * 0.05, 200);
+      const px = state.speed * dt;
+      state.distance += px;
+      state.dashOffset = (state.dashOffset + px) % (laneW * 0.9);
+
+      const mult = state.starT > 0 ? 2 : 1;
+      state.score += px * 0.05 * mult;
+
+      if (state.starT > 0) state.starT -= dt;
+      if (state.magnetT > 0) state.magnetT -= dt;
+      if (state.shakeT > 0) state.shakeT -= dt;
+
+      // plynulý pohyb auta do cílového pruhu
+      const target = laneCenter(state.lane);
+      state.carX += (target - state.carX) * Math.min(1, dt * 14);
+
+      // spawnování
+      state.spawnT -= dt;
+      if (state.spawnT <= 0) {
+        spawnObstacle();
+        // interval se zkracuje s rychlostí
+        state.spawnT = Math.max(0.42, 1.15 - state.time * 0.012);
+      }
+      state.pickupT -= dt;
+      if (state.pickupT <= 0) {
+        spawnPickup();
+        state.pickupT = 1.6 + Math.random() * 1.6;
+      }
+
+      const cx = state.carX, cy = carY(), cw = carW(), ch = carH();
+
+      // překážky
+      for (let i = state.obstacles.length - 1; i >= 0; i--) {
+        const o = state.obstacles[i];
+        o.y += px;
+        const ow = o.type.w * laneW, oh = o.type.h * laneW;
+
+        if (!o.hit && overlap(cx, cy, cw * 0.82, ch * 0.9, o.x, o.y, ow * 0.85, oh * 0.85)) {
+          if (state.starT > 0) {
+            o.hit = true;
+            state.score += 100;
+            addBurst(o.x, o.y, '#ffd75e');
+            addFloat('+100', o.x, o.y, '#ffd75e');
+            state.obstacles.splice(i, 1);
+            continue;
+          } else if (state.shield) {
+            state.shield = false;
+            state.shakeT = 0.35;
+            addBurst(o.x, o.y, '#7cf5ff');
+            addFloat('🛡️ štít!', cx, cy - ch, '#7cf5ff');
+            state.obstacles.splice(i, 1);
+            continue;
+          } else {
+            gameOver();
+            return;
+          }
+        }
+
+        // near-miss: překážka právě projela kolem auta v sousedním pruhu
+        if (!o.counted && o.y > cy && Math.abs(o.lane - state.lane) === 1 && Math.abs(state.carX - laneCenter(state.lane)) < laneW * 0.15) {
+          o.counted = true;
+          state.nearMisses++;
+          const pts = 25 * mult;
+          state.score += pts;
+          addFloat('těsně! +' + pts, o.x, cy - ch * 0.4, '#b06bff');
+        }
+
+        if (o.y > H + laneW) state.obstacles.splice(i, 1);
+      }
+
+      // bonusy
+      for (let i = state.pickups.length - 1; i >= 0; i--) {
+        const p = state.pickups[i];
+        p.y += px;
+
+        // magnet přitahuje mince
+        if (p.kind === 'coin' && state.magnetT > 0) {
+          const dx = cx - p.x, dy = cy - p.y;
+          const d = Math.hypot(dx, dy);
+          if (d < laneW * 2.6) {
+            p.x += dx / d * 520 * dt;
+            p.y += dy / d * 520 * dt;
+          }
+        }
+
+        const s = laneW * 0.3;
+        if (overlap(cx, cy, cw, ch, p.x, p.y, s, s)) {
+          if (p.kind === 'coin') {
+            const pts = 50 * mult;
+            state.coins++;
+            state.score += pts;
+            addFloat('+' + pts, p.x, p.y, '#ffd75e');
+            addBurst(p.x, p.y, '#ffd75e', 8);
+          } else if (p.kind === 'shield') {
+            state.shield = true;
+            addFloat('štít!', p.x, p.y, '#7cf5ff');
+            addBurst(p.x, p.y, '#7cf5ff', 10);
+          } else if (p.kind === 'star') {
+            state.starT = 5;
+            addFloat('NESMRTELNOST!', p.x, p.y, '#ffd75e');
+            addBurst(p.x, p.y, '#ffd75e', 20);
+          } else if (p.kind === 'magnet') {
+            state.magnetT = 6;
+            addFloat('magnet!', p.x, p.y, '#ff5470');
+            addBurst(p.x, p.y, '#ff5470', 10);
+          }
+          state.pickups.splice(i, 1);
+          continue;
+        }
+
+        if (p.y > H + laneW) state.pickups.splice(i, 1);
+      }
+
+      // částice
+      for (let i = state.particles.length - 1; i >= 0; i--) {
+        const pt = state.particles[i];
+        pt.t += dt;
+        if (pt.t >= pt.life) { state.particles.splice(i, 1); continue; }
+        pt.x += pt.vx * dt;
+        pt.y += pt.vy * dt + px * 0.4 * dt;
+      }
+
+      // plovoucí texty
+      for (let i = state.floats.length - 1; i >= 0; i--) {
+        const f = state.floats[i];
+        f.t += dt;
+        if (f.t > 1) state.floats.splice(i, 1);
+      }
+    }
+
+    // ----- kreslení -----
+    function drawRoad() {
+      ctx.fillStyle = '#101319';
+      ctx.fillRect(0, 0, W, H);
+
+      // krajnice
+      ctx.fillStyle = '#1c2230';
+      ctx.fillRect(0, 0, 6, H);
+      ctx.fillRect(W - 6, 0, 6, H);
+
+      // přerušované čáry mezi pruhy
+      ctx.strokeStyle = 'rgba(216, 244, 238, 0.35)';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([laneW * 0.45, laneW * 0.45]);
+      ctx.lineDashOffset = -state.dashOffset;
+      for (let l = 1; l < LANES; l++) {
+        ctx.beginPath();
+        ctx.moveTo(l * laneW, -laneW);
+        ctx.lineTo(l * laneW, H + laneW);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+
+    function drawCarShape(x, y, w, h, color, isPlayer) {
+      ctx.save();
+      ctx.translate(x, y);
+
+      // stín
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath();
+      ctx.ellipse(0, h * 0.08, w * 0.62, h * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // karoserie
+      ctx.fillStyle = color;
+      roundRect(-w / 2, -h / 2, w, h, w * 0.22);
+      ctx.fill();
+
+      // kabina
+      ctx.fillStyle = 'rgba(10, 12, 20, 0.75)';
+      roundRect(-w * 0.32, -h * 0.18, w * 0.64, h * 0.34, w * 0.1);
+      ctx.fill();
+
+      // světla
+      ctx.fillStyle = isPlayer ? '#fff7ae' : '#ffd0d0';
+      const ly = isPlayer ? -h / 2 + h * 0.06 : h / 2 - h * 0.1;
+      ctx.fillRect(-w * 0.34, ly, w * 0.2, h * 0.05);
+      ctx.fillRect(w * 0.14, ly, w * 0.2, h * 0.05);
+
+      ctx.restore();
+    }
+
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function drawObstacle(o) {
+      const w = o.type.w * laneW, h = o.type.h * laneW;
+      if (o.type.kind === 'car') {
+        drawCarShape(o.x, o.y, w, h, o.type.color, false);
+      } else if (o.type.kind === 'cone') {
+        ctx.save();
+        ctx.translate(o.x, o.y);
+        ctx.fillStyle = '#ff9f43';
+        ctx.beginPath();
+        ctx.moveTo(0, -h / 2);
+        ctx.lineTo(w / 2, h / 2);
+        ctx.lineTo(-w / 2, h / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-w * 0.22, -h * 0.05, w * 0.44, h * 0.16);
+        ctx.restore();
+      } else { // olejová skvrna
+        ctx.save();
+        ctx.translate(o.x, o.y);
+        ctx.fillStyle = 'rgba(20, 24, 32, 0.95)';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * 0.55, h * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(124, 245, 255, 0.25)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    const PICKUP_EMOJI = { coin: '🪙', shield: '🛡️', star: '⭐', magnet: '🧲' };
+
+    function drawPickup(p) {
+      const s = laneW * 0.42;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      const pulse = 1 + Math.sin(state.time * 6 + p.y * 0.05) * 0.08;
+      ctx.font = `${s * pulse}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(255, 215, 94, 0.6)';
+      ctx.shadowBlur = 12;
+      ctx.fillText(PICKUP_EMOJI[p.kind], 0, 0);
+      ctx.restore();
+    }
+
+    function drawPlayer() {
+      const x = state.carX, y = carY(), w = carW(), h = carH();
+
+      if (state.starT > 0) {
+        // duhová záře při hvězdě
+        ctx.save();
+        ctx.shadowColor = `hsl(${(state.time * 300) % 360}, 100%, 60%)`;
+        ctx.shadowBlur = 25;
+        drawCarShape(x, y, w, h, `hsl(${(state.time * 300) % 360}, 90%, 60%)`, true);
+        ctx.restore();
+      } else {
+        drawCarShape(x, y, w, h, '#00ffc8', true);
+      }
+
+      if (state.shield) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(124, 245, 255, 0.8)';
+        ctx.lineWidth = 3;
+        ctx.shadowColor = 'rgba(124, 245, 255, 0.8)';
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.ellipse(x, y, w * 0.85, h * 0.72, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (state.magnetT > 0) {
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 84, 112, ${0.25 + Math.sin(state.time * 8) * 0.15})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 8]);
+        ctx.beginPath();
+        ctx.arc(x, y, laneW * 1.4, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    function drawHUD() {
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.font = `700 ${Math.round(laneW * 0.22)}px -apple-system, sans-serif`;
+      ctx.fillStyle = '#ffd75e';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 6;
+      ctx.fillText(Math.floor(state.score).toLocaleString('cs-CZ'), 14, 12);
+
+      ctx.font = `${Math.round(laneW * 0.15)}px -apple-system, sans-serif`;
+      ctx.fillStyle = '#8fb5af';
+      ctx.fillText(`🪙 ${state.coins}   ${Math.round(state.speed / 3)} km/h`, 14, 12 + laneW * 0.28);
+
+      // aktivní bonusy vpravo
+      ctx.textAlign = 'right';
+      let by = 12;
+      const bs = Math.round(laneW * 0.16);
+      ctx.font = `${bs}px -apple-system, sans-serif`;
+      if (state.starT > 0) {
+        ctx.fillStyle = '#ffd75e';
+        ctx.fillText(`⭐ ${state.starT.toFixed(1)}s  (2× body)`, W - 12, by);
+        by += bs * 1.4;
+      }
+      if (state.magnetT > 0) {
+        ctx.fillStyle = '#ff5470';
+        ctx.fillText(`🧲 ${state.magnetT.toFixed(1)}s`, W - 12, by);
+        by += bs * 1.4;
+      }
+      if (state.shield) {
+        ctx.fillStyle = '#7cf5ff';
+        ctx.fillText('🛡️ štít', W - 12, by);
+      }
+      ctx.restore();
+    }
+
+    function draw() {
+      ctx.save();
+      if (state.shakeT > 0) {
+        ctx.translate((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10);
+      }
+
+      drawRoad();
+
+      for (const p of state.pickups) drawPickup(p);
+      for (const o of state.obstacles) drawObstacle(o);
+      drawPlayer();
+
+      for (const pt of state.particles) {
+        const a = 1 - pt.t / pt.life;
+        ctx.fillStyle = pt.color;
+        ctx.globalAlpha = a;
+        ctx.fillRect(pt.x - 3, pt.y - 3, 6, 6);
+      }
+      ctx.globalAlpha = 1;
+
+      ctx.textAlign = 'center';
+      for (const f of state.floats) {
+        ctx.globalAlpha = 1 - f.t;
+        ctx.fillStyle = f.color;
+        ctx.font = `700 ${Math.round(laneW * 0.18)}px -apple-system, sans-serif`;
+        ctx.fillText(f.text, f.x, f.y - f.t * 40);
+      }
+      ctx.globalAlpha = 1;
+
+      ctx.restore();
+      drawHUD();
+    }
+
+    function loop(t) {
+      if (!state.running) return;
+      const dt = Math.min((t - lastT) / 1000, 0.05);
+      lastT = t;
+      update(dt);
+      if (state.running) draw();
+      requestAnimationFrame(loop);
+    }
+
+    // ----- obrazovky -----
+    const menuEl = document.getElementById('menu');
+    const overEl = document.getElementById('gameover');
+    const menuBestEl = document.getElementById('menuBest');
+
+    function showMenu() {
+      menuBestEl.textContent = best > 0 ? `Nejlepší skóre: ${best.toLocaleString('cs-CZ')}` : '';
+      menuEl.classList.remove('hidden');
+      overEl.classList.add('hidden');
+      // pozadí za menu
+      reset();
+      draw();
+    }
+
+    function start() {
+      reset();
+      menuEl.classList.add('hidden');
+      overEl.classList.add('hidden');
+      state.running = true;
+      lastT = performance.now();
+      requestAnimationFrame(loop);
+    }
+
+    function gameOver() {
+      state.running = false;
+      addBurst(state.carX, carY(), '#ff5470', 30);
+      draw();
+
+      const score = Math.floor(state.score);
+      const isRecord = score > best;
+      if (isRecord) {
+        best = score;
+        localStorage.setItem(BEST_KEY, String(best));
+      }
+
+      document.getElementById('finalScore').textContent = score.toLocaleString('cs-CZ');
+      const bestEl = document.getElementById('finalBest');
+      bestEl.textContent = isRecord ? '🏆 Nový rekord!' : `Nejlepší skóre: ${best.toLocaleString('cs-CZ')}`;
+      bestEl.classList.toggle('record', isRecord);
+      // stejný přepočet jako km/h v HUD: 3 px = 1 m
+      const meters = state.distance / 3 / 3.6;
+      const dist = meters >= 1000 ? (meters / 1000).toFixed(1) + ' km' : Math.round(meters) + ' m';
+      document.getElementById('finalStats').innerHTML =
+        `🪙 mincí: <b>${state.coins}</b> &nbsp; 💨 těsných minutí: <b>${state.nearMisses}</b><br>` +
+        `📏 ujeto: <b>${dist}</b> &nbsp; ⏱️ čas: <b>${Math.floor(state.time)} s</b>`;
+      overEl.classList.remove('hidden');
+    }
+
+    document.getElementById('startBtn').addEventListener('click', start);
+    document.getElementById('restartBtn').addEventListener('click', start);
+    window.addEventListener('keydown', (e) => {
+      if ((e.key === ' ' || e.key === 'Enter') && !state.running) start();
+    });
+
+    showMenu();
+  </script>
+</body>
+</html>

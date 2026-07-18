@@ -758,14 +758,6 @@
       return null;
     }
 
-    function shuffle(arr) {
-      for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-      }
-      return arr;
-    }
-
     // Overpass servery – když hlavní neodpoví, zkusí se automaticky zrcadlo a pak znovu hlavní
     const OVERPASS_ENDPOINTS = [
       'https://overpass-api.de/api/interpreter',
@@ -778,6 +770,7 @@
     const POI_RELOAD_DIST_M = 500;   // menší než poloměr načítání (1 km) → oblasti se překrývají
     const POI_STALE_MS = 900000;     // stáří dat, po kterém se po návratu z pozadí načítá znovu (15 min)
     const POI_RETRY_MS = 30000;      // minimální rozestup automatických pokusů (šetrnost k Overpass)
+    const POI_PRUNE_M = 2000;        // stará místa dál než tohle od středu načtení se zahodí
     let poiAnchor = null;            // poloha hráče při posledním úspěšném načtení
     let poisLoadedAt = 0;
     let lastPoiAttempt = 0;
@@ -840,7 +833,7 @@
         }
       }
       if (list === null) {
-        pois = [];
+        // stará místa ponech – chvilkový výpadek Overpass nemá čistit mapu
         showToast('⚠️ Místa se nenačetla. Zkus to znovu tlačítkem 🔄', 2800);
       } else {
         // kotva pro automatické přenačtení = kde hráč stál při tomhle načtení
@@ -848,14 +841,22 @@
         // s další GPS aktualizací, ale až když hráč skutečně popojde)
         poiAnchor = player ? { lat: player.lat, lng: player.lng } : { lat: center.lat, lng: center.lng };
         poisLoadedAt = Date.now();
-        if (!list.length) {
-          pois = [];
-          showToast('🤷 V tomhle okolí se žádná místa nenašla', 2800);
-        } else {
-          // promíchat a omezit počet, ať není mapa přeplněná
-          pois = shuffle(list).slice(0, 45);
-          showToast('✅ Načteno ' + pois.length + ' míst z okolí', 2200);
+        // sluč s už načtenými: nová místa přidej, stará ponech, ať hráči
+        // při přenačtení nemizí pod rukama; zahoď jen hodně vzdálená
+        const byId = new Map();
+        for (const p of pois) {
+          if (p === selected || metersBetween(center, p) < POI_PRUNE_M) byId.set(placeId(p), p);
         }
+        let added = 0;
+        for (const p of list) {
+          const id = placeId(p);
+          if (!byId.has(id)) { byId.set(id, p); added++; }
+        }
+        pois = [...byId.values()];
+        if (!pois.length) showToast('🤷 V tomhle okolí se žádná místa nenašla', 2800);
+        else if (added === 1) showToast('✅ Nalezeno 1 nové místo', 2200);
+        else if (added) showToast('✅ Nalezeno ' + added + ' ' + (added <= 4 ? 'nová místa' : 'nových míst'), 2200);
+        else showToast('✅ Místa jsou aktuální', 2200);
       }
       loadingPois = false;
     }

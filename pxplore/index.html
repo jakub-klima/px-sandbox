@@ -780,11 +780,10 @@
       // !poiAnchor = načtení zatím nikdy neuspělo → průběžně to zkoušej znovu
       if (!poiAnchor || metersBetween(player, poiAnchor) > POI_RELOAD_DIST_M) loadPois(player);
     }
-    async function loadPois(center, radius = 1000) {
-      if (loadingPois) return;
-      loadingPois = true;
-      lastPoiAttempt = Date.now();
-      showToast('🔎 Hledám místa v okolí…');
+    // jeden dotaz na Overpass s daným poloměrem (fallback přes zrcadla); null = nezdar
+    const POI_LIMIT = 120;               // limit míst na jeden dotaz (out center …)
+    const POI_RADII = [1000, 500, 250];  // hustá oblast ořízne výsledek na limit → doplň menším poloměrem
+    async function fetchPoiList(center, radius) {
       const R = Math.round(radius);
       const q = `[out:json][timeout:25];(`
         + `node["tourism"](around:${R},${center.lat},${center.lng});`
@@ -795,8 +794,7 @@
         + `way["leisure"~"park|playground|garden"](around:${R},${center.lat},${center.lng});`
         + `way["tourism"](around:${R},${center.lat},${center.lng});`
         + `way["historic"](around:${R},${center.lat},${center.lng});`
-        + `);out center 120;`;
-      let list = null;   // null = zatím se nepodařilo stáhnout data
+        + `);out center ${POI_LIMIT};`;
       for (let attempt = 0; attempt < OVERPASS_ENDPOINTS.length; attempt++) {
         if (attempt > 0) {
           showToast('🔎 Hledám místa v okolí… (pokus ' + (attempt + 1) + ')');
@@ -810,7 +808,7 @@
           if (!res.ok) throw new Error('Overpass ' + res.status);
           const json = await res.json();
           const seen = new Set();
-          list = [];
+          const list = [];
           for (const el of json.elements || []) {
             const lat = el.lat != null ? el.lat : (el.center && el.center.lat);
             const lng = el.lon != null ? el.lon : (el.center && el.center.lon);
@@ -826,14 +824,49 @@
               city: (el.tags && el.tags['addr:city']) || '',
             });
           }
-          break;   // data dorazila (klidně i prázdná oblast) – další pokusy nemají smysl
+          return list;   // data dorazila (klidně i prázdná oblast)
         } catch (e) {
           console.warn('Overpass pokus ' + (attempt + 1) + ' selhal:', e);
-          list = null;
         }
       }
-      if (list === null) {
-        // stará místa ponech – chvilkový výpadek Overpass nemá čistit mapu
+      return null;
+    }
+    // sluč nový výsledek s už načtenými: nová místa přidej, stará ponech,
+    // ať hráči při přenačtení nemizí pod rukama; zahoď jen hodně vzdálená
+    function mergePois(center, list) {
+      const byId = new Map();
+      for (const p of pois) {
+        if (p === selected || metersBetween(center, p) < POI_PRUNE_M) byId.set(placeId(p), p);
+      }
+      let added = 0;
+      for (const p of list) {
+        const id = placeId(p);
+        if (!byId.has(id)) { byId.set(id, p); added++; }
+      }
+      pois = [...byId.values()];
+      return added;
+    }
+    async function loadPois(center) {
+      if (loadingPois) return;
+      loadingPois = true;
+      lastPoiAttempt = Date.now();
+      showToast('🔎 Hledám místa v okolí…');
+      // hustá oblast: když dotaz narazí na limit, Overpass vrací libovolných
+      // 120 míst z celého kruhu (řadit podle vzdálenosti neumí) – proto se
+      // dotaz opakuje s menším poloměrem, dokud se výsledek nevejde pod limit
+      let ok = false, added = 0;
+      for (let pass = 0; pass < POI_RADII.length; pass++) {
+        const list = await fetchPoiList(center, POI_RADII[pass]);
+        if (list === null) break;   // výpadek – ponech, co se stihlo (mapa se nečistí)
+        ok = true;
+        added += mergePois(center, list);
+        if (list.length < POI_LIMIT) break;   // vešlo se vše, menší poloměr nic nepřidá
+        if (pass + 1 < POI_RADII.length) {
+          showToast('🏙️ Hustá oblast – doplňuji bližší místa…');
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+      if (!ok) {
         showToast('⚠️ Místa se nenačetla. Zkus to znovu tlačítkem 🔄', 2800);
       } else {
         // kotva pro automatické přenačtení = kde hráč stál při tomhle načtení
@@ -841,18 +874,6 @@
         // s další GPS aktualizací, ale až když hráč skutečně popojde)
         poiAnchor = player ? { lat: player.lat, lng: player.lng } : { lat: center.lat, lng: center.lng };
         poisLoadedAt = Date.now();
-        // sluč s už načtenými: nová místa přidej, stará ponech, ať hráči
-        // při přenačtení nemizí pod rukama; zahoď jen hodně vzdálená
-        const byId = new Map();
-        for (const p of pois) {
-          if (p === selected || metersBetween(center, p) < POI_PRUNE_M) byId.set(placeId(p), p);
-        }
-        let added = 0;
-        for (const p of list) {
-          const id = placeId(p);
-          if (!byId.has(id)) { byId.set(id, p); added++; }
-        }
-        pois = [...byId.values()];
         if (!pois.length) showToast('🤷 V tomhle okolí se žádná místa nenašla', 2800);
         else if (added === 1) showToast('✅ Nalezeno 1 nové místo', 2200);
         else if (added) showToast('✅ Nalezeno ' + added + ' ' + (added <= 4 ? 'nová místa' : 'nových míst'), 2200);

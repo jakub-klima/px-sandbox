@@ -763,8 +763,10 @@
       return null;
     }
 
-    // Overpass servery – když hlavní neodpoví, zkusí se automaticky zrcadlo;
-    // další opakování pak obstará tiché automatické přenačítání (maybeReloadPois)
+    // Overpass servery: 1. pokus jde na hlavní; 2. pokus zkouší hlavní znovu
+    // souběžně se zrcadlem a bere rychlejší úspěšnou odpověď (hlavní se po
+    // chvilkovém výpadku často vzpamatuje, zrcadlo ho jistí); případné další
+    // opakování obstará tiché automatické přenačítání (maybeReloadPois)
     const OVERPASS_ENDPOINTS = [
       'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
@@ -788,7 +790,41 @@
     // jeden dotaz na Overpass s daným poloměrem (fallback přes zrcadla); null = nezdar
     const POI_LIMIT = 120;               // limit míst na jeden dotaz (out center …)
     const POI_RADII = [1000, 500, 250];  // hustá oblast ořízne výsledek na limit → doplň menším poloměrem
-    const POI_FETCH_TIMEOUT_MS = 8000;   // na váznoucí server se nečeká – po 8 s rovnou zrcadlo
+    const POI_FETCH_TIMEOUT_MS = 8000;   // na váznoucí server se nečeká – po 8 s se pokus ruší
+    // jeden dotaz na konkrétní server; při chybě/timeoutu vyhazuje výjimku
+    async function fetchPoiFrom(url, q, ctrl) {
+      ctrl = ctrl || new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), POI_FETCH_TIMEOUT_MS);
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          body: 'data=' + encodeURIComponent(q),
+          signal: ctrl.signal,
+        });
+        if (!res.ok) throw new Error('Overpass ' + res.status);
+        const json = await res.json();
+        const seen = new Set();
+        const list = [];
+        for (const el of json.elements || []) {
+          const lat = el.lat != null ? el.lat : (el.center && el.center.lat);
+          const lng = el.lon != null ? el.lon : (el.center && el.center.lon);
+          if (lat == null || lng == null) continue;
+          const cls = classify(el.tags || {});
+          if (!cls) continue;
+          const key = lat.toFixed(5) + ',' + lng.toFixed(5);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          list.push({
+            lat, lng, ...cls,
+            name: (el.tags && el.tags.name) ? el.tags.name : cls.type,
+            city: (el.tags && el.tags['addr:city']) || '',
+          });
+        }
+        return list;   // data dorazila (klidně i prázdná oblast)
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
     async function fetchPoiList(center, radius) {
       const R = Math.round(radius);
       const q = `[out:json][timeout:8];(`
@@ -801,46 +837,24 @@
         + `way["tourism"](around:${R},${center.lat},${center.lng});`
         + `way["historic"](around:${R},${center.lat},${center.lng});`
         + `);out center ${POI_LIMIT};`;
-      for (let attempt = 0; attempt < OVERPASS_ENDPOINTS.length; attempt++) {
-        if (attempt > 0) {
-          showToast('🔎 Hledám místa v okolí… (pokus ' + (attempt + 1) + ')');
-          await new Promise(r => setTimeout(r, 1000));
-        }
-        const ctrl = new AbortController();
-        const timeoutId = setTimeout(() => ctrl.abort(), POI_FETCH_TIMEOUT_MS);
-        try {
-          const res = await fetch(OVERPASS_ENDPOINTS[attempt], {
-            method: 'POST',
-            body: 'data=' + encodeURIComponent(q),
-            signal: ctrl.signal,
-          });
-          if (!res.ok) throw new Error('Overpass ' + res.status);
-          const json = await res.json();
-          const seen = new Set();
-          const list = [];
-          for (const el of json.elements || []) {
-            const lat = el.lat != null ? el.lat : (el.center && el.center.lat);
-            const lng = el.lon != null ? el.lon : (el.center && el.center.lon);
-            if (lat == null || lng == null) continue;
-            const cls = classify(el.tags || {});
-            if (!cls) continue;
-            const key = lat.toFixed(5) + ',' + lng.toFixed(5);
-            if (seen.has(key)) continue;
-            seen.add(key);
-            list.push({
-              lat, lng, ...cls,
-              name: (el.tags && el.tags.name) ? el.tags.name : cls.type,
-              city: (el.tags && el.tags['addr:city']) || '',
-            });
-          }
-          return list;   // data dorazila (klidně i prázdná oblast)
-        } catch (e) {
-          console.warn('Overpass pokus ' + (attempt + 1) + ' selhal:', e);
-        } finally {
-          clearTimeout(timeoutId);
-        }
+      // 1. pokus: jen hlavní server
+      try {
+        return await fetchPoiFrom(OVERPASS_ENDPOINTS[0], q);
+      } catch (e) {
+        console.warn('Overpass 1. pokus selhal:', e);
       }
-      return null;
+      showToast('🔎 Hledám místa v okolí… (pokus 2)');
+      await new Promise(r => setTimeout(r, 1000));
+      // 2. pokus: hlavní server znovu a zrcadlo souběžně, bere se rychlejší úspěch
+      const ctrls = OVERPASS_ENDPOINTS.map(() => new AbortController());
+      try {
+        const list = await Promise.any(OVERPASS_ENDPOINTS.map((u, i) => fetchPoiFrom(u, q, ctrls[i])));
+        ctrls.forEach(c => c.abort());   // pomalejší souběžný dotaz zruš, ať server neřeší zbytečnou práci
+        return list;
+      } catch (e) {
+        console.warn('Overpass 2. pokus selhal:', e);
+        return null;
+      }
     }
     // sluč nový výsledek s už načtenými: nová místa přidej, stará ponech,
     // ať hráči při přenačtení nemizí pod rukama; zahoď jen hodně vzdálená

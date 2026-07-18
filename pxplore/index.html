@@ -788,9 +788,10 @@
     // jeden dotaz na Overpass s daným poloměrem (fallback přes zrcadla); null = nezdar
     const POI_LIMIT = 120;               // limit míst na jeden dotaz (out center …)
     const POI_RADII = [1000, 500, 250];  // hustá oblast ořízne výsledek na limit → doplň menším poloměrem
+    const POI_FETCH_TIMEOUT_MS = 10000;  // na váznoucí server se nečeká – po 10 s další pokus/zrcadlo
     async function fetchPoiList(center, radius) {
       const R = Math.round(radius);
-      const q = `[out:json][timeout:25];(`
+      const q = `[out:json][timeout:10];(`
         + `node["tourism"](around:${R},${center.lat},${center.lng});`
         + `node["historic"](around:${R},${center.lat},${center.lng});`
         + `node["amenity"~"cafe|restaurant|fast_food|bar|pub|library|fountain|pharmacy|bank|atm|place_of_worship|school|university|college|cinema|theatre"](around:${R},${center.lat},${center.lng});`
@@ -805,10 +806,13 @@
           showToast('🔎 Hledám místa v okolí… (pokus ' + (attempt + 1) + ')');
           await new Promise(r => setTimeout(r, 1500 * attempt));
         }
+        const ctrl = new AbortController();
+        const timeoutId = setTimeout(() => ctrl.abort(), POI_FETCH_TIMEOUT_MS);
         try {
           const res = await fetch(OVERPASS_ENDPOINTS[attempt], {
             method: 'POST',
             body: 'data=' + encodeURIComponent(q),
+            signal: ctrl.signal,
           });
           if (!res.ok) throw new Error('Overpass ' + res.status);
           const json = await res.json();
@@ -832,6 +836,8 @@
           return list;   // data dorazila (klidně i prázdná oblast)
         } catch (e) {
           console.warn('Overpass pokus ' + (attempt + 1) + ' selhal:', e);
+        } finally {
+          clearTimeout(timeoutId);
         }
       }
       return null;

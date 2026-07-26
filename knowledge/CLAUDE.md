@@ -21,10 +21,24 @@ já jsem lektor a zároveň zapisovatel. Co ho naučím, to musí zůstat zapsan
 knowledge/
   CLAUDE.md          — tenhle soubor
   README.md          — rozcestník všech témat + stav postupu
+  index.html         — proklikatelná wiki (renderuje .md v prohlížeči)
   <tema>/
     README.md        — mapa tématu, co už je pokryté, co dál
     NN-<podtema>.md  — jednotlivé kapitoly, číslované v pořadí učení
 ```
+
+**Zdroj pravdy jsou .md soubory.** `index.html` je jen čtečka: má vlastní mini
+markdown renderer a obsah načítá přes `fetch`. Nikdy needituj obsah do HTML.
+
+Nová kapitola = 2 kroky:
+1. vytvořit `<tema>/NN-<nazev>.md`
+2. přidat řádek do konstanty `WIKI` v `index.html` (`chapters: [...]`)
+
+Nové téma = složka + `README.md` + nový blok v `WIKI.topics` + řádek v kořenovém `README.md`.
+
+Podporovaný markdown: nadpisy `#`–`####`, odstavce, `-`/`1.` seznamy, tabulky,
+`>` citace, ``` bloky, inline `` `kód` ``, `**tučně**`, `*kurzíva*`, odkazy.
+Odkazy na `.md` soubory se automaticky převádějí na odkazy uvnitř wiki.
 
 ## Pravidla pro každou lekci
 

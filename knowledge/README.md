@@ -1,6 +1,7 @@
 # Knowledge
 
-Osobní wiki postupného učení. Pravidla psaní viz [CLAUDE.md](CLAUDE.md).
+Osobní wiki postupného učení. Čte se přes `index.html` (proklikatelná verze),
+zdrojem jsou markdown soubory. Pravidla psaní viz [CLAUDE.md](CLAUDE.md).
 
 ## Témata
 

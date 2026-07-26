@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Knowledge — wiki učení</title>
+<link rel="icon" type="image/svg+xml" href="../icon.svg?v=2">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #05060a;
+    --fg: #d8f4ee;
+    --dim: #6b8a86;
+    --accent: #00ffc8;
+    --line: rgba(0, 255, 200, 0.15);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--fg);
+    background: radial-gradient(circle at 15% 10%, rgba(0, 255, 200, 0.07), transparent 40%),
+                radial-gradient(circle at 85% 0%, rgba(155, 0, 255, 0.1), transparent 45%),
+                linear-gradient(160deg, #05060a, #0a0b12 55%, #030304);
+    background-attachment: fixed;
+    line-height: 1.6;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem;
+  }
+
+  /* ---- sidebar ---- */
+  aside {
+    position: sticky;
+    top: 1.5rem;
+    align-self: start;
+    max-height: calc(100vh - 3rem);
+    overflow-y: auto;
+  }
+
+  .brand {
+    display: block;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--fg);
+    text-decoration: none;
+    padding-bottom: 0.75rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .brand span { color: var(--dim); font-weight: 400; font-size: 0.85rem; display: block; }
+
+  nav ul { list-style: none; margin: 0 0 1.25rem; padding: 0; }
+
+  nav .topic {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--dim);
+    margin: 1.1rem 0 0.4rem;
+  }
+
+  nav a {
+    display: block;
+    padding: 0.35rem 0.7rem;
+    margin-bottom: 0.2rem;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    color: var(--fg);
+    text-decoration: none;
+    font-size: 0.92rem;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+
+  nav a:hover { background: rgba(0, 255, 200, 0.06); border-color: var(--line); }
+
+  nav a.active {
+    background: rgba(0, 255, 200, 0.09);
+    border-color: rgba(0, 255, 200, 0.45);
+    color: var(--accent);
+  }
+
+  nav a .num { color: var(--dim); font-variant-numeric: tabular-nums; margin-right: 0.45rem; }
+
+  .menu-btn { display: none; }
+
+  /* ---- content ---- */
+  main { min-width: 0; padding-bottom: 3rem; }
+
+  article > *:first-child { margin-top: 0; }
+
+  h1 { font-size: 1.8rem; line-height: 1.25; margin: 0 0 1rem; }
+  h2 {
+    font-size: 1.2rem;
+    margin: 2.2rem 0 0.7rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--line);
+    color: var(--accent);
+  }
+  h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: #9fd8ce; }
+
+  p { margin: 0.7rem 0; }
+  a { color: var(--accent); }
+
+  blockquote {
+    margin: 1rem 0;
+    padding: 0.6rem 1rem;
+    border-left: 3px solid var(--accent);
+    background: rgba(0, 255, 200, 0.05);
+    border-radius: 0 8px 8px 0;
+    color: #b6e7dd;
+  }
+
+  ul, ol { margin: 0.7rem 0; padding-left: 1.3rem; }
+  li { margin: 0.3rem 0; }
+  li::marker { color: var(--dim); }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.87em;
+    background: rgba(0, 255, 200, 0.08);
+    padding: 0.1em 0.38em;
+    border-radius: 5px;
+    color: #a9f3e2;
+  }
+
+  pre {
+    margin: 1rem 0;
+    padding: 0.9rem 1rem;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; color: #b6e7dd; }
+
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  th, td {
+    text-align: left;
+    padding: 0.45rem 0.7rem;
+    border-bottom: 1px solid rgba(0, 255, 200, 0.12);
+    vertical-align: top;
+  }
+  th { color: var(--accent); font-weight: 600; white-space: nowrap; }
+  tbody tr:hover { background: rgba(0, 255, 200, 0.04); }
+
+  /* ---- prev / next ---- */
+  .pager {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 2.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--line);
+  }
+  .pager a {
+    flex: 1;
+    padding: 0.6rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(0, 255, 200, 0.03);
+    text-decoration: none;
+    color: var(--fg);
+    font-size: 0.9rem;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  }
+  .pager a:hover {
+    background: rgba(0, 255, 200, 0.07);
+    border-color: rgba(0, 255, 200, 0.5);
+    transform: translateY(-2px);
+  }
+  .pager .dir { display: block; font-size: 0.72rem; color: var(--dim); }
+  .pager .next { text-align: right; }
+
+  .loading, .error { color: var(--dim); }
+  .error strong { color: #ff8f8f; }
+
+  @media (max-width: 800px) {
+    .layout { grid-template-columns: 1fr; gap: 1rem; padding: 1rem; }
+    aside { position: static; max-height: none; }
+    .menu-btn {
+      display: block;
+      width: 100%;
+      margin-top: 0.6rem;
+      padding: 0.45rem;
+      background: rgba(0, 255, 200, 0.05);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--fg);
+      font: inherit;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    nav { display: none; }
+    nav.open { display: block; }
+    h1 { font-size: 1.45rem; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <a class="brand" href="#/">📚 Knowledge<span>wiki postupného učení</span></a>
+    <button class="menu-btn" id="menuBtn" aria-expanded="false">☰ Obsah</button>
+    <nav id="nav"></nav>
+  </aside>
+  <main>
+    <article id="content" class="loading">Načítám…</article>
+    <div class="pager" id="pager"></div>
+  </main>
+</div>
+
+<script>
+/* ------------------------------------------------------------------
+   MANIFEST — jediné místo, kam se přidává nová kapitola nebo téma.
+   Zdrojem obsahu zůstávají .md soubory; tahle stránka je jen renderuje.
+------------------------------------------------------------------- */
+const WIKI = {
+  home: { title: "Rozcestník", file: "README.md" },
+  meta: [{ id: "pravidla", title: "Pravidla wiki", file: "CLAUDE.md" }],
+  topics: [
+    {
+      id: "vesmir",
+      title: "Vesmír",
+      icon: "🌌",
+      overview: { title: "Mapa tématu", file: "vesmir/README.md" },
+      chapters: [
+        { num: "01", title: "Základ", file: "vesmir/01-zaklady.md" }
+      ]
+    }
+  ]
+};
+
+/* ---- ploché pořadí stránek pro navigaci a routování ---- */
+const PAGES = [{ id: "", title: WIKI.home.title, file: WIKI.home.file }];
+WIKI.topics.forEach(t => {
+  PAGES.push({ id: t.id, title: t.icon + " " + t.title, file: t.overview.file });
+  t.chapters.forEach(c => PAGES.push({
+    id: t.id + "/" + c.file.split("/").pop().replace(/\.md$/, ""),
+    title: c.num + " " + c.title,
+    file: c.file
+  }));
+});
+WIKI.meta.forEach(m => PAGES.push(Object.assign({ meta: true }, m)));
+const FLOW = PAGES.filter(p => !p.meta);
+
+/* aktuální adresář — kvůli relativním odkazům uvnitř markdownu */
+let currentDir = "";
+
+function resolvePath(href) {
+  if (/^[a-z]+:/i.test(href) || href.startsWith("#") || href.startsWith("/")) return null;
+  const parts = [];
+  (currentDir + href.replace(/^\.\//, "")).split("/").forEach(s => {
+    if (s === "..") parts.pop();
+    else if (s && s !== ".") parts.push(s);
+  });
+  return parts.join("/");
+}
+
+/* ------------------------------------------------------------------
+   Minimální markdown renderer (bez závislostí).
+   Podporuje: nadpisy, odstavce, seznamy, tabulky, citace, kód, inline.
+------------------------------------------------------------------- */
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+function inline(text) {
+  const code = [];
+  let s = text.replace(/`([^`]+)`/g, (_, c) => {
+    code.push(c);
+    return "\u0000" + (code.length - 1) + "\u0000";
+  });
+  s = esc(s);
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) => {
+    const path = resolvePath(href);
+    if (path !== null) {
+      const page = PAGES.find(p => p.file === path || p.id === path ||
+                                   p.file === path.replace(/\/?$/, "/README.md"));
+      href = page ? "#/" + page.id : path;
+    }
+    return '<a href="' + href + '">' + label + "</a>";
+  });
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => "<code>" + esc(code[+i]) + "</code>");
+}
+
+function renderMd(src) {
+  const lines = src.replace(/\r/g, "").split("\n");
+  const out = [];
+  let i = 0;
+
+  const isTableSep = l => /^\|?[\s:-]*-[-\s|:]*$/.test(l) && l.includes("-");
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (!line.trim()) { i++; continue; }
+
+    if (line.startsWith("```")) {                                   // kód
+      const buf = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) buf.push(lines[i++]);
+      i++;
+      out.push("<pre><code>" + esc(buf.join("\n")) + "</code></pre>");
+      continue;
+    }
+
+    const h = line.match(/^(#{1,4})\s+(.*)$/);                      // nadpis
+    if (h) { const n = h[1].length; out.push(`<h${n}>${inline(h[2])}</h${n}>`); i++; continue; }
+
+    if (/^(---|\*\*\*)\s*$/.test(line)) { out.push("<hr>"); i++; continue; }
+
+    if (line.startsWith(">")) {                                     // citace
+      const buf = [];
+      while (i < lines.length && lines[i].startsWith(">")) buf.push(lines[i++].replace(/^>\s?/, ""));
+      out.push("<blockquote>" + inline(buf.join(" ")) + "</blockquote>");
+      continue;
+    }
+
+    if (line.trim().startsWith("|") && isTableSep(lines[i + 1] || "")) {   // tabulka
+      const cells = r => r.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+      const head = cells(lines[i]);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].trim().startsWith("|")) rows.push(cells(lines[i++]));
+      out.push(
+        '<div class="table-wrap"><table><thead><tr>' +
+        head.map(c => "<th>" + inline(c) + "</th>").join("") +
+        "</tr></thead><tbody>" +
+        rows.map(r => "<tr>" + r.map(c => "<td>" + inline(c) + "</td>").join("") + "</tr>").join("") +
+        "</tbody></table></div>"
+      );
+      continue;
+    }
+
+    const listItem = l => l.match(/^(\s*)([-*]|\d+\.)\s+(.*)$/);     // seznam
+    if (listItem(line)) {
+      const ordered = /^\s*\d+\./.test(line);
+      const items = [];
+      while (i < lines.length && listItem(lines[i])) {
+        let text = listItem(lines[i])[3];
+        i++;
+        while (i < lines.length && lines[i].trim() && !listItem(lines[i]) &&
+               /^\s{2,}/.test(lines[i])) text += " " + lines[i++].trim();
+        items.push("<li>" + inline(text) + "</li>");
+      }
+      out.push((ordered ? "<ol>" : "<ul>") + items.join("") + (ordered ? "</ol>" : "</ul>"));
+      continue;
+    }
+
+    const buf = [];                                                  // odstavec
+    while (i < lines.length && lines[i].trim() && !/^(#|>|```|\||\s*([-*]|\d+\.)\s)/.test(lines[i]))
+      buf.push(lines[i++]);
+    if (buf.length) out.push("<p>" + inline(buf.join(" ")) + "</p>");
+    else i++;
+  }
+  return out.join("\n");
+}
+
+/* ------------------------------------------------------------------
+   Navigace + routování
+------------------------------------------------------------------- */
+const navEl = document.getElementById("nav");
+const contentEl = document.getElementById("content");
+const pagerEl = document.getElementById("pager");
+
+function buildNav() {
+  let html = '<ul><li><a href="#/" data-id="">Rozcestník</a></li></ul>';
+  WIKI.topics.forEach(t => {
+    html += '<span class="topic">' + t.icon + " " + t.title + "</span><ul>";
+    html += '<li><a href="#/' + t.id + '" data-id="' + t.id + '">Mapa tématu</a></li>';
+    t.chapters.forEach(c => {
+      const id = t.id + "/" + c.file.split("/").pop().replace(/\.md$/, "");
+      html += '<li><a href="#/' + id + '" data-id="' + id + '"><span class="num">' +
+              c.num + "</span>" + c.title + "</a></li>";
+    });
+    html += "</ul>";
+  });
+  html += '<span class="topic">Meta</span><ul>';
+  WIKI.meta.forEach(m => {
+    html += '<li><a href="#/' + m.id + '" data-id="' + m.id + '">' + m.title + "</a></li>";
+  });
+  navEl.innerHTML = html + "</ul>";
+}
+
+function highlight(id) {
+  navEl.querySelectorAll("a").forEach(a => a.classList.toggle("active", a.dataset.id === id));
+}
+
+function renderPager(page) {
+  if (page.meta) { pagerEl.innerHTML = ""; return; }
+  const idx = FLOW.indexOf(page);
+  const prev = FLOW[idx - 1], next = FLOW[idx + 1];
+  pagerEl.innerHTML =
+    (prev ? '<a href="#/' + prev.id + '"><span class="dir">← předchozí</span>' + prev.title + "</a>" : "<span></span>") +
+    (next ? '<a class="next" href="#/' + next.id + '"><span class="dir">další →</span>' + next.title + "</a>" : "<span></span>");
+}
+
+async function route() {
+  const id = decodeURIComponent(location.hash.replace(/^#\/?/, "")).replace(/\/$/, "");
+  const idx = Math.max(0, PAGES.findIndex(p => p.id === id));
+  const page = PAGES[idx];
+
+  currentDir = page.file.includes("/") ? page.file.replace(/[^/]*$/, "") : "";
+  highlight(page.id);
+  contentEl.className = "loading";
+  contentEl.textContent = "Načítám…";
+
+  try {
+    const res = await fetch(page.file + "?v=" + Date.now());
+    if (!res.ok) throw new Error(res.status + " " + res.statusText);
+    contentEl.className = "";
+    contentEl.innerHTML = renderMd(await res.text());
+  } catch (e) {
+    contentEl.className = "error";
+    contentEl.innerHTML = "<strong>Nepodařilo se načíst " + esc(page.file) + "</strong> — " + esc(e.message) +
+      "<p>Stránka čte .md soubory přes fetch, takže potřebuje běžet přes http(s), ne přes <code>file://</code>.</p>";
+  }
+
+  renderPager(page);
+  navEl.classList.remove("open");
+  window.scrollTo(0, 0);
+}
+
+document.getElementById("menuBtn").addEventListener("click", e => {
+  const open = navEl.classList.toggle("open");
+  e.currentTarget.setAttribute("aria-expanded", String(open));
+});
+
+buildNav();
+window.addEventListener("hashchange", route);
+route();
+</script>
+</body>
+</html>

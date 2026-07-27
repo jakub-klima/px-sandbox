@@ -7,15 +7,16 @@ Mapa tématu. Kapitoly jsou číslované v pořadí, v jakém se učíme.
 | # | Kapitola | Obsah |
 |---|---|---|
 | 01 | [Základ](01-zaklady.md) | velký třesk, rozpínání, složení, hierarchie struktur, měřítka, jak to víme |
+| 02 | [Hvězdy](02-hvezdy.md) | vznik, fúze, hlavní posloupnost, spektrální třídy, HR diagram, smrt hvězdy, původ prvků |
 
 ## Kam dál (návrhy)
 
-- **02 — Hvězdy**: jak vznikají, jaderná fúze, HR diagram, život a smrt hvězdy, supernova, neutronová hvězda, černá díra.
-- **03 — Sluneční soustava**: planety, měsíce, pásy, jak vznikla.
-- **04 — Galaxie**: typy, srážky, centrální černé díry, Mléčná dráha zblízka.
-- **05 — Kosmologie do hloubky**: inflace, temná hmota (důkazy), temná energie, osud vesmíru.
-- **06 — Pozorování**: dalekohledy, vlnové délky, JWST, gravitační vlny.
-- **07 — Život ve vesmíru**: exoplanety, obyvatelná zóna, Fermiho paradox.
+- **03 — Černé díry**: horizont událostí, singularita, akreční disk, supermasivní černé díry, gravitační vlny. (Přímé pokračování konce kapitoly 02.)
+- **04 — Sluneční soustava**: planety, měsíce, pásy, jak vznikla.
+- **05 — Galaxie**: typy, srážky, centrální černé díry, Mléčná dráha zblízka.
+- **06 — Kosmologie do hloubky**: inflace, důkazy temné hmoty, temná energie, osud vesmíru.
+- **07 — Pozorování**: dalekohledy, vlnové délky, JWST, gravitační vlny.
+- **08 — Život ve vesmíru**: exoplanety, obyvatelná zóna, Fermiho paradox.
 
 ## Otevřené otázky (co věda neví)
 

@@ -7,6 +7,6 @@ zdrojem jsou markdown soubory. Pravidla psaní viz [CLAUDE.md](CLAUDE.md).
 
 | Téma | Stav | Kapitoly |
 |------|------|----------|
-| [Vesmír](vesmir/) | 🟢 rozpracované | 3 |
+| [Vesmír](vesmir/) | 🟢 rozpracované | 4 |
 
 Legenda: 🟡 začátek · 🟢 rozpracované · ✅ solidní základ

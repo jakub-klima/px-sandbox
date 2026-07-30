@@ -667,13 +667,17 @@
       const n = Math.PI - 2 * Math.PI * y / worldSize();
       return 180 / Math.PI * Math.atan(Math.sinh(n));
     }
-    function metersPerPixel(lat) {
-      return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
+    function metersPerPixelAt(lat, z) {
+      return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z);
     }
+    function metersPerPixel(lat) { return metersPerPixelAt(lat, zoom); }
     // dosah interakce – aktivovatelné už jakmile se kolečko věci dotkne dosahového kolečku hráče
-    // (ne až když je jeho střed uvnitř), proto se k REACH_M přičítá poloměr ikony v metrech
+    // (ne až když je jeho střed uvnitř), proto se k REACH_M přičítá poloměr ikony v metrech.
+    // Počítá se vždy při výchozím zoomu: dosah tak nezávisí na přiblížení mapy
+    // (jinak by šlo oddálením posbírat i vzdálená místa) a s grafikou kruhu
+    // sedí právě ve výchozím pohledu.
     function reachLimit(iconRadiusPx) {
-      return player ? REACH_M + iconRadiusPx * metersPerPixel(player.lat) : REACH_M;
+      return player ? REACH_M + iconRadiusPx * metersPerPixelAt(player.lat, ZOOM_DEFAULT) : REACH_M;
     }
 
     // cache načtených dlaždic (klíč včetně úrovně zoomu)

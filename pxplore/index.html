@@ -512,7 +512,7 @@
     let heading = 0;          // animovaný úhel pro pulzování
 
     // --- postup (ukládá se do localStorage) ---
-    const REACH_M = 140;        // dosah interakce s místy (m); s poloměrem ikony ~150 m
+    const REACH_M = 150;        // dosah interakce s místy (m) – přesně tolik, kolik kreslí kruh kolem hráče
 
     // jméno průzkumníka – zadává se na úvodní obrazovce
     const NAME_KEY = 'pxplore.name';
@@ -667,17 +667,8 @@
       const n = Math.PI - 2 * Math.PI * y / worldSize();
       return 180 / Math.PI * Math.atan(Math.sinh(n));
     }
-    function metersPerPixelAt(lat, z) {
-      return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z);
-    }
-    function metersPerPixel(lat) { return metersPerPixelAt(lat, zoom); }
-    // dosah interakce – aktivovatelné už jakmile se kolečko věci dotkne dosahového kolečku hráče
-    // (ne až když je jeho střed uvnitř), proto se k REACH_M přičítá poloměr ikony v metrech.
-    // Počítá se vždy při výchozím zoomu: dosah tak nezávisí na přiblížení mapy
-    // (jinak by šlo oddálením posbírat i vzdálená místa) a s grafikou kruhu
-    // sedí právě ve výchozím pohledu.
-    function reachLimit(iconRadiusPx) {
-      return player ? REACH_M + iconRadiusPx * metersPerPixelAt(player.lat, ZOOM_DEFAULT) : REACH_M;
+    function metersPerPixel(lat) {
+      return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
     }
 
     // cache načtených dlaždic (klíč včetně úrovně zoomu)
@@ -1347,11 +1338,11 @@
       if (isVisited(p)) {
         collectBtn.textContent = '✔️ Prozkoumáno';
         collectBtn.disabled = true;
-      } else if (d <= reachLimit(16)) {
+      } else if (d <= REACH_M) {
         collectBtn.textContent = 'Prozkoumat';
         collectBtn.disabled = false;
       } else {
-        collectBtn.textContent = 'Přijdi blíž (do ' + Math.round(reachLimit(16)) + ' m)';
+        collectBtn.textContent = 'Přijdi blíž (do ' + REACH_M + ' m)';
         collectBtn.disabled = true;
       }
     }
@@ -1405,7 +1396,7 @@
       const p = selected;
       if (!p || isVisited(p)) return;
       const d = player ? metersBetween(player, p) : Infinity;
-      if (d > reachLimit(16)) return;
+      if (d > REACH_M) return;
       const lvBefore = levelInfo(visited.size).lv;
       spawnFloat(p, '📍 +1 místo', 'first');
       recordVisit(p);   // zapiš do kroniky a obnov počítadlo/úroveň

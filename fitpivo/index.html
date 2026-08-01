@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Fit Pivo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(160deg, #05060a, #0a0b12 55%, #030304);
+      color: #d8f4ee;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #wrap {
+      position: relative;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    canvas {
+      display: block;
+      border-radius: 12px;
+      box-shadow: 0 0 40px rgba(255, 196, 60, 0.14);
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.7rem;
+      background: rgba(3, 4, 6, 0.78);
+      backdrop-filter: blur(3px);
+      text-align: center;
+      padding: 1rem;
+      overflow-y: auto;
+      z-index: 5;
+    }
+
+    .overlay.hidden {
+      display: none;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.7rem, 6vw, 2.6rem);
+      letter-spacing: 0.04em;
+      background: linear-gradient(90deg, #ffd75e, #00ffc8, #7cf5ff);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      filter: drop-shadow(0 0 12px rgba(255, 215, 94, 0.35));
+    }
+
+    .sub {
+      color: #8fb5af;
+      font-size: 0.95rem;
+      max-width: 26rem;
+      line-height: 1.5;
+    }
+
+    .sub b { color: #d8f4ee; }
+
+    .big-score {
+      font-size: clamp(2rem, 8vw, 3.2rem);
+      font-weight: 700;
+      color: #ffd75e;
+      text-shadow: 0 0 18px rgba(255, 215, 94, 0.45);
+    }
+
+    .best {
+      color: #8fb5af;
+      font-size: 1rem;
+    }
+
+    .best.record {
+      color: #ffd75e;
+      font-weight: 600;
+    }
+
+    button {
+      font: inherit;
+      font-size: 1.1rem;
+      font-weight: 600;
+      padding: 0.7rem 2.4rem;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 215, 94, 0.5);
+      background: rgba(255, 215, 94, 0.08);
+      color: #d8f4ee;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    button:hover {
+      background: rgba(255, 215, 94, 0.16);
+      box-shadow: 0 0 20px rgba(255, 215, 94, 0.35);
+      transform: translateY(-2px);
+    }
+
+    .legend {
+      display: grid;
+      gap: 0.28rem;
+      font-size: 0.9rem;
+      color: #8fb5af;
+      text-align: left;
+    }
+
+    .tip {
+      max-width: 26rem;
+      font-size: 0.88rem;
+      line-height: 1.5;
+      color: #9ab7d6;
+      border: 1px solid rgba(124, 245, 255, 0.18);
+      background: rgba(124, 245, 255, 0.05);
+      border-radius: 10px;
+      padding: 0.55rem 0.8rem;
+    }
+
+    .tip b { color: #7cf5ff; }
+
+    a.back {
+      position: absolute;
+      top: 0.7rem;
+      left: 0.9rem;
+      color: #6b8a86;
+      text-decoration: none;
+      font-size: 0.9rem;
+      z-index: 6;
+    }
+
+    a.back:hover { color: #ffd75e; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <a class="back" href="../index.html">← zpět</a>
+    <canvas id="game"></canvas>
+
+    <div id="menu" class="overlay">
+      <h1>🍺 Fit Pivo</h1>
+      <div class="sub">Chytej do půllitru jen to <b>fit</b> a nech propadnout mastnoty. Kondička ubývá sama — doplňuj ji, ať vydržíš co nejdéle!</div>
+      <div class="legend">
+        <span>🍺 fit pivo (nealko) — body + kondička</span>
+        <span>💧 voda — pořádně doplní kondičku</span>
+        <span>🥦 zelenina · 🥤 protein — body navíc</span>
+        <span>🏋️ činka — 8 s dvojité body</span>
+        <span>🧲 magnet — 8 s si fit věci letí samy</span>
+        <span>🍔 🍟 🍩 🌭 — mastnota, kondička dolů a konec komba</span>
+      </div>
+      <div class="sub">Ovládání: <b>← →</b> nebo <b>A / D</b>, na mobilu <b>táhni prstem</b> po obrazovce.</div>
+      <div id="menuTip" class="tip"></div>
+      <div id="menuBest" class="best"></div>
+      <button id="startBtn">Naliť a jedem</button>
+    </div>
+
+    <div id="gameover" class="overlay hidden">
+      <h1 id="overTitle">😵 Kondička v čudu!</h1>
+      <div class="big-score" id="finalScore">0</div>
+      <div id="finalBest" class="best"></div>
+      <div id="finalStats" class="sub"></div>
+      <div id="overTip" class="tip"></div>
+      <button id="restartBtn">Dát repete</button>
+    </div>
+  </div>
+
+  <script>
+    'use strict';
+
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    // ----- rozměry -----
+    let W = 420, H = 700;
+
+    function resize() {
+      const maxW = Math.min(window.innerWidth, 500);
+      const maxH = window.innerHeight;
+      H = Math.min(maxH - 8, Math.round(maxW * 1.6));
+      W = Math.min(maxW - 8, Math.round(H * 0.68));
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (state) {
+        state.player.x = Math.max(state.player.w / 2, Math.min(W - state.player.w / 2, state.player.x));
+        state.player.targetX = state.player.x;
+      }
+    }
+
+    // ----- fit fakta do menu a game overu -----
+    const TIPS = [
+      '<b>Fit fakt:</b> nealko pivo má zhruba 20–25 kcal na 100 ml, klasická dvanáctka kolem 40 kcal.',
+      '<b>Fit fakt:</b> nealko pivo obsahuje draslík, hořčík a vitaminy skupiny B — proto ho běžci pijí po závodě.',
+      '<b>Fit fakt:</b> půllitr piva zvládneš „vyběhat“ zhruba za 15–20 minut svižného běhu.',
+      '<b>Fit fakt:</b> „pivní mozol“ nedělá samo pivo, ale spíš kalorie navíc a chuťovky k němu.',
+      '<b>Fit fakt:</b> pivo je z 90 % voda, ale alkohol odvodňuje — proto se hodí prokládat ho vodou.',
+      '<b>Fit fakt:</b> nefiltrované pivo si nechává víc B vitaminů z kvasnic než filtrované.',
+      '<b>Fit fakt:</b> na regeneraci po tréninku funguje nejlíp nealko pivo s trochou soli a bílkovinou.',
+      '<b>Fit fakt:</b> desítka má oproti dvanáctce zhruba o pětinu kalorií méně.'
+    ];
+
+    function randomTip() {
+      return TIPS[Math.floor(Math.random() * TIPS.length)];
+    }
+
+    // ----- typy padajících věcí -----
+    const ITEMS = [
+      { emoji: '🍺', kind: 'good', weight: 26, score: 10, fit: 6, label: 'fit pivo' },
+      { emoji: '💧', kind: 'good', weight: 12, score: 4, fit: 18, label: 'voda' },
+      { emoji: '🥦', kind: 'good', weight: 13, score: 12, fit: 5, label: 'zelenina' },
+      { emoji: '🥤', kind: 'good', weight: 11, score: 16, fit: 4, label: 'protein' },
+      { emoji: '🏋️', kind: 'power', power: 'double', weight: 5, score: 5, fit: 2, label: 'činka' },
+      { emoji: '🧲', kind: 'power', power: 'magnet', weight: 5, score: 5, fit: 2, label: 'magnet' },
+      { emoji: '🍔', kind: 'bad', weight: 8, score: 0, fit: -22, label: 'burger' },
+      { emoji: '🍟', kind: 'bad', weight: 9, score: 0, fit: -18, label: 'hranolky' },
+      { emoji: '🍩', kind: 'bad', weight: 8, score: 0, fit: -18, label: 'kobliha' },
+      { emoji: '🌭', kind: 'bad', weight: 7, score: 0, fit: -20, label: 'párek' }
+    ];
+
+    const BEST_KEY = 'fitpivo.best';
+    let best = Number(localStorage.getItem(BEST_KEY) || 0);
+
+    let state = null;
+
+    function newState() {
+      return {
+        running: false,
+        over: false,
+        time: 0,
+        score: 0,
+        fit: 70,
+        combo: 0,
+        bestCombo: 0,
+        caught: 0,
+        beers: 0,
+        junk: 0,
+        missed: 0,
+        spawnTimer: 0,
+        doubleTimer: 0,
+        magnetTimer: 0,
+        shake: 0,
+        flash: 0,
+        flashColor: '#ff5e7a',
+        items: [],
+        particles: [],
+        popups: [],
+        foam: 0,
+        player: { x: W / 2, targetX: W / 2, w: 78, h: 62, tilt: 0 }
+      };
+    }
+
+    state = newState();
+    resize();
+    window.addEventListener('resize', resize);
+
+    // ----- ovládání -----
+    const keys = { left: false, right: false };
+    let pointerActive = false;
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { keys.left = true; e.preventDefault(); }
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { keys.right = true; e.preventDefault(); }
+      if ((e.key === ' ' || e.key === 'Enter') && !state.running) {
+        e.preventDefault();
+        startGame();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
+    });
+
+    function pointerX(e) {
+      const rect = canvas.getBoundingClientRect();
+      return e.clientX - rect.left;
+    }
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (!state.running) return;
+      pointerActive = true;
+      canvas.setPointerCapture(e.pointerId);
+      state.player.targetX = pointerX(e);
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (!pointerActive || !state.running) return;
+      state.player.targetX = pointerX(e);
+    });
+
+    function endPointer() { pointerActive = false; }
+    canvas.addEventListener('pointerup', endPointer);
+    canvas.addEventListener('pointercancel', endPointer);
+
+    // ----- pomocné -----
+    function pick(list) {
+      let total = 0;
+      for (const it of list) total += it.w;
+      let r = Math.random() * total;
+      for (const it of list) {
+        r -= it.w;
+        if (r <= 0) return it.item;
+      }
+      return list[list.length - 1].item;
+    }
+
+    function spawnItem() {
+      // podíl mastnoty roste s časem, na začátku je hra klidná
+      const badBoost = Math.min(1.9, 0.5 + state.time / 45);
+      const pool = ITEMS.map((item) => {
+        let w = item.weight;
+        if (item.kind === 'bad') w *= badBoost;
+        if (item.kind === 'power') w *= state.time < 8 ? 0.3 : 1;
+        if (item.emoji === '💧') w *= state.fit < 45 ? 2 : 1;
+        return { item, w };
+      });
+      const type = pick(pool);
+      const size = type.kind === 'power' ? 34 : 32;
+      const speed = 130 + state.time * 4.2 + Math.random() * 60;
+      state.items.push({
+        type,
+        x: size / 2 + 6 + Math.random() * (W - size - 12),
+        y: -size,
+        vx: (Math.random() - 0.5) * 40,
+        size,
+        speed: Math.min(speed, 520),
+        spin: (Math.random() - 0.5) * 1.6,
+        rot: 0
+      });
+    }
+
+    function addParticles(x, y, color, count) {
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 40 + Math.random() * 150;
+        state.particles.push({
+          x, y,
+          vx: Math.cos(a) * sp,
+          vy: Math.sin(a) * sp - 40,
+          life: 0.5 + Math.random() * 0.4,
+          maxLife: 0.9,
+          size: 2 + Math.random() * 3,
+          color
+        });
+      }
+    }
+
+    function addPopup(x, y, text, color) {
+      state.popups.push({ x, y, text, color, life: 0.9 });
+    }
+
+    // ----- logika -----
+    function startGame() {
+      state = newState();
+      resize();
+      state.player.x = W / 2;
+      state.player.targetX = W / 2;
+      state.running = true;
+      document.getElementById('menu').classList.add('hidden');
+      document.getElementById('gameover').classList.add('hidden');
+      last = performance.now();
+    }
+
+    function gameOver() {
+      state.running = false;
+      state.over = true;
+      const score = Math.floor(state.score);
+      const record = score > best;
+      if (record) {
+        best = score;
+        localStorage.setItem(BEST_KEY, String(best));
+      }
+      document.getElementById('finalScore').textContent = score;
+      const bestEl = document.getElementById('finalBest');
+      bestEl.textContent = record ? '🏆 Nový rekord!' : 'Rekord: ' + best;
+      bestEl.classList.toggle('record', record);
+      document.getElementById('finalStats').innerHTML =
+        'Vydržel jsi <b>' + state.time.toFixed(1) + ' s</b> · fit úlovků <b>' + state.caught +
+        '</b> · fit piv <b>' + state.beers + '</b><br>nejdelší kombo <b>' + state.bestCombo +
+        '×</b> · mastnoty do půllitru <b>' + state.junk + '</b>';
+      document.getElementById('overTip').innerHTML = randomTip();
+      document.getElementById('gameover').classList.remove('hidden');
+    }
+
+    function catchItem(item) {
+      const t = item.type;
+      state.flash = 0.25;
+
+      if (t.kind === 'bad') {
+        state.combo = 0;
+        state.junk++;
+        state.fit += t.fit;
+        state.shake = 10;
+        state.flashColor = '#ff5e7a';
+        addParticles(item.x, item.y, '#ff5e7a', 16);
+        addPopup(item.x, item.y, t.fit + ' kondička', '#ff5e7a');
+      } else {
+        state.combo++;
+        state.caught++;
+        if (t.emoji === '🍺') state.beers++;
+        if (state.combo > state.bestCombo) state.bestCombo = state.combo;
+        const mult = (1 + Math.min(state.combo, 20) * 0.1) * (state.doubleTimer > 0 ? 2 : 1);
+        const gained = Math.round(t.score * mult);
+        state.score += gained;
+        state.fit += t.fit;
+        state.foam = Math.min(1, state.foam + 0.35);
+        state.flashColor = '#ffd75e';
+        addParticles(item.x, item.y, t.emoji === '💧' ? '#7cf5ff' : '#ffd75e', 12);
+        addPopup(item.x, item.y, '+' + gained, t.emoji === '💧' ? '#7cf5ff' : '#ffd75e');
+
+        if (t.kind === 'power') {
+          if (t.power === 'double') {
+            state.doubleTimer = 8;
+            addPopup(item.x, item.y - 22, 'DVOJITÉ BODY', '#b06bff');
+          } else {
+            state.magnetTimer = 8;
+            addPopup(item.x, item.y - 22, 'MAGNET', '#7cf5ff');
+          }
+        }
+      }
+
+      state.fit = Math.max(0, Math.min(100, state.fit));
+      if (state.fit <= 0) gameOver();
+    }
+
+    function update(dt) {
+      state.time += dt;
+
+      // body za přežitý čas
+      state.score += dt * 4;
+
+      // kondička ubývá, postupem času rychleji
+      state.fit -= (2.6 + state.time * 0.05) * dt;
+      if (state.fit <= 0) {
+        state.fit = 0;
+        gameOver();
+        return;
+      }
+
+      if (state.doubleTimer > 0) state.doubleTimer = Math.max(0, state.doubleTimer - dt);
+      if (state.magnetTimer > 0) state.magnetTimer = Math.max(0, state.magnetTimer - dt);
+      if (state.shake > 0) state.shake = Math.max(0, state.shake - dt * 40);
+      if (state.flash > 0) state.flash = Math.max(0, state.flash - dt * 1.6);
+      if (state.foam > 0) state.foam = Math.max(0, state.foam - dt * 0.8);
+
+      // pohyb hráče
+      const p = state.player;
+      const speed = 620;
+      if (keys.left) p.targetX -= speed * dt;
+      if (keys.right) p.targetX += speed * dt;
+      p.targetX = Math.max(p.w / 2, Math.min(W - p.w / 2, p.targetX));
+      const prevX = p.x;
+      p.x += (p.targetX - p.x) * Math.min(1, dt * 14);
+      p.tilt = Math.max(-0.22, Math.min(0.22, (p.x - prevX) * 0.02));
+
+      // spawn
+      state.spawnTimer -= dt;
+      if (state.spawnTimer <= 0) {
+        spawnItem();
+        const interval = Math.max(0.28, 0.95 - state.time * 0.018);
+        state.spawnTimer = interval * (0.75 + Math.random() * 0.5);
+      }
+
+      // padající věci
+      const mouthY = H - 18 - p.h;
+      for (let i = state.items.length - 1; i >= 0; i--) {
+        const it = state.items[i];
+
+        if (state.magnetTimer > 0 && it.type.kind !== 'bad') {
+          const dx = p.x - it.x;
+          const dy = mouthY - it.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          if (dist < 260) {
+            it.x += (dx / dist) * 260 * dt;
+            it.vx *= 0.9;
+          }
+        }
+
+        it.x += it.vx * dt;
+        if (it.x < it.size / 2) { it.x = it.size / 2; it.vx = Math.abs(it.vx); }
+        if (it.x > W - it.size / 2) { it.x = W - it.size / 2; it.vx = -Math.abs(it.vx); }
+        it.y += it.speed * dt;
+        it.rot += it.spin * dt;
+
+        // chycení do půllitru
+        const inX = Math.abs(it.x - p.x) < p.w / 2 + it.size * 0.25;
+        const inY = it.y + it.size / 2 > mouthY && it.y - it.size / 2 < mouthY + p.h * 0.7;
+        if (inX && inY) {
+          state.items.splice(i, 1);
+          catchItem(it);
+          if (!state.running) return;
+          continue;
+        }
+
+        if (it.y - it.size > H) {
+          state.items.splice(i, 1);
+          if (it.type.kind === 'good' || it.type.kind === 'power') {
+            state.missed++;
+            state.combo = 0;
+          }
+        }
+      }
+
+      // částice a popupy
+      for (let i = state.particles.length - 1; i >= 0; i--) {
+        const pt = state.particles[i];
+        pt.life -= dt;
+        if (pt.life <= 0) { state.particles.splice(i, 1); continue; }
+        pt.vy += 520 * dt;
+        pt.x += pt.vx * dt;
+        pt.y += pt.vy * dt;
+      }
+      for (let i = state.popups.length - 1; i >= 0; i--) {
+        const pu = state.popups[i];
+        pu.life -= dt;
+        if (pu.life <= 0) { state.popups.splice(i, 1); continue; }
+        pu.y -= 42 * dt;
+      }
+    }
+
+    // ----- kreslení -----
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    }
+
+    function drawBackground() {
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#0a0b12');
+      g.addColorStop(0.6, '#07080e');
+      g.addColorStop(1, '#04050a');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+
+      // stoupající bublinky v pozadí
+      ctx.fillStyle = 'rgba(255, 215, 94, 0.07)';
+      const t = state.time;
+      for (let i = 0; i < 26; i++) {
+        const seed = i * 97.13;
+        const x = (Math.sin(seed) * 0.5 + 0.5) * W;
+        const speed = 22 + (i % 5) * 9;
+        const y = H - ((t * speed + seed * 13) % (H + 60));
+        const r = 2 + (i % 4);
+        ctx.beginPath();
+        ctx.arc(x + Math.sin(t * 1.4 + i) * 6, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // barový pult dole
+      ctx.fillStyle = 'rgba(255, 215, 94, 0.05)';
+      ctx.fillRect(0, H - 16, W, 16);
+      ctx.strokeStyle = 'rgba(255, 215, 94, 0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, H - 16.5);
+      ctx.lineTo(W, H - 16.5);
+      ctx.stroke();
+    }
+
+    function drawPlayer() {
+      const p = state.player;
+      const x = p.x;
+      const y = H - 18 - p.h;
+
+      ctx.save();
+      ctx.translate(x, y + p.h / 2);
+      ctx.rotate(p.tilt);
+      ctx.translate(-x, -(y + p.h / 2));
+
+      // ucho půllitru
+      ctx.strokeStyle = 'rgba(216, 244, 238, 0.55)';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(x + p.w / 2 + 6, y + p.h * 0.55, 13, -Math.PI * 0.55, Math.PI * 0.55);
+      ctx.stroke();
+
+      // sklo
+      const glass = ctx.createLinearGradient(x - p.w / 2, y, x + p.w / 2, y + p.h);
+      glass.addColorStop(0, 'rgba(216, 244, 238, 0.18)');
+      glass.addColorStop(0.5, 'rgba(216, 244, 238, 0.07)');
+      glass.addColorStop(1, 'rgba(216, 244, 238, 0.16)');
+      ctx.fillStyle = glass;
+      roundRect(x - p.w / 2, y, p.w, p.h, 8);
+      ctx.fill();
+
+      // pivo uvnitř podle kondičky
+      const level = Math.max(0.08, state.fit / 100);
+      const beerH = (p.h - 14) * level;
+      const beerY = y + p.h - 6 - beerH;
+      const beer = ctx.createLinearGradient(0, beerY, 0, beerY + beerH);
+      beer.addColorStop(0, '#ffd75e');
+      beer.addColorStop(1, '#e59b1f');
+      ctx.fillStyle = beer;
+      roundRect(x - p.w / 2 + 5, beerY, p.w - 10, beerH, 5);
+      ctx.fill();
+
+      // pěna
+      ctx.fillStyle = 'rgba(255, 253, 240, ' + (0.75 + state.foam * 0.25) + ')';
+      const foamH = 7 + state.foam * 6;
+      roundRect(x - p.w / 2 + 4, beerY - foamH + 3, p.w - 8, foamH, 5);
+      ctx.fill();
+
+      // obrys skla
+      ctx.strokeStyle = state.magnetTimer > 0 ? 'rgba(124, 245, 255, 0.9)'
+        : state.doubleTimer > 0 ? 'rgba(176, 107, 255, 0.9)'
+        : 'rgba(216, 244, 238, 0.6)';
+      ctx.lineWidth = 2;
+      roundRect(x - p.w / 2, y, p.w, p.h, 8);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawItems() {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const it of state.items) {
+        ctx.save();
+        ctx.translate(it.x, it.y);
+        ctx.rotate(it.rot);
+        if (it.type.kind === 'bad') {
+          ctx.shadowColor = 'rgba(255, 94, 122, 0.6)';
+          ctx.shadowBlur = 12;
+        } else if (it.type.kind === 'power') {
+          ctx.shadowColor = 'rgba(176, 107, 255, 0.7)';
+          ctx.shadowBlur = 14;
+        } else {
+          ctx.shadowColor = 'rgba(255, 215, 94, 0.45)';
+          ctx.shadowBlur = 10;
+        }
+        ctx.font = it.size + 'px -apple-system, "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+        ctx.fillText(it.type.emoji, 0, 0);
+        ctx.restore();
+      }
+    }
+
+    function drawEffects() {
+      for (const pt of state.particles) {
+        ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+        ctx.fillStyle = pt.color;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const pu of state.popups) {
+        ctx.globalAlpha = Math.max(0, Math.min(1, pu.life / 0.6));
+        ctx.fillStyle = pu.color;
+        ctx.font = '700 16px -apple-system, "Segoe UI", sans-serif';
+        ctx.fillText(pu.text, pu.x, pu.y);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function drawHud() {
+      // skóre
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = '#ffd75e';
+      ctx.font = '700 24px -apple-system, "Segoe UI", sans-serif';
+      ctx.fillText(String(Math.floor(state.score)), 12, 34);
+
+      ctx.fillStyle = '#6b8a86';
+      ctx.font = '12px -apple-system, "Segoe UI", sans-serif';
+      ctx.fillText('rekord ' + best, 12, 62);
+
+      // kombo
+      if (state.combo > 1) {
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#00ffc8';
+        ctx.font = '700 18px -apple-system, "Segoe UI", sans-serif';
+        ctx.fillText(state.combo + '× kombo', W - 12, 36);
+      }
+
+      // lišta kondičky
+      const barW = W - 24, barH = 12, barX = 12, barY = 12;
+      ctx.fillStyle = 'rgba(216, 244, 238, 0.08)';
+      roundRect(barX, barY, barW, barH, 6);
+      ctx.fill();
+
+      const ratio = state.fit / 100;
+      const col = ratio > 0.5 ? '#00ffc8' : ratio > 0.25 ? '#ffd75e' : '#ff5e7a';
+      ctx.fillStyle = col;
+      roundRect(barX, barY, Math.max(4, barW * ratio), barH, 6);
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(216, 244, 238, 0.2)';
+      ctx.lineWidth = 1;
+      roundRect(barX, barY, barW, barH, 6);
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(3, 4, 6, 0.85)';
+      ctx.font = '700 9px -apple-system, "Segoe UI", sans-serif';
+      ctx.fillText('KONDIČKA', barX + barW / 2, barY + 2);
+
+      // aktivní bonusy
+      let by = H - 46;
+      ctx.textAlign = 'right';
+      ctx.font = '700 13px -apple-system, "Segoe UI", sans-serif';
+      if (state.doubleTimer > 0) {
+        ctx.fillStyle = '#b06bff';
+        ctx.fillText('🏋️ 2× body ' + state.doubleTimer.toFixed(1) + 's', W - 12, by);
+        by -= 18;
+      }
+      if (state.magnetTimer > 0) {
+        ctx.fillStyle = '#7cf5ff';
+        ctx.fillText('🧲 magnet ' + state.magnetTimer.toFixed(1) + 's', W - 12, by);
+      }
+    }
+
+    function draw() {
+      ctx.save();
+      if (state.shake > 0) {
+        ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
+      }
+      drawBackground();
+      drawItems();
+      drawPlayer();
+      drawEffects();
+      ctx.restore();
+
+      drawHud();
+
+      if (state.flash > 0) {
+        ctx.globalAlpha = state.flash * 0.35;
+        ctx.fillStyle = state.flashColor;
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // ----- smyčka -----
+    let last = performance.now();
+
+    function loop(now) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      if (state.running) update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    // ----- start -----
+    function showMenu() {
+      const bestEl = document.getElementById('menuBest');
+      bestEl.textContent = best > 0 ? 'Tvůj rekord: ' + best : 'Zatím bez rekordu — pojď ho udělat.';
+      bestEl.classList.toggle('record', best > 0);
+      document.getElementById('menuTip').innerHTML = randomTip();
+    }
+
+    document.getElementById('startBtn').addEventListener('click', startGame);
+    document.getElementById('restartBtn').addEventListener('click', startGame);
+
+    showMenu();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

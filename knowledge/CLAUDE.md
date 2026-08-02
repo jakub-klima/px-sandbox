@@ -40,6 +40,26 @@ Podporovaný markdown: nadpisy `#`–`####`, odstavce, `-`/`1.` seznamy, tabulky
 `>` citace, ``` bloky, inline `` `kód` ``, `**tučně**`, `*kurzíva*`, odkazy.
 Odkazy na `.md` soubory se automaticky převádějí na odkazy uvnitř wiki.
 
+## Animace
+
+Interaktivní ilustrace se do textu vkládají jednořádkovým blokem:
+
+    ```anim:<klic>```
+
+Kód žije v `anims.js` v registru `window.ANIMS`. Každá položka je funkce
+`root => destroy`: dostane prázdný `<div class="anim">`, vytvoří si canvas
+i ovládání a vrátí funkci, která zastaví smyčku (volá se při odchodu ze stránky).
+K dispozici jsou pomocníci `canvasIn`, `slider`, `buttons`, `readout`, `loop`.
+
+Pravidla pro animace:
+- **Ilustrují jeden konkrétní jev** z textu, nenahrazují ho.
+- Ovládání je posuvník s okamžitou zpětnou vazbou; pod plátnem jedna věta,
+  co z právě nastaveného stavu plyne.
+- Fyzika má odpovídat kapitole (skutečné vzorce, ne dekorace); kde jde
+  o schéma, musí to být z popisku zřejmé.
+- Klíč v registru = význam, ne pořadí (`odraz`, `hladkost`, …), aby šel
+  použít i v jiné kapitole.
+
 ## Pravidla pro každou lekci
 
 1. Nejdřív odpovědět uživateli v chatu — stejným stylem (stručně, hustě).

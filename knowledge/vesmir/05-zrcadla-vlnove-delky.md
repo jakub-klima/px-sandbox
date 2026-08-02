@@ -24,6 +24,8 @@ Proto se povlaky vybírají podle pásma:
 | Stříbro | viditelné, blízké IR | vysoká odrazivost, ale koroduje |
 | **Zlato** | IR (nad ~700 nm), špatně modrou | **JWST**, infračervená optika |
 
+```anim:odraz```
+
 ### Omezení 2: hladkost povrchu
 
 Odražená vlna se musí sejít ve fázi. Nerovnost o výšce `h` prodlouží dráze cestu o `2h`, takže platí zhruba: **nepřesnost tvaru musí být pod λ/20**. Čím kratší vlna, tím tvrdší požadavek:
@@ -36,6 +38,8 @@ Odražená vlna se musí sejít ve fázi. Nerovnost o výšce `h` prodlouží dr
 | Rentgen | 1 nm | 0,05 nm | menší než atom → **nelze** |
 
 Odtud i rádiové "síto": pokud jsou oka menší než ~λ/20, vlna je nerozezná od plné plochy — proto jsou rádiové paraboly děrované a lehké.
+
+```anim:hladkost```
 
 ## Spektrum: co je za viditelným světlem
 
@@ -58,12 +62,16 @@ Dvě pravidla, proč se vůbec vyplatí koukat mimo viditelné:
 
 Vše mimo optické a rádiové okno se musí pozorovat **z vesmíru**. To není rozmar, ale nutnost.
 
+```anim:spektrum```
+
 ## Dvě čísla, která rozhodují o konstrukci
 
 - **Sběrná plocha ~ D²** — víc světla, slabší objekty.
 - **Rozlišení**: `θ ≈ 1,22 λ/D`. Pro dvojnásobnou vlnovou délku potřebuješ dvojnásobné zrcadlo, abys viděl stejné detaily.
 
 Hubble (2,4 m, 500 nm) rozliší 0,05″. Stejně velká rádiová anténa na vlně 21 cm rozliší jen ~6° — beznadějně rozmazaně. Odtud plyne celá podoba rádiové astronomie.
+
+```anim:rozliseni```
 
 ## Teleskopy pásmo po pásmu
 
@@ -88,6 +96,8 @@ Důsledky konstrukce:
 - Sběrná plocha je proti průměru přístroje mizivá — foton musí trefit tenký prstenec.
 - Malý úhel naopak **zmírní požadavek na hladkost**: chyba dráhy je `2h·sinθ`, takže při 1° je tolerance asi 50× volnější. I tak se leští na desetiny nanometru, tedy na úroveň jednotlivých atomů. Zrcadla Chandry jsou nejhladší velké plochy, jaké kdy lidstvo vyrobilo.
 - Tvrdší rentgen (nad ~10 keV) vyžaduje **multivrstvá zrcadla** (stovky střídavých vrstev, odraz na Braggově principu). NuSTAR takto dosáhne 79 keV — a to je zhruba strop.
+
+```anim:dopad```
 
 ### Gama — žádná zrcadla neexistují
 

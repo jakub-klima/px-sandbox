@@ -184,6 +184,50 @@
   .pager .dir { display: block; font-size: 0.72rem; color: var(--dim); }
   .pager .next { text-align: right; }
 
+  /* ---- animace ---- */
+  .anim {
+    margin: 1.4rem 0;
+    padding: 0.9rem 1rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.35);
+  }
+  .anim-canvas { display: block; border-radius: 8px; }
+  .anim-out {
+    margin-top: 0.6rem;
+    font-size: 0.88rem;
+    color: #b6e7dd;
+    min-height: 2.6em;
+  }
+  .anim-ctl {
+    display: grid;
+    grid-template-columns: 9.5rem minmax(0, 1fr) 9rem;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+    font-size: 0.83rem;
+  }
+  .anim-ctl-name { color: var(--dim); }
+  .anim-ctl-val { color: var(--accent); font-variant-numeric: tabular-nums; text-align: right; }
+  .anim-ctl input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .anim-btns { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
+  .anim-btns button {
+    padding: 0.28rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(0, 255, 200, 0.05);
+    color: var(--fg);
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .anim-btns button:hover { background: rgba(0, 255, 200, 0.12); border-color: rgba(0, 255, 200, 0.45); }
+
+  @media (max-width: 560px) {
+    .anim-ctl { grid-template-columns: 1fr auto; }
+    .anim-ctl input[type="range"] { grid-column: 1 / -1; }
+  }
+
   .loading, .error { color: var(--dim); }
   .error strong { color: #ff8f8f; }
 
@@ -222,6 +266,7 @@
   </main>
 </div>
 
+<script src="anims.js?v=1"></script>
 <script>
 /* ------------------------------------------------------------------
    MANIFEST — jediné místo, kam se přidává nová kapitola nebo téma.
@@ -312,12 +357,21 @@ function renderMd(src) {
 
     if (!line.trim()) { i++; continue; }
 
-    if (line.startsWith("```")) {                                   // kód
+    if (line.startsWith("```")) {                                   // kód / animace
+      let info = line.slice(3);
+      const close = info.indexOf("```");          // jednořádkový zápis ```anim:x```
+      const selfClosed = close >= 0;
+      if (selfClosed) info = info.slice(0, close);
+      info = info.trim();
       const buf = [];
       i++;
-      while (i < lines.length && !lines[i].startsWith("```")) buf.push(lines[i++]);
-      i++;
-      out.push("<pre><code>" + esc(buf.join("\n")) + "</code></pre>");
+      if (!selfClosed) {
+        while (i < lines.length && !lines[i].startsWith("```")) buf.push(lines[i++]);
+        i++;
+      }
+      out.push(info.startsWith("anim:")
+        ? '<div class="anim" data-anim="' + esc(info.slice(5)) + '"></div>'
+        : "<pre><code>" + esc(buf.join("\n")) + "</code></pre>");
       continue;
     }
 
@@ -412,7 +466,25 @@ function renderPager(page) {
     (next ? '<a class="next" href="#/' + next.id + '"><span class="dir">další →</span>' + next.title + "</a>" : "<span></span>");
 }
 
+/* ---- animace vložené v markdownu (```anim:<klic>```) ---- */
+let mounted = [];
+
+function unmountAnims() {
+  mounted.forEach(destroy => { try { destroy(); } catch (e) { /* ignoruj */ } });
+  mounted = [];
+}
+
+function mountAnims() {
+  contentEl.querySelectorAll("[data-anim]").forEach(box => {
+    const factory = (window.ANIMS || {})[box.dataset.anim];
+    if (!factory) { box.remove(); return; }
+    const destroy = factory(box);
+    if (typeof destroy === "function") mounted.push(destroy);
+  });
+}
+
 async function route() {
+  unmountAnims();
   const id = decodeURIComponent(location.hash.replace(/^#\/?/, "")).replace(/\/$/, "");
   const idx = Math.max(0, PAGES.findIndex(p => p.id === id));
   const page = PAGES[idx];
@@ -427,6 +499,7 @@ async function route() {
     if (!res.ok) throw new Error(res.status + " " + res.statusText);
     contentEl.className = "";
     contentEl.innerHTML = renderMd(await res.text());
+    mountAnims();
   } catch (e) {
     contentEl.className = "error";
     contentEl.innerHTML = "<strong>Nepodařilo se načíst " + esc(page.file) + "</strong> — " + esc(e.message) +

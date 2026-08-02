@@ -10,15 +10,16 @@ Mapa tématu. Kapitoly jsou číslované v pořadí, v jakém se učíme.
 | 02 | [Hvězdy](02-hvezdy.md) | vznik, fúze, hlavní posloupnost, spektrální třídy, HR diagram, smrt hvězdy, původ prvků |
 | 03 | [Síly a interakce](03-sily.md) | čtyři interakce, proč vládne gravitace, obecná relativita, slapy, sjednocování |
 | 04 | [Temná hmota — důkazy](04-temna-hmota.md) | rotační křivky, kupy, čočkování, Kupa Kulka, CMB, vznik struktur, srovnání s MOND |
+| 05 | [Zrcadla, vlnové délky a teleskopy](05-zrcadla-vlnove-delky.md) | fyzika odrazu, spektrum, tolerance λ/20, přístroje pásmo po pásmu, kde zrcadla končí |
 
 ## Kam dál (návrhy)
 
-- **05 — Temná energie**: zrychlené rozpínání, kosmologická konstanta, osud vesmíru. (Druhá polovina té "neznámé" z kapitoly 01.)
-- **06 — Černé díry**: horizont událostí, singularita, akreční disk, supermasivní černé díry, gravitační vlny. (Navazuje na 02 i 03.)
-- **07 — Sluneční soustava**: planety, měsíce, pásy, jak vznikla.
-- **08 — Galaxie**: typy, srážky, centrální černé díry, Mléčná dráha zblízka.
-- **09 — Pozorování**: dalekohledy, vlnové délky, JWST, detekce gravitačních vln.
-- **10 — Život ve vesmíru**: exoplanety, obyvatelná zóna, Fermiho paradox.
+- **06 — Temná energie**: zrychlené rozpínání, kosmologická konstanta, osud vesmíru. (Druhá polovina té "neznámé" z kapitoly 01.)
+- **07 — Černé díry**: horizont událostí, singularita, akreční disk, supermasivní černé díry. (Navazuje na 02 i 03.)
+- **08 — Neelektromagnetická astronomie**: neutrina, gravitační vlny, kosmické záření — pozorování bez fotonů. (Navazuje na 05.)
+- **09 — Sluneční soustava**: planety, měsíce, pásy, jak vznikla.
+- **10 — Galaxie**: typy, srážky, centrální černé díry, Mléčná dráha zblízka.
+- **11 — Život ve vesmíru**: exoplanety, obyvatelná zóna, Fermiho paradox.
 
 ## Otevřené otázky (co věda neví)
 

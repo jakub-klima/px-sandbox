@@ -89,7 +89,7 @@ Skleněné zrcadlo s hliníkovým povlakem, u velkých průměrů segmentované.
 
 ### Rentgenové — konec kolmého odrazu
 
-Rentgenový foton dopadající kolmo se zrcadlem buď pohltí, nebo projde. Funguje jediný trik: **odraz pod velmi malým úhlem** (grazing incidence) — pod kritickým úhlem, typicky pod ~1°, nastane totální vnější odraz, podobně jako když kámen skáče po hladině.
+Rentgenový foton dopadající kolmo se zrcadlem buď pohltí, nebo projde. Funguje jediný trik: **odraz pod velmi malým úhlem** (grazing incidence) — pod kritickým úhlem (podle energie a materiálu typicky 0,5–2°) nastane totální vnější odraz, podobně jako když kámen skáče po hladině.
 
 Důsledky konstrukce:
 - Zrcadla jsou téměř rovnoběžná se svazkem — dlouhé vnořené válcové a kuželové plochy (**Wolterova optika typu I**, dva odrazy za sebou). Chandra má 4 vnořené páry, XMM-Newton 58.

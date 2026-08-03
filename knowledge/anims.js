@@ -21,6 +21,8 @@ function canvasIn(parent, height) {
   c.style.width = "100%";
   c.style.height = height + "px";
   const ctx = c.getContext("2d");
+  const rawFill = ctx.fillText.bind(ctx);          // čísla i na plátně po česku
+  ctx.fillText = (txt, x, y, mw) => rawFill(cz(txt), x, y, mw);
   const size = { w: 600, h: height };
   const fit = () => {
     const dpr = window.devicePixelRatio || 1;
@@ -43,7 +45,7 @@ function slider(parent, opts) {
   input.min = opts.min; input.max = opts.max;
   input.step = opts.step; input.value = opts.value;
   const val = el("span", "anim-ctl-val", row);
-  const sync = () => { val.textContent = opts.format(+input.value); };
+  const sync = () => { val.textContent = cz(opts.format(+input.value)); };
   input.addEventListener("input", sync);
   sync();
   return { input, get value() { return +this.input.value; }, set value(v) { input.value = v; sync(); }, name, sync };
@@ -58,7 +60,32 @@ function buttons(parent, items, onPick) {
   return row;
 }
 
-function readout(parent) { return el("div", "anim-out", parent); }
+const SUP = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+
+/* čísla po česku: desetinná čárka a 1,2·10³⁶ místo 1.2e+36 */
+function cz(str) {
+  return String(str)
+    .replace(/(\d)\.(\d)/g, "$1,$2")
+    .replace(/(\d(?:,\d+)?)e([+-])(\d+)/g, (m, mant, sgn, exp) =>
+      mant + "·10" + (sgn === "-" ? "⁻" : "") +
+      String(+exp).split("").map(d => SUP[+d]).join(""));
+}
+
+/* skloňování: q(3, ["rok","roky","let","roku"]) → "3 roky", q(4.2, …) → "4,2 roku" */
+function q(v, forms, dec) {
+  const rounded = +v.toFixed(dec === undefined ? 1 : dec);
+  const whole = Number.isInteger(rounded);
+  const n = whole ? rounded : rounded.toFixed(dec === undefined ? 1 : dec);
+  if (!whole) return n + " " + forms[3];
+  if (rounded === 1) return "1 " + forms[0];
+  if (rounded >= 2 && rounded <= 4) return rounded + " " + forms[1];
+  return rounded + " " + forms[2];
+}
+
+function readout(parent) {
+  const node = el("div", "anim-out", parent);
+  return { set innerHTML(v) { node.innerHTML = cz(v); } };
+}
 
 function loop(fn) {
   let id, t0 = performance.now();
@@ -121,7 +148,7 @@ ANIMS.odraz = root => {
     format: v => fmtLambda(10 ** v) + " · " + band(10 ** v)
   });
 
-  const LP = 1e-7;                       // plazmová vlnová délka hliníku (~100 nm)
+  const LP = 8.3e-8;                     // plazmová vlnová délka hliníku (~83 nm)
 
   const stop = loop(t => {
     const { ctx } = cv, w = cv.size.w, h = cv.size.h;
@@ -175,7 +202,7 @@ ANIMS.odraz = root => {
 
     out.innerHTML = R > 0.5
       ? "Elektrony stíhají kmitat s vlnou a vyzáří ji zpět → <b>odraz</b>. Zrcadlo funguje."
-      : "Vlna kmitá rychleji, než elektrony stíhají reagovat → <b>projde skrz</b>. Kov přestává být zrcadlem (nad plazmovou frekvencí, u hliníku ~100 nm).";
+      : "Vlna kmitá rychleji, než elektrony stíhají reagovat → <b>projde skrz</b>. Kov přestává být zrcadlem (nad plazmovou frekvencí, u hliníku ~83 nm).";
   });
 
   return () => { stop(); cv.stop(); };
@@ -304,7 +331,7 @@ ANIMS.spektrum = root => {
     { a: -8, b: -11, n: "rentgen", c: "#00d5ff" },
     { a: -11, b: -13, n: "gama", c: "#ff5f8f" }
   ];
-  const windows = [{ a: 1, b: -2 }, { a: -6.5, b: -6.96 }];   // rádiové a optické okno
+  const windows = [{ a: 1, b: -2 }, { a: -5.96, b: -6.52 }];  // rádiové (10 m–1 cm) a optické (1,1 µm–300 nm) okno
 
   const stop = loop(() => {
     const { ctx } = cv, w = cv.size.w, h = cv.size.h;
@@ -497,7 +524,7 @@ ANIMS.dopad = root => {
       ctx.beginPath(); ctx.moveTo(hitX, sy);
       ctx.lineTo(hitX + Math.cos(rad) * len, sy - Math.sin(rad) * len); ctx.stroke();
       ctx.fillStyle = C.accent; ctx.font = "12px system-ui";
-      ctx.fillText("odraz (pod kritickým úhlem ~" + TC + "°)", hitX + 20, sy - 40);
+      ctx.fillText("odraz (kritický úhel ~" + TC + "° — závisí na energii a materiálu)", hitX + 20, sy - 40);
     } else {
       const g = ctx.createLinearGradient(hitX, sy, hitX + 60, sy + 40);
       g.addColorStop(0, "rgba(255,143,143,0.9)"); g.addColorStop(1, "rgba(255,143,143,0)");
@@ -622,7 +649,8 @@ ANIMS.rozpinani = root => {
 
     out.innerHTML = "Galaxie se nepohybují prostorem — <b>roste prostor mezi nimi</b>. " +
       "Rychlost vzdalování je úměrná vzdálenosti (Hubbleův zákon), takže <b>z každé galaxie to vypadá stejně</b>. " +
-      "Přepni pozorovatele: obrázek se nezmění. Vesmír nemá střed.";
+      "Přepni pozorovatele: obrázek se nezmění. Vesmír nemá střed. " +
+      "<i>Měřítko zde roste rovnoměrně; ve skutečnosti se tempo rozpínání v čase mění.</i>";
   });
 
   return () => { stop(); cv.stop(); };
@@ -686,9 +714,10 @@ ANIMS.rudyposuv = root => {
     ctx.fillStyle = C.dim; ctx.font = "11px system-ui";
     ctx.fillText("← viditelné | infračervené →", X(750) - 78, h - 12);
 
-    const v = ((1 + z) ** 2 - 1) / ((1 + z) ** 2 + 1);      // relativistický vztah
+    const v = ((1 + z) ** 2 - 1) / ((1 + z) ** 2 + 1);      // relativistický Dopplerův vztah
     out.innerHTML = "Čáry se posunou na λ<sub>poz</sub> = λ<sub>klid</sub> · (1+z). " +
-      "Při <b>z = " + z.toFixed(2) + "</b> letí zdroj rychlostí <b>" + (v * 100).toFixed(1) + " % c</b>" +
+      "<b>z = " + z.toFixed(2) + "</b> odpovídá Dopplerovu posuvu při <b>" + (v * 100).toFixed(1) + " % c</b> — " +
+      "u kosmologického posuvu ale zdroj neletí prostorem, roztahuje se sám prostor" +
       (z > 1.2 ? " a Hα se dostane hluboko do infračervené oblasti — proto rané galaxie loví JWST, ne Hubble."
                : ". Posuv se měří z polohy známých spektrálních čar, ne z barvy jako takové.");
   });
@@ -700,6 +729,7 @@ ANIMS.rudyposuv = root => {
    8) Měřítko vzdáleností a pohled do minulosti  (lekce 01)
 ================================================================== */
 ANIMS.skala = root => {
+  const YEAR_S = 3.15576e7;                        // sekund v roce
   const cv = canvasIn(root, 230);
   const out = readout(root);
   const s = slider(root, {
@@ -707,15 +737,28 @@ ANIMS.skala = root => {
     format: v => fmtLy(10 ** v)
   });
 
-  function fmtLy(ly) {
-    const km = ly * 9.4607e12;
-    if (ly < 1 / 8766) return (ly * 8766 * 60).toFixed(0) + " světelných sekund";
-    if (ly < 1 / 365) return (ly * 8766).toFixed(1) + " světelných hodin";
-    if (ly < 1) return (ly * 365.25).toFixed(0) + " světelných dní";
-    if (ly < 1e3) return ly.toFixed(1) + " sv. let";
-    if (ly < 1e6) return (ly / 1e3).toFixed(1) + " tis. sv. let";
-    if (ly < 1e9) return (ly / 1e6).toFixed(1) + " mil. sv. let";
-    return (ly / 1e9).toFixed(1) + " mld. sv. let";
+  function fmtLy(ly) {                             // vzdálenost jako doba letu světla
+    const sec = ly * YEAR_S;
+    if (sec < 90) return q(sec, ["světelná sekunda", "světelné sekundy", "světelných sekund", "světelné sekundy"]);
+    if (sec < 5400) return q(sec / 60, ["světelná minuta", "světelné minuty", "světelných minut", "světelné minuty"]);
+    if (sec < 1.73e5) return q(sec / 3600, ["světelná hodina", "světelné hodiny", "světelných hodin", "světelné hodiny"]);
+    if (ly < 1) return q(ly * 365.25, ["světelný den", "světelné dny", "světelných dní", "světelného dne"], 0);
+    if (ly < 1e3) return q(ly, ["sv. rok", "sv. roky", "sv. let", "sv. roku"]);
+    if (ly < 1e6) return q(ly / 1e3, ["tis.", "tis.", "tis.", "tis."]) + " sv. let";
+    if (ly < 1e9) return q(ly / 1e6, ["mil.", "mil.", "mil.", "mil."]) + " sv. let";
+    return q(ly / 1e9, ["mld.", "mld.", "mld.", "mld."]) + " sv. let";
+  }
+
+  function fmtDoba(ly) {                           // stejná hodnota vyjádřená jako doba
+    const sec = ly * YEAR_S;
+    if (sec < 90) return q(sec, ["sekundu", "sekundy", "sekund", "sekundy"]);
+    if (sec < 5400) return q(sec / 60, ["minutu", "minuty", "minut", "minuty"]);
+    if (sec < 1.73e5) return q(sec / 3600, ["hodinu", "hodiny", "hodin", "hodiny"]);
+    if (ly < 1) return q(ly * 365.25, ["den", "dny", "dní", "dne"], 0);
+    if (ly < 1e3) return q(ly, ["rok", "roky", "let", "roku"]);
+    if (ly < 1e6) return q(ly / 1e3, ["tisíc", "tisíce", "tisíc", "tisíce"]) + " let";
+    if (ly < 1e9) return q(ly / 1e6, ["milion", "miliony", "milionů", "milionu"]) + " let";
+    return q(ly / 1e9, ["miliardu", "miliardy", "miliard", "miliardy"]) + " let";
   }
 
   const marks = [
@@ -725,8 +768,8 @@ ANIMS.skala = root => {
     { ly: 26000, n: "střed Galaxie" },
     { ly: 2.5e6, n: "Andromeda" },
     { ly: 6.5e7, n: "kupa v Panně" },
-    { ly: 1.3e10, n: "nejstarší galaxie" },
-    { ly: 4.6e10, n: "hranice viditelného" }
+    { ly: 1.34e10, n: "nejstarší galaxie" },
+    { ly: 4.6e10, n: "dnešní hranice" }
   ];
 
   const stop = loop(t => {
@@ -764,15 +807,12 @@ ANIMS.skala = root => {
     ctx.fillText("Země →", 8, 124);
     ctx.fillText("logaritmické měřítko", w - 140, 24);
 
-    const yrs = ly;
-    const back = yrs < 1 ? (yrs * 365.25).toFixed(0) + " dní"
-      : yrs < 1e3 ? yrs.toFixed(0) + " let"
-      : yrs < 1e6 ? (yrs / 1e3).toFixed(1) + " tisíce let"
-      : yrs < 1e9 ? (yrs / 1e6).toFixed(1) + " milionu let"
-      : (yrs / 1e9).toFixed(1) + " miliardy let";
-    out.innerHTML = "Vzdálenost <b>" + fmtLy(ly) + "</b> — světlo odsud letí " + back +
-      ", takže ten objekt vidíš takový, jaký byl <b>před " + back + "</b>. " +
-      "Dívat se daleko znamená dívat se do minulosti.";
+    const back = fmtDoba(ly);
+    out.innerHTML = ly > 1.38e10
+      ? "Za <b>13,8 mld. sv. let</b> už doba letu neroste — starší světlo neexistuje. Hranice pozorovatelného vesmíru je <b>46 mld. sv. let</b> proto, že se prostor mezitím roztáhl: tak daleko jsou dnes objekty, jejichž 13,8 mld. let staré světlo právě přichází."
+      : "Vzdálenost <b>" + fmtLy(ly) + "</b> — světlo odsud letí " + back +
+        ", takže ten objekt vidíš takový, jaký byl <b>před " + back + "</b>. " +
+        "Dívat se daleko znamená dívat se do minulosti.";
   });
 
   return () => { stop(); cv.stop(); };
@@ -798,7 +838,7 @@ ANIMS.hrdiagram = root => {
     else { phase = 0; playing = true; }
   });
 
-  const msT = M => 5772 * M ** 0.55;                 // povrchová teplota hl. posloupnosti
+  const msT = M => 5772 * M ** (M < 1 ? 0.32 : 0.55);  // Teff hl. posloupnosti (jiný sklon pod 1 M☉)
   const msL = M => M ** 3.5;                         // svítivost v L☉
   const life = M => 10 * M ** -2.5;                  // mld. let
 
@@ -870,8 +910,11 @@ ANIMS.hrdiagram = root => {
     const t = life(M);
     out.innerHTML = "<b>" + M.toFixed(2) + " M☉</b> · svítivost <b>" + (msL(M) < 0.01 ? msL(M).toExponential(1) : msL(M).toFixed(msL(M) < 10 ? 2 : 0)) +
       " L☉</b> (L ~ M³·⁵) · život na hlavní posloupnosti <b>" +
-      (t > 1000 ? (t / 1000).toFixed(0) + " bilionu let" : t > 1 ? t.toFixed(1) + " mld. let" : (t * 1000).toFixed(0) + " mil. let") +
-      "</b> (t ~ M⁻²·⁵) · konec: <b>" + fate + "</b>.";
+      (t > 1000 ? q(t / 1000, ["bilion", "biliony", "bilionů", "bilionu"], 0) + " let"
+                : t > 1 ? q(t, ["mld.", "mld.", "mld.", "mld."]) + " let"
+                        : q(t * 1000, ["mil.", "mil.", "mil.", "mil."], 0) + " let") +
+      "</b> (t ~ M⁻²·⁵) · konec: <b>" + fate + "</b>." +
+      (M < 0.5 ? " <i>U nejlehčích hvězd je skutečný život ještě delší — jsou plně konvektivní a spálí veškerý vodík.</i>" : "");
   });
 
   return () => { stop(); cv.stop(); };
@@ -1028,7 +1071,8 @@ ANIMS.smrt = root => {
     ctx.fillStyle = C.accent;
     ctx.beginPath(); ctx.arc(MX(M), h - 16, 4, 0, 7); ctx.fill();
 
-    out.innerHTML = "<b>" + info[0] + "</b> — " + info[1] + ".";
+    out.innerHTML = "<b>" + info[0] + "</b> — " + info[1] +
+      ". <i>Velikosti zbytků jsou schematické: bílý trpaslík má ~6 000 km, neutronová hvězda ~10 km poloměru.</i>";
   });
 
   return () => { stop(); cv.stop(); };
@@ -1086,12 +1130,15 @@ ANIMS.sily = root => {
                    BX + BW + 8, y + 13);
     });
 
-    out.innerHTML = "Na <b>" + (r < 1e-12 ? (r * 1e15).toFixed(2) + " fm" : (r * 1e9).toExponential(1) + " nm") + "</b>: " +
+    const rTxt = r < 1e-12 ? (r * 1e15).toFixed(2) + " fm"
+      : r < 1e-9 ? (r * 1e12).toFixed(2) + " pm"
+      : r < 1e-3 ? (r * 1e9).toFixed(2) + " nm" : (r * 1e3).toFixed(1) + " mm";
+    out.innerHTML = "Na <b>" + rTxt + "</b>: " +
       (r > 3e-15
         ? (neutral
           ? "jaderné síly jsou dávno mimo dosah a náboje se v neutrální hmotě vyruší — <b>zbývá jen gravitace</b>. Proto ve velkém měřítku vládne nejslabší ze čtyř sil."
           : "jaderné síly už nepůsobí, zůstávají EM a gravitace. EM je zde <b>" + (em / gr).toExponential(1) + "×</b> silnější — dokud se náboje nevyruší.")
-        : "všechny čtyři interakce jsou ve hře; silná drtivě převažuje a drží jádro pohromadě.");
+        : "silná interakce drtivě převažuje a drží jádro pohromadě. Slabá má dosah ještě o tři řády kratší (~10⁻¹⁸ m), takže tady už nepůsobí.");
   });
 
   return () => { stop(); cv.stop(); };
@@ -1170,7 +1217,7 @@ ANIMS.zakriveni = root => {
 
     out.innerHTML = "Hmota zakřivuje časoprostor; obíhající těleso <b>neletí po zakřivené dráze silou</b>, ale rovně po zakřivené geometrii. " +
       "Světlo se ohýbá o α = 4GM/c²b → gravitační čočky. Schwarzschildův poloměr téhle hmotnosti: <b>" +
-      (rs > 1e3 ? (rs / 1e3).toFixed(0) + " km" : rs.toFixed(2) + " m") + "</b> — kdyby se do něj těleso vešlo, je z něj černá díra.";
+      (rs > 1e9 ? (rs / 1e9).toFixed(1) + " mil. km" : rs > 1e3 ? (rs / 1e3).toFixed(0) + " km" : rs.toFixed(2) + " m") + "</b> — kdyby se do něj těleso vešlo, je z něj černá díra.";
   });
 
   return () => { stop(); cv.stop(); };
@@ -1233,8 +1280,8 @@ ANIMS.slapy = root => {
     ctx.fillText("vzdálenější: slaběji", px + rx + 4, cy + ry + 30);
 
     out.innerHTML = "Gravitace klesá jako 1/r², ale její <b>rozdíl napříč tělesem</b> jako <b>1/r³</b> — proto slapy rostou při přiblížení mnohem rychleji. " +
-      (d < 20 ? "Takhle blízko těleso přestává držet pohromadě: Rocheova mez, rozpad komet, u černé díry protažení do nudle."
-              : "Na téhle vzdálenosti jde jen o mírné protažení — na Zemi se projeví jako příliv a odliv.") +
+      (ratio > 2 ? "Při takovém rozdílu už vlastní gravitace těleso neudrží: Rocheova mez, rozpad komet, u černé díry protažení do nudle."
+                 : "Rozdíl je malý, jde jen o mírné protažení — na Zemi se projeví jako příliv a odliv.") +
       " Bližší okraj je tažen <b>" + ratio.toFixed(2) + "×</b> silněji než vzdálenější.";
   });
 
@@ -1451,7 +1498,6 @@ ANIMS.cocka = root => {
       ctx.lineWidth = 4 + weight * 8;
       ctx.beginPath(); ctx.arc(cx, cy, Math.abs(rad), a0, a0 + span); ctx.stroke();
     };
-    const mu = th => Math.abs(th * th / (th * th - thE * thE * (thE ? 1 : 0) + 1e-6));
     arc(tp, Math.min(0.6, thE / (b + 14)));
     arc(tm, Math.min(0.6, thE / (b + 14)) * 0.7);
 

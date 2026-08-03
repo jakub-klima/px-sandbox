@@ -98,7 +98,7 @@ Atomy vápníku v kostech a železa v krvi vznikly uvnitř hvězd, které vybuch
 | Průměr | 1,4 mil. km (109× Země) |
 | Podíl na hmotě soustavy | 99,86 % |
 
-Až Slunci dojde v jádru vodík, nafoukne se v rudého obra až za oběžnou dráhu Země, pak odhodí vnější vrstvy a zbude z něj bílý trpaslík velikosti Země.
+Až Slunci dojde v jádru vodík, nafoukne se v rudého obra zhruba k oběžné dráze Země (jestli ji pohltí, je stále sporné), pak odhodí vnější vrstvy a zbude z něj bílý trpaslík velikosti Země.
 
 ## Slovníček
 

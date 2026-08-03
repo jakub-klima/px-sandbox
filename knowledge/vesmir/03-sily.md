@@ -11,7 +11,7 @@
 | Slabá | 10⁻⁶ | 10⁻¹⁸ m | bosony W±, Z⁰ | mění typ částice — rozpady, start fúze |
 | Gravitační | 10⁻³⁸ | ∞ | (graviton — hypotetický) | struktura vesmíru: hvězdy, galaxie, orbity |
 
-Síly jsou porovnané mezi dvěma protony v jádře. Poměry se mění s energií a vzdáleností, řády však platí.
+Relativní síly jsou obvyklé srovnání vazbových konstant — každá interakce se přitom porovnává na svém vlastním dosahu. Slabá je na vzdálenosti protonů v jádře (10⁻¹⁵ m) už prakticky nulová; její dosah je o tři řády kratší.
 
 ## Paradox gravitace
 

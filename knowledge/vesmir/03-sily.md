@@ -22,6 +22,8 @@ Gravitace je nesrovnatelně nejslabší — magnet velikosti nehtu zvedne hřeb�
 
 Elektromagnetismus je o 36 řádů silnější, ale kladné a záporné náboje se ve velkém navzájem vyruší — hvězdy i planety jsou elektricky neutrální, takže EM síla "zmizí". Jaderné síly nedosáhnou dál než za okraj atomového jádra. Zbude gravitace jako jediná, která funguje na dálku a v součtu.
 
+```anim:sily```
+
 ## Silná interakce
 
 - Váže **kvarky** (proton = uud, neutron = udd) přes gluony. Na rozdíl od ostatních sil s rostoucí vzdáleností **sílí** — proto se osamocený kvark nikdy nepozoruje (konfinement).
@@ -57,12 +59,16 @@ Co Newton nezvládne a Einstein ano:
 | Gravitační vlny | vlnky časoprostoru; poprvé změřeny 2015 (splynutí dvou černých děr) |
 | Černé díry | zakřivení tak silné, že neuteče ani světlo |
 
+```anim:zakriveni```
+
 ## Dva vzorce, které stojí za zapamatování
 
 - **Úniková rychlost**: `v = √(2GM/r)`. Země 11,2 km/s, Slunce 618 km/s.
 - **Schwarzschildův poloměr**: `r = 2GM/c²` — poloměr, při kterém úniková rychlost dosáhne rychlosti světla, tedy velikost černé díry dané hmotnosti. Slunce 3 km, Země 9 mm.
 
 **Slapové síly** klesají jako 1/r³, tedy mnohem rychleji než samotná gravitace. Nejde o přitažlivost, ale o její *rozdíl* napříč tělesem: způsobují příliv a odliv, zahřívají měsíc Io, trhají komety uvnitř Rocheovy meze a u černých děr protahují objekty do nudle.
+
+```anim:slapy```
 
 ## Sjednocování
 

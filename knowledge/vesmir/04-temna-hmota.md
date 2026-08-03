@@ -23,6 +23,8 @@ Kdyby hmota galaxie byla tam, kde svítí, měla by oběžná rychlost s vzdále
 
 Plochá křivka znamená `M(r) ~ r` — hmota narůstá s poloměrem i tam, kde už nic nesvítí. Galaxie tedy sedí v rozsáhlém **halu** neviditelné hmoty, mnohonásobně větším než svítící disk.
 
+```anim:rotacnikrivka```
+
 ### 2. a 3. Kupy galaxií
 
 - **Dynamika** (Fritz Zwicky, 1933): galaxie v kupě Coma se pohybují tak rychle, že by je vzájemná gravitace svítící hmoty neudržela — kupa by se dávno rozpadla. Poměr hmotnosti ke svítivosti vychází ~200–400 M☉/L☉ místo ~5 u hvězd.
@@ -39,6 +41,8 @@ Hmota ohýbá světlo pozadí ([03-sily.md](03-sily.md)). Z deformace obrazů vz
 
 Gravitace tedy sedí **jinde než běžná hmota**. To je přesně to, co udělá bezkolizní temná hmota (prolétne skrz), a přesně to, co nemůže udělat upravený zákon gravitace — ten by musel působit tam, kde baryony jsou.
 
+```anim:kulka```
+
 ### 5. Reliktní záření
 
 Zvukové vlny v horké plazmě před vznikem atomů zanechaly v CMB soustavu **akustických píků**. Jejich relativní výšky jsou citlivé na to, kolik hmoty je baryonové (interaguje s fotony a vlny tlumí) a kolik jí gravituje, ale s fotony nekomunikuje.
@@ -52,6 +56,8 @@ Výsledek (Planck): `Ω_b = 4,9 %` baryonů, `Ω_m = 31,5 %` veškeré hmoty →
 Baryony jsou před vznikem atomů (380 000 let) svázané s fotony a jejich zhustky se nemohou zvětšovat — tlak záření je rozfoukává. Temná hmota s fotony neinteraguje, takže může začít gravitačně shlukovat dřív, a připraví hotové "jámy", do kterých baryony po odpoutání spadnou.
 
 Simulace: s chladnou temnou hmotou vznikne za 13,8 mld. let přesně ta kosmická síť, kterou vidíme v přehlídkách galaxií. Bez ní by struktura nebyla ani zdaleka tak vyvinutá.
+
+```anim:cocka```
 
 ## Proč to sedí lépe než alternativy
 

@@ -26,6 +26,8 @@
 
 - **Reliktní záření (CMB, cosmic microwave background)** = to světlo z roku 380 000, dnes zchladlé na 2,7 K. Je vidět ve všech směrech. Nejsilnější přímý důkaz velkého třesku.
 
+```anim:rozpinani```
+
 ## Z čeho je vesmír
 
 | Složka | Podíl | Co to je |
@@ -61,6 +63,8 @@ Referenční body: Slunce 8 světelných **minut** · nejbližší hvězda Proxi
 
 **Dívat se daleko = dívat se do minulosti.** Světlo letí konečnou rychlostí, takže Andromedu vidíme takovou, jaká byla před 2,5 mil. let.
 
+```anim:skala```
+
 ## Pozorovatelný vesmír
 
 - Vidíme jen tam, kam k nám stihlo doletět světlo → koule o poloměru ~46 mld. sv. let (víc než 13,8 — prostor se mezitím roztáhl).
@@ -72,6 +76,8 @@ Referenční body: Slunce 8 světelných **minut** · nejbližší hvězda Proxi
 - **Rudý posuv (redshift)** — světlo vzdalujícího se objektu se posouvá k červené. Čím větší posuv, tím větší vzdálenost a rychlost. → důkaz rozpínání.
 - **Spektroskopie** — spektrální čáry prozradí chemické složení a teplotu na libovolnou dálku.
 - **Standardní svíčky** — objekty se známou skutečnou jasností (cefeidy, supernovy typu Ia); z porovnání se zdánlivou jasností vyjde vzdálenost. Supernovy Ia v 90. letech odhalily **zrychlující** rozpínání → temná energie.
+
+```anim:rudyposuv```
 
 ## Slovníček
 

@@ -23,6 +23,8 @@ Hmotnostní limity: pod **0,08 M☉** se fúze nezapálí (→ hnědý trpaslík
 - Slunce: 600 mil. tun vodíku za sekundu, z toho **4 mil. tun se mění na čistou energii**. Vydrží to ~10 mld. let.
 - Fotonu trvá cesta z jádra na povrch desítky až stovky tisíc let (neustálé pohlcování a vyzařování), pak k Zemi 8 minut.
 
+```anim:fuze```
+
 ## Hlavní posloupnost
 
 Období, kdy hvězda klidně pálí vodík v jádru — **~90 % života**. Platí zde brutálně nelineární vztahy:
@@ -60,6 +62,8 @@ Graf svítivost (svisle) × teplota (vodorovně, klesající zleva doprava). Nej
 
 Hvězda se po diagramu během života **stěhuje** — to je vlastně její životopis.
 
+```anim:hrdiagram```
+
 ## Smrt hvězdy podle hmotnosti
 
 | Hmotnost | Průběh | Zbytek |
@@ -73,6 +77,8 @@ Hvězda se po diagramu během života **stěhuje** — to je vlastně její živ
 - **Bílý trpaslík** — jádro velikosti Země, hmotnost Slunce; lžička váží tuny. Nedrží ho fúze, ale kvantový tlak elektronů. Limit **1,4 M☉** (Chandrasekharova mez).
 - **Neutronová hvězda** — průměr ~20 km, hmotnost 1,5–2 M☉; lžička váží miliardu tun. Rotující ty, které "blikají", jsou **pulsary**.
 - **Supernova** — na pár týdnů přezáří celou galaxii. Železo je slepá ulička: jeho fúze už energii nedodává, ale spotřebovává, takže jádro ztratí oporu a zhroutí se za zlomek sekundy.
+
+```anim:smrt```
 
 ## Odkud jsou prvky
 

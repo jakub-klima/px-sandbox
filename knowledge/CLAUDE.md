@@ -51,6 +51,28 @@ Kód žije v `anims.js` v registru `window.ANIMS`. Každá položka je funkce
 i ovládání a vrátí funkci, která zastaví smyčku (volá se při odchodu ze stránky).
 K dispozici jsou pomocníci `canvasIn`, `slider`, `buttons`, `readout`, `loop`.
 
+Hotové animace (klíč → co ukazuje):
+
+| Klíč | Téma |
+|---|---|
+| `rozpinani` | Hubbleův zákon, vesmír bez středu |
+| `skala` | logaritmické měřítko vzdáleností = pohled do minulosti |
+| `rudyposuv` | posun spektrálních čar, λ(1+z) |
+| `fuze` | coulombovská bariéra a kvantové tunelování |
+| `hrdiagram` | poloha hvězdy podle hmotnosti + přehrání života |
+| `smrt` | konec hvězdy podle hmotnosti |
+| `sily` | čtyři interakce vs. vzdálenost (skutečné hodnoty v N) |
+| `zakriveni` | zakřivený časoprostor, ohyb světla, r = 2GM/c² |
+| `slapy` | rozdíl gravitace napříč tělesem, 1/r³ |
+| `rotacnikrivka` | keplerovský pokles vs. plochá křivka s halem |
+| `kulka` | Kupa Kulka — plyn zaostane, hmota prolétne |
+| `cocka` | gravitační čočka, dva obrazy a Einsteinův prstenec |
+| `odraz` | plazmová frekvence |
+| `hladkost` | tolerance λ/20 |
+| `spektrum` | Wienův zákon a atmosférická okna |
+| `rozliseni` | Airyho obrazce, θ = 1,22 λ/D |
+| `dopad` | odraz pod malým úhlem, Wolterova optika |
+
 Pravidla pro animace:
 - **Ilustrují jeden konkrétní jev** z textu, nenahrazují ho.
 - Ovládání je posuvník s okamžitou zpětnou vazbou; pod plátnem jedna věta,

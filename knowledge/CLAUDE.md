@@ -72,6 +72,10 @@ Hotové animace (klíč → co ukazuje):
 | `spektrum` | Wienův zákon a atmosférická okna |
 | `rozliseni` | Airyho obrazce, θ = 1,22 λ/D |
 | `dopad` | odraz pod malým úhlem, Wolterova optika |
+| `stern` | Stern–Gerlach: kvantované dvě stopy vs. klasický pruh |
+| `pauli` | zaplňování orbitalů podle Pauliho a Hunda |
+| `vazba` | H₂: singlet váže, triplet odpuzuje |
+| `domeny` | Isingův model: domény a Curieho teplota |
 
 Pravidla pro animace:
 - **Ilustrují jeden konkrétní jev** z textu, nenahrazují ho.

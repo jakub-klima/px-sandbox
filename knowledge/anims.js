@@ -1517,3 +1517,332 @@ ANIMS.cocka = root => {
 
   return () => { stop(); cv.stop(); };
 };
+
+/* ==================================================================
+   18) Stern–Gerlachův pokus  (kvantovka 01)
+================================================================== */
+ANIMS.stern = root => {
+  const cv = canvasIn(root, 260);
+  const out = readout(root);
+  let kvant = true;
+  buttons(root, [{ label: "skutečnost (kvantově)", q: true }, { label: "klasické očekávání", q: false }],
+    it => { kvant = it.q; hits.length = 0; });
+
+  const parts = [], hits = [];
+  const spawn = () => parts.push({
+    x: 0, y: 0, up: Math.random() < 0.5,
+    cls: (Math.random() * 2 - 1) + (Math.random() * 2 - 1) * 0.5   // klasicky spojité rozdělení
+  });
+
+  const stop = loop(() => {
+    const { ctx } = cv, w = cv.size.w, h = cv.size.h;
+    const cy = h / 2 - 10, magX0 = w * 0.3, magX1 = w * 0.62, scr = w - 60;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // pólové nástavce
+    ctx.fillStyle = "rgba(120,150,160,0.25)";
+    ctx.beginPath(); ctx.moveTo(magX0, cy - 62); ctx.lineTo(magX1, cy - 62);
+    ctx.lineTo(magX1, cy - 26); ctx.lineTo((magX0 + magX1) / 2, cy - 14); ctx.lineTo(magX0, cy - 26);
+    ctx.closePath(); ctx.fill();
+    ctx.fillRect(magX0, cy + 26, magX1 - magX0, 34);
+    ctx.fillStyle = C.dim; ctx.font = "12px system-ui";
+    ctx.fillText("nehomogenní magnetické pole", magX0, cy - 72);
+    ctx.fillText("pec s atomy stříbra", 6, cy - 40);
+
+    // stínítko
+    ctx.strokeStyle = "rgba(216,244,238,0.4)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(scr, cy - 70); ctx.lineTo(scr, cy + 70); ctx.stroke();
+    ctx.fillStyle = C.dim; ctx.fillText("stínítko", scr - 20, cy + 92);
+
+    if (Math.random() < 0.5) spawn();
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.x += 4;
+      if (p.x > magX0) {                                  // v poli se odchyluje
+        const t = Math.min(1, (p.x - magX0) / (magX1 - magX0));
+        p.y = (kvant ? (p.up ? -1 : 1) : p.cls) * 34 * t * t;
+      }
+      if (p.x >= scr) {
+        hits.push({ y: p.y, a: 1 });
+        parts.splice(i, 1);
+        continue;
+      }
+      ctx.fillStyle = kvant ? (p.up ? C.accent : "#7cc4ff") : C.warn;
+      ctx.beginPath(); ctx.arc(p.x, cy + p.y, 2.6, 0, 7); ctx.fill();
+    }
+
+    hits.forEach(hp => {
+      ctx.fillStyle = "rgba(216,244,238," + (0.25 + 0.55 * hp.a) + ")";
+      ctx.beginPath(); ctx.arc(scr + 4, cy + hp.y, 4, 0, 7); ctx.fill();
+      hp.a *= 0.995;
+    });
+    if (hits.length > 400) hits.splice(0, 100);
+
+    out.innerHTML = kvant
+      ? "Svazek se rozdělí na <b>dvě stopy</b> — průmět spinu má jen hodnoty +ħ/2 a −ħ/2. Nic mezi tím neexistuje."
+      : "Kdyby byly magnetické momenty natočené náhodně do všech směrů, jak čekala klasická fyzika, vznikl by <b>spojitý pruh</b>. Naměřily se dvě stopy — to byl v roce 1922 přímý důkaz kvantování spinu.";
+  });
+
+  return () => { stop(); cv.stop(); };
+};
+
+/* ==================================================================
+   19) Zaplňování orbitalů: Pauli + Hund  (kvantovka 01)
+================================================================== */
+ANIMS.pauli = root => {
+  const cv = canvasIn(root, 300);
+  const out = readout(root);
+  const s = slider(root, {
+    label: "protonové číslo Z", min: 1, max: 30, step: 1, value: 8,
+    format: v => "Z = " + v
+  });
+  buttons(root, [
+    { label: "H", z: 1 }, { label: "C", z: 6 }, { label: "O", z: 8 },
+    { label: "Ne", z: 10 }, { label: "Fe", z: 26 }, { label: "Zn", z: 30 }
+  ], it => { s.value = it.z; });
+
+  const EL = ["", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si",
+    "P", "S", "Cl", "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn"];
+  const NAME = { 1: "vodík", 6: "uhlík", 7: "dusík", 8: "kyslík", 10: "neon", 11: "sodík",
+    17: "chlor", 18: "argon", 26: "železo", 29: "měď", 30: "zinek" };
+  const SUB = [                                    // výstavbové pořadí
+    { n: "1s", orb: 1 }, { n: "2s", orb: 1 }, { n: "2p", orb: 3 }, { n: "3s", orb: 1 },
+    { n: "3p", orb: 3 }, { n: "4s", orb: 1 }, { n: "3d", orb: 5 }, { n: "4p", orb: 3 }
+  ];
+
+  const stop = loop(() => {
+    const { ctx } = cv, w = cv.size.w, h = cv.size.h;
+    const Z = Math.round(s.value);
+    ctx.clearRect(0, 0, w, h);
+
+    // rozsazení podle Pauliho principu a Hundova pravidla
+    let left = Z;
+    const shells = SUB.map(sub => {
+      const box = new Array(sub.orb).fill(0);        // 0 prázdný, 1 jeden ↑, 2 pár
+      const single = Math.min(left, sub.orb);        // nejdřív po jednom (Hund)
+      for (let i = 0; i < single; i++) box[i] = 1;
+      left -= single;
+      const pair = Math.min(left, sub.orb);
+      for (let i = 0; i < pair; i++) box[i] = 2;
+      left -= pair;
+      return { ...sub, box };
+    });
+
+    let x = 24, y = 134, unpaired = 0, conf = [];
+    ctx.font = "12px system-ui";
+    shells.forEach(sub => {
+      const cnt = sub.box.reduce((a, b) => a + b, 0);
+      if (cnt === 0) return;
+      conf.push(sub.n + String(cnt).split("").map(d => SUP[+d]).join(""));
+      if (x + sub.orb * 30 > w - 20) { x = 24; y += 78; }
+      ctx.fillStyle = C.dim;
+      ctx.fillText(sub.n, x, y - 34);
+      sub.box.forEach((b, i) => {
+        const bx = x + i * 30;
+        ctx.strokeStyle = "rgba(0,255,200,0.3)"; ctx.lineWidth = 1;
+        ctx.strokeRect(bx, y - 22, 24, 30);
+        if (b >= 1) {
+          ctx.strokeStyle = C.accent; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(bx + 8, y + 4); ctx.lineTo(bx + 8, y - 18); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(bx + 4, y - 13); ctx.lineTo(bx + 8, y - 18);
+          ctx.lineTo(bx + 12, y - 13); ctx.stroke();
+        }
+        if (b === 2) {
+          ctx.strokeStyle = "#7cc4ff"; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(bx + 16, y - 18); ctx.lineTo(bx + 16, y + 4); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(bx + 12, y - 1); ctx.lineTo(bx + 16, y + 4);
+          ctx.lineTo(bx + 20, y - 1); ctx.stroke();
+        }
+        if (b === 1) unpaired++;
+      });
+      x += sub.orb * 30 + 22;
+    });
+
+    ctx.fillStyle = C.fg; ctx.font = "bold 26px system-ui";
+    ctx.fillText(EL[Z] || "?", 24, 40);
+    ctx.font = "13px system-ui"; ctx.fillStyle = C.dim;
+    ctx.fillText((NAME[Z] ? NAME[Z] + ", " : "") + "Z = " + Z, 74, 26);
+    ctx.fillStyle = C.accent; ctx.font = "14px system-ui";
+    ctx.fillText(conf.join("  "), 74, 46);
+    ctx.fillStyle = C.dim; ctx.font = "11px system-ui";
+    ctx.fillText("↑ první elektron v orbitalu   ↓ druhý, s opačným spinem", 24, 74);
+
+    const exc = Z === 24 ? "chromu" : Z === 29 ? "mědi" : null;
+    const ferro = Z === 26 || Z === 27 || Z === 28;
+    out.innerHTML = "V každém rámečku jsou nejvýš <b>dva elektrony s opačným spinem</b> (Pauli); " +
+      "v rovnocenných orbitalech se nejdřív rozsadí po jednom souhlasně (Hund). " +
+      "<b>" + (EL[Z] || "") + "</b> má <b>" +
+      q(unpaired, ["nespárovaný elektron", "nespárované elektrony", "nespárovaných elektronů", "nespárovaného elektronu"], 0) + "</b> → " +
+      (unpaired
+        ? "atom je <b>paramagnetický</b> a chemicky ochotný vázat se."
+        : "všechny spiny jsou spárované, atom je <b>diamagnetický</b> a netečný.") +
+      (ferro ? " V pevné látce navíc výměnná interakce tyhle spiny srovná — proto je " + EL[Z] + " <b>feromagnetický</b>." : "") +
+      (exc ? " <i>Pozor: u " + exc + " skutečná konfigurace výstavbové pravidlo porušuje — poloprázdná d-slupka je výhodnější.</i>" : "");
+  });
+
+  return () => { stop(); cv.stop(); };
+};
+
+/* ==================================================================
+   20) Vazba v H₂: singlet vs. triplet  (kvantovka 01)
+================================================================== */
+ANIMS.vazba = root => {
+  const cv = canvasIn(root, 290);
+  const out = readout(root);
+  const s = slider(root, {
+    label: "vzdálenost jader", min: 40, max: 300, step: 1, value: 74,
+    format: v => v + " pm"
+  });
+  let singlet = true;
+  buttons(root, [{ label: "opačné spiny ↑↓ (singlet)", v: true }, { label: "souhlasné spiny ↑↑ (triplet)", v: false }],
+    it => { singlet = it.v; });
+
+  const De = 4.52, Re = 74, a = 0.019;                    // Morse pro H₂ (eV, pm)
+  const Esing = R => De * ((1 - Math.exp(-a * (R - Re))) ** 2 - 1);
+  const Etrip = R => 9.5 * Math.exp(-(R - 40) / 34);      // odpudivá větev
+
+  const stop = loop(t => {
+    const { ctx } = cv, w = cv.size.w, h = cv.size.h;
+    const R = s.value;
+    const E = singlet ? Esing(R) : Etrip(R);
+
+    ctx.clearRect(0, 0, w, h);
+
+    // molekula
+    const cx = w / 2, cy = 62, px = R / 300 * (w * 0.34);
+    if (singlet) {                                        // vazebná hustota mezi jádry
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(14, px + 16));
+      g.addColorStop(0, "rgba(0,255,200," + Math.max(0.08, 0.55 - R / 600) + ")");
+      g.addColorStop(1, "rgba(0,255,200,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(cx, cy, px + 18, 26, 0, 0, 7); ctx.fill();
+    } else {                                              // uzel mezi jádry
+      [-1, 1].forEach(sgn => {
+        const g = ctx.createRadialGradient(cx + sgn * (px + 10), cy, 0, cx + sgn * (px + 10), cy, 22);
+        g.addColorStop(0, "rgba(255,143,143,0.45)"); g.addColorStop(1, "rgba(255,143,143,0)");
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx + sgn * (px + 10), cy, 22, 0, 7); ctx.fill();
+      });
+    }
+    [-1, 1].forEach((sgn, i) => {
+      ctx.fillStyle = "#d8f4ee";
+      ctx.beginPath(); ctx.arc(cx + sgn * px, cy, 6, 0, 7); ctx.fill();
+      const up = singlet ? i === 0 : true;                 // šipky spinů
+      ctx.strokeStyle = singlet ? (i === 0 ? C.accent : "#7cc4ff") : C.bad;
+      ctx.lineWidth = 2;
+      const ax = cx + sgn * px, ay = cy - 20;
+      ctx.beginPath(); ctx.moveTo(ax, ay - (up ? -10 : 10)); ctx.lineTo(ax, ay + (up ? -10 : 10)); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(ax - 4, ay + (up ? -6 : 6)); ctx.lineTo(ax, ay + (up ? -10 : 10)); ctx.lineTo(ax + 4, ay + (up ? -6 : 6));
+      ctx.stroke();
+    });
+
+    // graf energie
+    const gx = 46, gy = 120, gw = w - 70, gh = h - 170;
+    const X = r => gx + (r - 40) / 260 * gw;
+    const Y = e => gy + (6 - e) / 12 * gh;
+    ctx.strokeStyle = "rgba(0,255,200,0.25)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy + gh); ctx.lineTo(gx + gw, gy + gh); ctx.stroke();
+    ctx.strokeStyle = "rgba(216,244,238,0.2)"; ctx.setLineDash([3, 4]);
+    ctx.beginPath(); ctx.moveTo(gx, Y(0)); ctx.lineTo(gx + gw, Y(0)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = C.dim; ctx.font = "11px system-ui";
+    ctx.fillText("energie", 6, gy + 10); ctx.fillText("0", gx - 12, Y(0) + 4);
+    ctx.fillText("vzdálenost jader →", gx + gw - 110, gy + gh + 16);
+
+    const draw = (fn, col, dash) => {
+      ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash(dash || []);
+      ctx.beginPath();
+      for (let r = 40; r <= 300; r += 2) {
+        const e = Math.max(-6, Math.min(6, fn(r)));
+        r === 40 ? ctx.moveTo(X(r), Y(e)) : ctx.lineTo(X(r), Y(e));
+      }
+      ctx.stroke(); ctx.setLineDash([]);
+    };
+    draw(Etrip, "rgba(255,143,143,0.55)", [4, 4]);
+    draw(Esing, "rgba(0,255,200,0.55)");
+    ctx.fillStyle = singlet ? C.accent : C.bad;
+    ctx.beginPath(); ctx.arc(X(R), Y(Math.max(-6, Math.min(6, E))), 5, 0, 7); ctx.fill();
+
+    out.innerHTML = singlet
+      ? "Opačné spiny smí obsadit tentýž orbital mezi jádry — hustota náboje uprostřed <b>stahuje jádra k sobě</b>. Minimum je při <b>74 pm</b> a hloubce <b>4,52 eV</b>: to je vazba v H₂."
+      : "Souhlasné spiny nesmí být ve stejném stavu, takže je Pauliho princip vytlačí z prostoru mezi jádry. Křivka je <b>čistě odpudivá</b> — molekula nevznikne.";
+  });
+
+  return () => { stop(); cv.stop(); };
+};
+
+/* ==================================================================
+   21) Feromagnetismus: domény a Curieho teplota  (kvantovka 01)
+   2D Isingův model, Metropolisův algoritmus; J zvoleno tak,
+   aby kritická teplota vyšla na 1043 K jako u železa.
+================================================================== */
+ANIMS.domeny = root => {
+  const cv = canvasIn(root, 300);
+  const out = readout(root);
+  const sT = slider(root, {
+    label: "teplota", min: 100, max: 2000, step: 10, value: 500,
+    format: v => v + " K"
+  });
+  const sH = slider(root, {
+    label: "vnější pole", min: -1, max: 1, step: 0.05, value: 0,
+    format: v => v === 0 ? "žádné" : (v > 0 ? "→ " : "← ") + Math.abs(v).toFixed(2)
+  });
+
+  const NX = 40, NY = 22, TC = 1043;
+  const J = TC / 2.269;                            // 2D Ising: kT_c = 2,269 J
+  const sp = new Int8Array(NX * NY);
+  for (let i = 0; i < sp.length; i++) sp[i] = Math.random() < 0.5 ? 1 : -1;
+
+  const stop = loop(() => {
+    const { ctx } = cv, w = cv.size.w, h = cv.size.h;
+    const T = sT.value, H = sH.value * 60;
+    const idx = (i, j) => ((i + NX) % NX) + ((j + NY) % NY) * NX;
+
+    for (let n = 0; n < 4000; n++) {                // Metropolisovy pokusy o překlopení
+      const i = (Math.random() * NX) | 0, j = (Math.random() * NY) | 0;
+      const k = idx(i, j), s0 = sp[k];
+      const nb = sp[idx(i + 1, j)] + sp[idx(i - 1, j)] + sp[idx(i, j + 1)] + sp[idx(i, j - 1)];
+      const dE = 2 * s0 * (J * nb + H);
+      if (dE <= 0 || Math.random() < Math.exp(-dE / T)) sp[k] = -s0;
+    }
+
+    let m = 0;
+    for (let k = 0; k < sp.length; k++) m += sp[k];
+    m /= sp.length;
+
+    ctx.clearRect(0, 0, w, h);
+    const cell = Math.min((w - 30) / NX, (h - 76) / NY);
+    const ox = (w - cell * NX) / 2, oy = 12;
+    for (let j = 0; j < NY; j++) {
+      for (let i = 0; i < NX; i++) {
+        const up = sp[idx(i, j)] > 0;
+        ctx.fillStyle = up ? "rgba(0,255,200,0.75)" : "rgba(124,196,255,0.6)";
+        const cxp = ox + i * cell + cell / 2, cyp = oy + j * cell + cell / 2;
+        ctx.beginPath();
+        ctx.moveTo(cxp, cyp + (up ? -cell * 0.34 : cell * 0.34));
+        ctx.lineTo(cxp - cell * 0.2, cyp + (up ? cell * 0.2 : -cell * 0.2));
+        ctx.lineTo(cxp + cell * 0.2, cyp + (up ? cell * 0.2 : -cell * 0.2));
+        ctx.closePath(); ctx.fill();
+      }
+    }
+
+    // ukazatel magnetizace
+    const by = oy + NY * cell + 16, bw = w - 60;
+    ctx.fillStyle = "rgba(216,244,238,0.08)";
+    ctx.beginPath(); ctx.roundRect(30, by, bw, 14, 5); ctx.fill();
+    ctx.fillStyle = Math.abs(m) > 0.3 ? C.accent : C.dim;
+    const half = bw / 2, len = Math.max(2, Math.abs(m) * half);
+    ctx.beginPath();
+    ctx.roundRect(30 + half + (m < 0 ? -len : 0), by, len, 14, 5); ctx.fill();
+    ctx.fillStyle = C.dim; ctx.font = "11px system-ui";
+    ctx.fillText("magnetizace " + (m * 100).toFixed(0) + " %", 30, by + 30);
+    ctx.fillText("Curieho teplota železa 1043 K", 30 + bw - 170, by + 30);
+
+    out.innerHTML = T > TC
+      ? "Nad <b>Curieho teplotou 1043 K</b> tepelný pohyb uspořádání rozbije — zbývá jen slabý paramagnetismus. Železo přestává být magnetem."
+      : (Math.abs(m) > 0.55
+        ? "Výměnná interakce srovnává sousední spiny; vzorek je uspořádaný a magnetizovaný. <b>Tohle drží elektrostatika, ne magnetické přitahování</b> — to by stačilo jen do ~1 K."
+        : "Vidíš <b>domény</b>: oblasti se souhlasnými spiny oddělené hranicemi. Bez vnějšího pole se navzájem ruší, proto kus železa nemusí být magnetický. Zapni pole a hranice se posunou.");
+  });
+
+  return () => { stop(); cv.stop(); };
+};

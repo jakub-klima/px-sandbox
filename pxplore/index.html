@@ -71,6 +71,7 @@
     }
     #hud .bar { position: relative; height: 18px; }
     #hud .bar + .bar { border-top: 1px solid rgba(0,0,0,.4); }
+    #hud .bar.hidden { display: none; }
     #hud .bar > i { display: block; height: 100%; width: 0; transition: width .3s; }
     #hud .bar > span { position: absolute; inset: 0; text-align: center; font-size: 11px; font-weight: 700; color: #fff; line-height: 18px; text-shadow: 0 1px 2px rgba(0,0,0,.85); }
     /* tlačítka vpravo dole */
@@ -188,6 +189,8 @@
     /* HUD: pruh úrovně (výplň = postup k další úrovni) a počítadlo navštívených míst */
     #level > i { background: linear-gradient(180deg,#e8c34a,#a8780a); }
     #places > i { width: 100%; background: linear-gradient(180deg,#3a5a7a,#22384e); }
+    /* pruh sezóny – jen když je sezóna zapnutá (lokální pohled, nesouvisí s žebříčkem) */
+    #season > i { width: 100%; background: linear-gradient(180deg,#4a7a3a,#2a4a22); }
     /* informační bublina (načítání míst apod.) */
     #toast {
       position: absolute;
@@ -312,6 +315,27 @@
     #pin-name:focus { border-color: #caa84a; box-shadow: 0 0 12px rgba(202,168,74,.35); }
     #pin-save { background: linear-gradient(180deg,#3a5a2e,#26401d); border: 1px solid #6b5836; color: #f2e6c8; }
     #reset-confirm { background: linear-gradient(180deg,#8c2f2a,#5c1e1b); border: 1px solid #7a3a30; color: #f2e6c8; }
+    /* nastavení sezóny – lokální filtr kroniky podle data prvního objevení */
+    #season-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; }
+    #season-overlay.hidden { display: none; }
+    #season-card { width: min(86vw,340px); background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); padding: 22px 20px; }
+    #season-card .ttl { font-family: Georgia, serif; font-size: 20px; color: #e8d8b0; font-weight: 700; text-align: center; }
+    #season-card .txt { margin-top: 12px; font-size: 14px; line-height: 1.55; color: #c2b18d; text-align: center; }
+    #season-card .note { margin-top: 12px; font-size: 12px; color: #a08c6a; }
+    #season-card label { display: block; margin-top: 16px; font-size: 13px; color: #caa84a; font-weight: 700; text-align: left; }
+    #season-from { width: 100%; margin-top: 8px; padding: 12px; border: 1px solid #6b5836; border-radius: 8px; background: #14100c; color: #e8d8b0; font-size: 16px; text-align: center; outline: none; }
+    #season-from:focus { border-color: #caa84a; box-shadow: 0 0 12px rgba(202,168,74,.35); }
+    #season-card .btns { margin-top: 18px; display: flex; gap: 10px; }
+    #season-card .btns button { flex: 1; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; }
+    #season-cancel { background: #2a231b; border: 1px solid #6b5836; color: #e8d8b0; }
+    #season-save { background: linear-gradient(180deg,#3a5a2e,#26401d); border: 1px solid #6b5836; color: #f2e6c8; }
+    #season-stop { margin-top: 10px; width: 100%; padding: 12px; border: 1px solid #7a3a30; border-radius: 8px; background: linear-gradient(180deg,#5c2a26,#3d1b18); color: #f2e6c8; font-size: 15px; font-weight: 700; cursor: pointer; }
+    #season-stop.hidden { display: none; }
+    /* přepínač náhledu v kronice: všechna místa / jen sezóna */
+    .log-filters { display: flex; gap: 8px; padding: 10px 16px 0; }
+    .log-filters.hidden { display: none; }
+    .log-filters button { flex: 1; padding: 8px; border: 1px solid #4a3f29; border-radius: 999px; background: #1c1712; color: #a08c6a; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .log-filters button.active { background: #2f4a26; border-color: #6b8f4a; color: #e8d8b0; }
     /* slavnostní karta postupu na novou úroveň / získaného odznaku */
     #levelup-overlay, #badge-overlay { position: absolute; inset: 0; z-index: 12; background: rgba(8,6,5,.85); display: flex; align-items: center; justify-content: center; overflow: hidden; }
     #levelup-overlay.hidden, #badge-overlay.hidden { display: none; }
@@ -353,6 +377,7 @@
       <div id="hud">
         <div id="level" class="bar" title="Úroveň průzkumníka"><i id="level-fill"></i><span id="level-text">⭐ Úroveň 1</span></div>
         <div id="places" class="bar" title="Navštívená místa"><i id="places-fill"></i><span id="places-text">📍 0</span></div>
+        <div id="season" class="bar hidden" title="Místa objevená v sezóně"><i id="season-fill"></i><span id="season-text">🍂 0</span></div>
       </div>
       <button id="board-btn" title="Žebříček">🏆</button>
     </div>
@@ -397,6 +422,7 @@
           <button id="hud-menu-board">🏆 Žebříček</button>
           <button id="hud-menu-badges">🎖️ Odznaky</button>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
+          <button id="hud-menu-season">🍂 Sezóna</button>
           <button id="hud-menu-rename">✏️ Změnit jméno</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
         </div>
@@ -413,6 +439,10 @@
           <button id="log-tab-list" class="active">Seznam</button>
           <button id="log-tab-map">Mapa</button>
         </div>
+        <div class="log-filters hidden" id="log-filters">
+          <button id="log-filter-all" class="active">Vše</button>
+          <button id="log-filter-season">🍂 Sezóna</button>
+        </div>
         <div id="log-list"></div>
         <div id="log-map-wrap" style="display:none"><canvas id="log-map"></canvas></div>
       </div>
@@ -426,6 +456,21 @@
           <button id="reset-cancel">Zrušit</button>
           <button id="reset-confirm">♻️ Resetovat</button>
         </div>
+      </div>
+    </div>
+
+    <div id="season-overlay" class="hidden">
+      <div id="season-card">
+        <div class="ttl">🍂 Sezóna</div>
+        <div class="txt" id="season-state"></div>
+        <label for="season-from">Sezóna platí od</label>
+        <input id="season-from" type="date">
+        <div class="txt note">Sezóna je jen tvůj místní pohled na kroniku – ukáže zvlášť místa, která jsi poprvé objevil od zvoleného data. Do žebříčku se nijak nepromítá a nic se jí nemaže.</div>
+        <div class="btns">
+          <button id="season-cancel">Zavřít</button>
+          <button id="season-save">🍂 Zapnout</button>
+        </div>
+        <button id="season-stop" class="hidden">⏹️ Vypnout sezónu</button>
       </div>
     </div>
 
@@ -560,6 +605,35 @@
       queueCityLookup(visited.get(id));
       updatePlacesHud();
       submitScore();   // zrcadli nový stav do světového žebříčku (když je dostupný)
+    }
+
+    // --- sezóna: čistě lokální pohled na kroniku ---
+    // Hráč si ji kdykoli zapne (a zvolí, od kdy platí) nebo zase vypne. Nic se
+    // tím neukládá jinak a do žebříčku se sezóna nepromítá – je to jen filtr
+    // nad stávajícími místy: která z nich poprvé objevil až v období sezóny.
+    const SEASON_KEY = 'pxplore.season';
+    let season = loadSeason();   // { on, from } – from je půlnoc zvoleného dne (ms)
+    function dayStart(ts) { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); }
+    function loadSeason() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(SEASON_KEY) || 'null');
+        if (raw && typeof raw === 'object' && typeof raw.from === 'number') {
+          return { on: !!raw.on, from: raw.from };
+        }
+      } catch (e) {}
+      return { on: false, from: dayStart(Date.now()) };
+    }
+    function saveSeason() {
+      try { localStorage.setItem(SEASON_KEY, JSON.stringify(season)); } catch (e) {}
+    }
+    // patří záznam kroniky do sezóny? (rozhoduje první objevení místa)
+    function isSeasonRecord(r) { return season.on && !!r && (r.firstAt || 0) >= season.from; }
+    // je místo na mapě už objevené a spadá do sezóny?
+    function isSeasonPlace(p) { return season.on && isSeasonRecord(visited.get(placeId(p))); }
+    function seasonCount() {
+      let n = 0;
+      for (const r of visited.values()) if (isSeasonRecord(r)) n++;
+      return n;
     }
 
     // --- odznaky za navštívení více míst stejného druhu ---
@@ -971,6 +1045,15 @@
       ctx.lineWidth = 3 * DPR;
       ctx.strokeStyle = selected === p ? '#fff' : 'rgba(255,255,255,.6)';
       ctx.stroke();
+      // místo objevené v sezóně – zvlášť odlišený zelený prstenec kolem značky
+      const inSeason = isSeasonPlace(p);
+      if (inSeason) {
+        ctx.beginPath();
+        ctx.arc(s.x, cy, r + 4 * DPR, 0, Math.PI * 2);
+        ctx.lineWidth = 3 * DPR;
+        ctx.strokeStyle = '#8ed06a';
+        ctx.stroke();
+      }
       // ikona
       ctx.font = (18 * DPR) + 'px system-ui';
       ctx.textAlign = 'center';
@@ -989,6 +1072,19 @@
         ctx.fillStyle = '#5a3e00';
         ctx.font = 'bold ' + (11 * DPR) + 'px system-ui';
         ctx.fillText('★', bx, by + DPR);
+      }
+      // odznáček sezóny (zelený lístek v protějším rohu)
+      if (inSeason) {
+        const sx2 = s.x - r * .72, sy2 = cy - r * .72;
+        ctx.beginPath();
+        ctx.arc(sx2, sy2, 8 * DPR, 0, Math.PI * 2);
+        ctx.fillStyle = '#8ed06a';
+        ctx.fill();
+        ctx.lineWidth = 2 * DPR;
+        ctx.strokeStyle = '#fff';
+        ctx.stroke();
+        ctx.font = (9 * DPR) + 'px system-ui';
+        ctx.fillText('🍂', sx2, sy2 + DPR);
       }
     }
 
@@ -1080,6 +1176,8 @@
     const placesTextEl = document.getElementById('places-text');
     const levelMenuInfoEl = document.getElementById('hud-menu-level-info');
     const hudMenuTitleEl = document.getElementById('hud-menu-title');
+    const seasonBarEl = document.getElementById('season');
+    const seasonTextEl = document.getElementById('season-text');
     function updatePlacesHud() {
       const count = visited.size;
       const info = levelInfo(count);
@@ -1089,6 +1187,12 @@
       hudMenuTitleEl.textContent = '🧭 ' + (playerName || 'Průzkumník');
       levelMenuInfoEl.textContent = '⭐ Úroveň ' + info.lv + ' · do další ještě '
         + (info.need - info.into) + ' ' + mistaWord(info.need - info.into);
+      // pruh sezóny se ukazuje jen když je zapnutá – počítá místa objevená v jejím období
+      seasonBarEl.classList.toggle('hidden', !season.on);
+      if (season.on) {
+        const sc = seasonCount();
+        seasonTextEl.textContent = '🍂 ' + sc + ' ' + mistaWord(sc);
+      }
     }
 
     // slavnostní karta postupu na novou úroveň – zlatá záře a sprška konfet
@@ -1329,9 +1433,10 @@
       }
       const p = selected;
       if (!p) return;
-      badgeEl.textContent = isVisited(p)
+      badgeEl.textContent = (isVisited(p)
         ? '🏅 Tady už jsi byl – místo je v kronice'
-        : '✨ Nové místo – přičte se do počítadla!';
+        : '✨ Nové místo – přičte se do počítadla!')
+        + (isSeasonPlace(p) ? ' · 🍂 objeveno v sezóně' : '');
       const d = player ? Math.round(metersBetween(player, p)) : null;
       if (d === null) { distEl.textContent = ''; collectBtn.disabled = true; collectBtn.textContent = 'Prozkoumat'; return; }
       distEl.textContent = '📏 Vzdálenost: ' + d + ' m';
@@ -1524,25 +1629,65 @@
     const logTabMap = document.getElementById('log-tab-map');
     let logMapTimer = null;
 
+    const logFiltersEl = document.getElementById('log-filters');
+    const logFilterAll = document.getElementById('log-filter-all');
+    const logFilterSeason = document.getElementById('log-filter-season');
+    let logFilter = 'all';   // 'all' = všechna místa, 'season' = jen místa ze sezóny
+
     function visitedRecords() {
       return [...visited.values()].sort((a, b) => (b.firstAt || 0) - (a.firstAt || 0));
     }
+    // záznamy pro právě zvolený náhled kroniky (seznam i mapa)
+    function shownRecords() {
+      const recs = visitedRecords();
+      return (season.on && logFilter === 'season') ? recs.filter(isSeasonRecord) : recs;
+    }
+    // přepínač „Vše / Sezóna" dává smysl jen se zapnutou sezónou
+    function updateLogFilters() {
+      logFiltersEl.classList.toggle('hidden', !season.on);
+      if (!season.on) logFilter = 'all';
+      logFilterAll.classList.toggle('active', logFilter === 'all');
+      logFilterSeason.classList.toggle('active', logFilter === 'season');
+    }
+    function setLogFilter(which) {
+      if (logFilter === which) return;
+      logFilter = which;
+      updateLogFilters();
+      buildLogList();
+      if (logMapWrap.style.display !== 'none') {
+        logMapRecs = shownRecords();
+        logMapView = null;   // znovu napasovat pohled na vyfiltrovaná místa
+        renderLogMap(logMapCanvas, logMapRecs);
+      }
+    }
+    logFilterAll.addEventListener('click', () => setLogFilter('all'));
+    logFilterSeason.addEventListener('click', () => setLogFilter('season'));
     function fmtTime(t) {
       if (!t) return 'neznámo kdy';
       try {
         return new Date(t).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       } catch (e) { return new Date(t).toLocaleString(); }
     }
+    function fmtDate(t) {
+      try {
+        return new Date(t).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric' });
+      } catch (e) { return new Date(t).toLocaleDateString(); }
+    }
     function buildLogList() {
-      const recs = visitedRecords();
+      const seasonOnly = season.on && logFilter === 'season';
+      const recs = shownRecords();
       logListEl.innerHTML = '';
       if (!recs.length) {
-        logListEl.innerHTML = '<div class="log-empty">Zatím jsi neprozkoumal žádné místo.<br>Najdi PoI na mapě a prozkoumej ho.</div>';
+        logListEl.innerHTML = seasonOnly
+          ? '<div class="log-empty">V sezóně jsi zatím neobjevil žádné nové místo.<br>Sezóna platí od ' + fmtDate(season.from) + '.</div>'
+          : '<div class="log-empty">Zatím jsi neprozkoumal žádné místo.<br>Najdi PoI na mapě a prozkoumej ho.</div>';
         return;
       }
       const cnt = document.createElement('div');
       cnt.className = 'log-count';
-      cnt.textContent = 'Navštíveno míst: ' + recs.length;
+      cnt.textContent = seasonOnly
+        ? '🍂 V sezóně (od ' + fmtDate(season.from) + ') objeveno míst: ' + recs.length
+        : 'Navštíveno míst: ' + recs.length;
       logListEl.appendChild(cnt);
       for (const r of recs) {
         const row = document.createElement('div');
@@ -1551,7 +1696,8 @@
         row.querySelector('.log-ic').textContent = r.icon || '📍';
         row.querySelector('.log-name').textContent = r.name || 'Místo';
         row.querySelector('.log-meta').textContent =
-          (r.type ? r.type + ' · ' : '') + (r.city ? r.city + ' · ' : '')
+          (isSeasonRecord(r) ? '🍂 ' : '')
+          + (r.type ? r.type + ' · ' : '') + (r.city ? r.city + ' · ' : '')
           + 'objeveno ' + fmtTime(r.firstAt);
         row.addEventListener('click', function () {
           view = { lat: r.lat, lng: r.lng };
@@ -1705,7 +1851,7 @@
       logListEl.style.display = isMap ? 'none' : 'block';
       clearInterval(logMapTimer); logMapTimer = null;
       if (isMap) {
-        logMapRecs = visitedRecords();
+        logMapRecs = shownRecords();
         logMapView = null;   // znovu napasovat pohled na všechna místa
         renderLogMap(logMapCanvas, logMapRecs);
         // dlaždice se načítají asynchronně – chvíli překresluj
@@ -1717,6 +1863,7 @@
       if (!logOverlay.classList.contains('hidden') && logListEl.style.display !== 'none') buildLogList();
     }
     function openLog() {
+      updateLogFilters();
       buildLogList();
       // starším záznamům bez města ho postupně doplň na pozadí
       for (const r of visited.values()) queueCityLookup(r);
@@ -1774,10 +1921,78 @@
     pinNameEl.addEventListener('keydown', e => { if (e.key === 'Enter') savePendingPin(); });
     pinOverlay.addEventListener('click', e => { if (e.target === pinOverlay) closePinDialog(); });
 
+    // --- dialog sezóny: zapnutí od zvoleného data / vypnutí ---
+    const seasonOverlay = document.getElementById('season-overlay');
+    const seasonFromEl = document.getElementById('season-from');
+    const seasonStateEl = document.getElementById('season-state');
+    const seasonSaveBtn = document.getElementById('season-save');
+    const seasonStopBtn = document.getElementById('season-stop');
+    // hodnota pro <input type="date"> je vždy YYYY-MM-DD v místním čase
+    function toDateInput(ts) {
+      const d = new Date(ts), p = n => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    }
+    function fromDateInput(v) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || '');
+      if (!m) return null;
+      const d = new Date(+m[1], +m[2] - 1, +m[3]);
+      d.setHours(0, 0, 0, 0);
+      return isNaN(d.getTime()) ? null : d.getTime();
+    }
+    function openSeasonDialog() {
+      seasonFromEl.value = toDateInput(season.from);
+      seasonStateEl.textContent = season.on
+        ? '🍂 Sezóna běží od ' + fmtDate(season.from) + ' · objeveno ' + seasonCount() + ' ' + mistaWord(seasonCount())
+        : 'Sezóna je vypnutá. Vyber, od kdy má platit, a zapni ji.';
+      seasonSaveBtn.textContent = season.on ? '💾 Uložit datum' : '🍂 Zapnout';
+      seasonStopBtn.classList.toggle('hidden', !season.on);
+      seasonOverlay.classList.remove('hidden');
+    }
+    function closeSeasonDialog() { seasonOverlay.classList.add('hidden'); }
+    // po každé změně sezóny se přepočítá HUD i právě otevřená kronika
+    function refreshSeasonViews() {
+      updatePlacesHud();
+      updateLogFilters();
+      if (!logOverlay.classList.contains('hidden')) {
+        buildLogList();
+        if (logMapWrap.style.display !== 'none') {
+          logMapRecs = shownRecords();
+          logMapView = null;
+          renderLogMap(logMapCanvas, logMapRecs);
+        }
+      }
+    }
+    function saveSeasonSettings() {
+      const from = fromDateInput(seasonFromEl.value);
+      if (from === null) { showToast('📅 Vyber prosím datum začátku sezóny', 2600); return; }
+      const wasOn = season.on;
+      season = { on: true, from };
+      saveSeason();
+      closeSeasonDialog();
+      refreshSeasonViews();
+      showToast((wasOn ? '🍂 Sezóna nově platí od ' : '🍂 Sezóna zapnuta od ') + fmtDate(from)
+        + ' · ' + seasonCount() + ' ' + mistaWord(seasonCount()), 3200);
+    }
+    function stopSeason() {
+      season = { on: false, from: season.from };
+      saveSeason();
+      closeSeasonDialog();
+      refreshSeasonViews();
+      showToast('🍂 Sezóna vypnuta – kronika je zase kompletní', 2800);
+    }
+    seasonSaveBtn.addEventListener('click', saveSeasonSettings);
+    seasonStopBtn.addEventListener('click', stopSeason);
+    document.getElementById('season-cancel').addEventListener('click', closeSeasonDialog);
+    seasonOverlay.addEventListener('click', e => { if (e.target === seasonOverlay) closeSeasonDialog(); });
+
     // --- menu otevřené klepnutím na HUD ---
     const hudMenuOverlay = document.getElementById('hud-menu-overlay');
+    const hudMenuSeasonBtn = document.getElementById('hud-menu-season');
     function openHudMenu() {
       updatePlacesHud();
+      hudMenuSeasonBtn.textContent = season.on
+        ? '🍂 Sezóna – běží od ' + fmtDate(season.from)
+        : '🍂 Sezóna';
       hudMenuOverlay.classList.remove('hidden');
     }
     function closeHudMenu() { hudMenuOverlay.classList.add('hidden'); }
@@ -1786,6 +2001,7 @@
     document.getElementById('hud-menu-board').addEventListener('click', () => { closeHudMenu(); openBoard(); });
     document.getElementById('hud-menu-badges').addEventListener('click', () => { closeHudMenu(); openBadges(); });
     document.getElementById('hud-menu-log').addEventListener('click', () => { closeHudMenu(); openLog(); });
+    document.getElementById('hud-menu-season').addEventListener('click', () => { closeHudMenu(); openSeasonDialog(); });
     document.getElementById('hud-menu-rename').addEventListener('click', () => { closeHudMenu(); showIntro(); });
     document.getElementById('hud-menu-reset').addEventListener('click', () => { closeHudMenu(); resetProgress(); });
     hudMenuOverlay.addEventListener('click', e => { if (e.target === hudMenuOverlay) closeHudMenu(); });

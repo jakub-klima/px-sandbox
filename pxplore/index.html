@@ -330,7 +330,8 @@
     #season-cancel { background: #2a231b; border: 1px solid #6b5836; color: #e8d8b0; }
     #season-save { background: linear-gradient(180deg,#3a5a2e,#26401d); border: 1px solid #6b5836; color: #f2e6c8; }
     #season-stop { margin-top: 10px; width: 100%; padding: 12px; border: 1px solid #7a3a30; border-radius: 8px; background: linear-gradient(180deg,#5c2a26,#3d1b18); color: #f2e6c8; font-size: 15px; font-weight: 700; cursor: pointer; }
-    #season-stop.hidden { display: none; }
+    /* běžící sezóna má začátek daný – datum se pak ukazuje jen jako text ve stavu */
+    #season-stop.hidden, #season-edit.hidden, #season-save.hidden { display: none; }
     /* přepínač náhledu v kronice: všechna místa / jen sezóna */
     .log-filters { display: flex; gap: 8px; padding: 10px 16px 0; }
     .log-filters.hidden { display: none; }
@@ -463,9 +464,11 @@
       <div id="season-card">
         <div class="ttl">🍂 Sezóna</div>
         <div class="txt" id="season-state"></div>
-        <label for="season-from">Sezóna platí od</label>
-        <input id="season-from" type="date">
-        <div class="txt note">Sezóna je jen tvůj místní pohled na kroniku – ukáže zvlášť místa, která jsi poprvé objevil od zvoleného data. Do žebříčku se nijak nepromítá a nic se jí nemaže.</div>
+        <div id="season-edit">
+          <label for="season-from">Sezóna platí od</label>
+          <input id="season-from" type="date">
+        </div>
+        <div class="txt note" id="season-note"></div>
         <div class="btns">
           <button id="season-cancel">Zavřít</button>
           <button id="season-save">🍂 Zapnout</button>
@@ -1925,6 +1928,8 @@
     const seasonOverlay = document.getElementById('season-overlay');
     const seasonFromEl = document.getElementById('season-from');
     const seasonStateEl = document.getElementById('season-state');
+    const seasonEditEl = document.getElementById('season-edit');
+    const seasonNoteEl = document.getElementById('season-note');
     const seasonSaveBtn = document.getElementById('season-save');
     const seasonStopBtn = document.getElementById('season-stop');
     // hodnota pro <input type="date"> je vždy YYYY-MM-DD v místním čase
@@ -1939,12 +1944,19 @@
       d.setHours(0, 0, 0, 0);
       return isNaN(d.getTime()) ? null : d.getTime();
     }
+    // Běžící sezóna má svůj začátek daný – datum už nejde přepsat, jen se ukazuje
+    // ve stavu. Změna znamená sezónu vypnout a zapnout znovu (nic se tím neztratí,
+    // kronika zůstává celá), takže dialog za běhu nabízí jen zavřít nebo vypnout.
     function openSeasonDialog() {
       seasonFromEl.value = toDateInput(season.from);
       seasonStateEl.textContent = season.on
         ? '🍂 Sezóna běží od ' + fmtDate(season.from) + ' · objeveno ' + seasonCount() + ' ' + mistaWord(seasonCount())
         : 'Sezóna je vypnutá. Vyber, od kdy má platit, a zapni ji.';
-      seasonSaveBtn.textContent = season.on ? '💾 Uložit datum' : '🍂 Zapnout';
+      seasonNoteEl.textContent = season.on
+        ? 'Datum začátku se dá změnit jen vypnutím a novým zapnutím sezóny. Kronika ani žebříček se tím nijak nemění.'
+        : 'Sezóna je jen tvůj místní pohled na kroniku – ukáže zvlášť místa, která jsi poprvé objevil od zvoleného data. Do žebříčku se nijak nepromítá a nic se jí nemaže.';
+      seasonEditEl.classList.toggle('hidden', season.on);
+      seasonSaveBtn.classList.toggle('hidden', season.on);
       seasonStopBtn.classList.toggle('hidden', !season.on);
       seasonOverlay.classList.remove('hidden');
     }
@@ -1962,15 +1974,15 @@
         }
       }
     }
-    function saveSeasonSettings() {
+    // zapnutí sezóny od zvoleného dne (tlačítko je dostupné jen když je vypnutá)
+    function startSeason() {
       const from = fromDateInput(seasonFromEl.value);
       if (from === null) { showToast('📅 Vyber prosím datum začátku sezóny', 2600); return; }
-      const wasOn = season.on;
       season = { on: true, from };
       saveSeason();
       closeSeasonDialog();
       refreshSeasonViews();
-      showToast((wasOn ? '🍂 Sezóna nově platí od ' : '🍂 Sezóna zapnuta od ') + fmtDate(from)
+      showToast('🍂 Sezóna zapnuta od ' + fmtDate(from)
         + ' · ' + seasonCount() + ' ' + mistaWord(seasonCount()), 3200);
     }
     function stopSeason() {
@@ -1980,7 +1992,7 @@
       refreshSeasonViews();
       showToast('🍂 Sezóna vypnuta – kronika je zase kompletní', 2800);
     }
-    seasonSaveBtn.addEventListener('click', saveSeasonSettings);
+    seasonSaveBtn.addEventListener('click', startSeason);
     seasonStopBtn.addEventListener('click', stopSeason);
     document.getElementById('season-cancel').addEventListener('click', closeSeasonDialog);
     seasonOverlay.addEventListener('click', e => { if (e.target === seasonOverlay) closeSeasonDialog(); });

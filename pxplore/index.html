@@ -921,7 +921,7 @@
           if (hedged) return;
           hedged = true;
           clearTimeout(hedgeTimer);
-          showToast('🔎 Hlavní server váhá – zkouším i zrcadlo…');
+          // bez hlášky – hráč jen čeká na místa, o který server se to pere ho nezajímá
           fetchPoiFrom(OVERPASS_ENDPOINTS[1], q, ctrls[1]).then(resolve, reject);
         };
         hedgeTimer = setTimeout(startHedge, POI_HEDGE_MS);

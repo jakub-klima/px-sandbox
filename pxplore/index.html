@@ -835,10 +835,11 @@
       return null;
     }
 
-    // Overpass servery: 1. pokus jde na hlavní; 2. pokus zkouší hlavní znovu
-    // souběžně se zrcadlem a bere rychlejší úspěšnou odpověď (hlavní se po
-    // chvilkovém výpadku často vzpamatuje, zrcadlo ho jistí); případné další
-    // opakování obstará tiché automatické přenačítání (maybeReloadPois)
+    // Overpass servery: první je hlavní, druhý zrcadlo. 1. pokus jede na hlavní
+    // a zrcadlo se přihodí jako pojistka, jakmile hlavní váhá; 2. pokus pouští
+    // oba souběžně a bere rychlejší úspěšnou odpověď (hlavní se po chvilkovém
+    // výpadku často vzpamatuje, zrcadlo ho jistí); případné další opakování
+    // obstará tiché automatické přenačítání (maybeReloadPois)
     const OVERPASS_ENDPOINTS = [
       'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
@@ -863,6 +864,7 @@
     const POI_LIMIT = 120;               // limit míst na jeden dotaz (out center …)
     const POI_RADII = [1000, 500, 250];  // hustá oblast ořízne výsledek na limit → doplň menším poloměrem
     const POI_FETCH_TIMEOUT_MS = 8000;   // na váznoucí server se nečeká – po 8 s se pokus ruší
+    const POI_HEDGE_MS = 2500;           // když hlavní server do té doby neodpoví, přidá se souběžně zrcadlo
     // jeden dotaz na konkrétní server; při chybě/timeoutu vyhazuje výjimku
     async function fetchPoiFrom(url, q, ctrl) {
       ctrl = ctrl || new AbortController();
@@ -897,6 +899,34 @@
         clearTimeout(timeoutId);
       }
     }
+    // 1. pokus „s pojistkou": dotaz jde na hlavní server a teprve když do
+    // POI_HEDGE_MS neodpoví (nebo mezitím selže), rozjede se souběžně i zrcadlo;
+    // bere se první úspěšná odpověď. Když je hlavní server v pořádku, na zrcadlo
+    // se nepošle nic – pomalý hlavní server ale nestojí celý 8s timeout.
+    async function fetchPoiHedged(q) {
+      const ctrls = OVERPASS_ENDPOINTS.map(() => new AbortController());
+      let hedged = false, hedgeTimer = null, startHedge = null;
+      const mirror = new Promise((resolve, reject) => {
+        startHedge = () => {
+          if (hedged) return;
+          hedged = true;
+          clearTimeout(hedgeTimer);
+          showToast('🔎 Hlavní server váhá – zkouším i zrcadlo…');
+          fetchPoiFrom(OVERPASS_ENDPOINTS[1], q, ctrls[1]).then(resolve, reject);
+        };
+        hedgeTimer = setTimeout(startHedge, POI_HEDGE_MS);
+      });
+      const main = fetchPoiFrom(OVERPASS_ENDPOINTS[0], q, ctrls[0]).catch(e => {
+        startHedge();   // hlavní selhal dřív, než uplynula prodleva – nečekej na ni
+        throw e;
+      });
+      try {
+        return await Promise.any([main, mirror]);
+      } finally {
+        clearTimeout(hedgeTimer);
+        ctrls.forEach(c => c.abort());   // pomalejší souběžný dotaz zruš, ať server neřeší zbytečnou práci
+      }
+    }
     async function fetchPoiList(center, radius) {
       const R = Math.round(radius);
       const q = `[out:json][timeout:8];(`
@@ -909,9 +939,9 @@
         + `way["tourism"](around:${R},${center.lat},${center.lng});`
         + `way["historic"](around:${R},${center.lat},${center.lng});`
         + `);out center ${POI_LIMIT};`;
-      // 1. pokus: jen hlavní server
+      // 1. pokus: hlavní server, se zrcadlem jako pojistkou pro případ váhání
       try {
-        return await fetchPoiFrom(OVERPASS_ENDPOINTS[0], q);
+        return await fetchPoiHedged(q);
       } catch (e) {
         console.warn('Overpass 1. pokus selhal:', e);
       }

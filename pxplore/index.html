@@ -860,7 +860,8 @@
       // !poiAnchor = načtení zatím nikdy neuspělo → průběžně to zkoušej znovu
       if (!poiAnchor || metersBetween(player, poiAnchor) > POI_RELOAD_DIST_M) loadPois(player);
     }
-    // jeden dotaz na Overpass s daným poloměrem (fallback přes zrcadla); null = nezdar
+    // jeden dotaz na Overpass s daným poloměrem (fallback přes zrcadla)
+    // výsledek = { list: použitelná místa, raw: kolik elementů poslal server }; null = nezdar
     const POI_LIMIT = 120;               // limit míst na jeden dotaz (out center …)
     const POI_RADII = [1000, 500, 250];  // hustá oblast ořízne výsledek na limit → doplň menším poloměrem
     const POI_FETCH_TIMEOUT_MS = 8000;   // na váznoucí server se nečeká – po 8 s se pokus ruší
@@ -877,9 +878,16 @@
         });
         if (!res.ok) throw new Error('Overpass ' + res.status);
         const json = await res.json();
+        // Overpass při vypršení serverového timeoutu nebo došlé paměti nevrací
+        // chybový kód, ale HTTP 200 s polem remark a jen tím, co stihl spočítat.
+        // Bez téhle kontroly by se useknutá (klidně prázdná) odpověď uložila jako
+        // platná, nastavila kotvu a dalších 30 s by se nenačítalo nic – takhle se
+        // rovnou zkusí druhý server.
+        if (json.remark) throw new Error('Overpass remark: ' + json.remark);
+        const elements = json.elements || [];
         const seen = new Set();
         const list = [];
-        for (const el of json.elements || []) {
+        for (const el of elements) {
           const lat = el.lat != null ? el.lat : (el.center && el.center.lat);
           const lng = el.lon != null ? el.lon : (el.center && el.center.lon);
           if (lat == null || lng == null) continue;
@@ -894,7 +902,9 @@
             city: (el.tags && el.tags['addr:city']) || '',
           });
         }
-        return list;   // data dorazila (klidně i prázdná oblast)
+        // raw = počet elementů před filtrací (classify) – jen ten se dá porovnat
+        // s POI_LIMIT, protože limit ořezává surovou odpověď serveru
+        return { list, raw: elements.length };   // data dorazila (klidně i prázdná oblast)
       } finally {
         clearTimeout(timeoutId);
       }
@@ -950,9 +960,9 @@
       // 2. pokus: hlavní server znovu a zrcadlo souběžně, bere se rychlejší úspěch
       const ctrls = OVERPASS_ENDPOINTS.map(() => new AbortController());
       try {
-        const list = await Promise.any(OVERPASS_ENDPOINTS.map((u, i) => fetchPoiFrom(u, q, ctrls[i])));
+        const res = await Promise.any(OVERPASS_ENDPOINTS.map((u, i) => fetchPoiFrom(u, q, ctrls[i])));
         ctrls.forEach(c => c.abort());   // pomalejší souběžný dotaz zruš, ať server neřeší zbytečnou práci
-        return list;
+        return res;
       } catch (e) {
         console.warn('Overpass 2. pokus selhal:', e);
         return null;
@@ -984,11 +994,14 @@
       // dotaz opakuje s menším poloměrem, dokud se výsledek nevejde pod limit
       let ok = false, added = 0;
       for (let pass = 0; pass < POI_RADII.length; pass++) {
-        const list = await fetchPoiList(center, POI_RADII[pass]);
-        if (list === null) break;   // výpadek – ponech, co se stihlo (mapa se nečistí)
+        const res = await fetchPoiList(center, POI_RADII[pass]);
+        if (res === null) break;   // výpadek – ponech, co se stihlo (mapa se nečistí)
         ok = true;
-        added += mergePois(center, list);
-        if (list.length < POI_LIMIT) break;   // vešlo se vše, menší poloměr nic nepřidá
+        added += mergePois(center, res.list);
+        // porovnává se počet elementů od serveru, ne až profiltrovaný seznam:
+        // classify() část elementů zahodí, takže délka seznamu je skoro vždycky
+        // pod limitem a doplňkové poloměry by se nikdy nespustily
+        if (res.raw < POI_LIMIT) break;   // vešlo se vše, menší poloměr nic nepřidá
         if (pass + 1 < POI_RADII.length) {
           showToast('🏙️ Hustá oblast – doplňuji bližší místa…');
           await new Promise(r => setTimeout(r, 1000));

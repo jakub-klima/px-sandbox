@@ -424,6 +424,7 @@
           <button id="hud-menu-badges">🎖️ Odznaky</button>
           <button id="hud-menu-log">📜 Kronika navštívených míst</button>
           <button id="hud-menu-season">🍂 Sezóna</button>
+          <button id="hud-menu-backup">💾 Zálohovat postup do JSON</button>
           <button id="hud-menu-rename">✏️ Změnit jméno</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
         </div>
@@ -1920,6 +1921,52 @@
       logOverlay.classList.add('hidden');
       clearInterval(logMapTimer); logMapTimer = null;
     }
+    // --- záloha postupu do JSON ---
+    // Postup hráče = kronika navštívených míst; počet míst, úroveň i odznaky se
+    // z ní jen dopočítávají, takže stačí zálohovat ji. Sezóna je čistě lokální
+    // pohled na kroniku (zapnuto/od kdy), do zálohy tedy nepatří.
+    const BACKUP_VERSION = 1;
+    function buildBackup() {
+      return {
+        app: 'pxplore',
+        kind: 'visited',
+        version: BACKUP_VERSION,
+        exportedAt: new Date().toISOString(),
+        count: visited.size,
+        places: Array.from(visited.values()),
+      };
+    }
+    function backupFileName() {
+      const d = new Date();
+      const p = n => String(n).padStart(2, '0');
+      return 'pxplore-kronika-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate())
+        + '-' + p(d.getHours()) + p(d.getMinutes()) + '.json';
+    }
+    function exportBackup() {
+      if (!visited.size) {
+        showToast('📭 Kronika je prázdná – není co zálohovat', 3000);
+        return;
+      }
+      const name = backupFileName();
+      const json = JSON.stringify(buildBackup(), null, 2);
+      let url = null;
+      try {
+        const blob = new Blob([json], { type: 'application/json' });
+        url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast('💾 Záloha ' + visited.size + ' ' + mistaWord(visited.size) + ' uložena do ' + name, 4000);
+      } catch (e) {
+        showToast('⚠️ Zálohu se nepodařilo uložit', 3000);
+      }
+      // odkaz je už použitý, paměť po blobu můžeme uvolnit (až po stažení)
+      if (url) setTimeout(() => URL.revokeObjectURL(url), 20000);
+    }
+
     // úplný reset postupu – vymaže kroniku, a tím i počítadlo míst a úroveň
     const resetOverlay = document.getElementById('reset-overlay');
     function resetProgress() { resetOverlay.classList.remove('hidden'); }
@@ -2057,6 +2104,7 @@
     document.getElementById('hud-menu-badges').addEventListener('click', () => { closeHudMenu(); openBadges(); });
     document.getElementById('hud-menu-log').addEventListener('click', () => { closeHudMenu(); openLog(); });
     document.getElementById('hud-menu-season').addEventListener('click', () => { closeHudMenu(); openSeasonDialog(); });
+    document.getElementById('hud-menu-backup').addEventListener('click', () => { closeHudMenu(); exportBackup(); });
     document.getElementById('hud-menu-rename').addEventListener('click', () => { closeHudMenu(); showIntro(); });
     document.getElementById('hud-menu-reset').addEventListener('click', () => { closeHudMenu(); resetProgress(); });
     hudMenuOverlay.addEventListener('click', e => { if (e.target === hudMenuOverlay) closeHudMenu(); });

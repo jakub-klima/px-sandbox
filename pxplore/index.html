@@ -574,13 +574,28 @@
 
     // navštívená místa – kronika: id -> { name, type, icon, color, city, lat, lng, firstAt }
     const VISIT_KEY = 'pxplore.visited';
+    // Pozůstatek z doby opakovaných návštěv: záznamy uložené tehdy nesou navíc
+    // lastAt (kdy naposled) a count (kolikrát). Dnes se místo zapíše jen jednou,
+    // takže obojí ztratilo význam – při načtení je ze starých záznamů zahodíme
+    // a kroniku rovnou uložíme očištěnou.
+    const LEGACY_VISIT_FIELDS = ['lastAt', 'count'];
+    let visitedCleaned = false;
     let visited = loadVisited();
+    if (visitedCleaned) saveVisited();
     function loadVisited() {
       const m = new Map();
       try {
         const raw = JSON.parse(localStorage.getItem(VISIT_KEY) || 'null');
         if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-          for (const k of Object.keys(raw)) m.set(k, raw[k]);
+          for (const k of Object.keys(raw)) {
+            const rec = raw[k];
+            if (rec && typeof rec === 'object') {
+              for (const f of LEGACY_VISIT_FIELDS) {
+                if (f in rec) { delete rec[f]; visitedCleaned = true; }
+              }
+            }
+            m.set(k, rec);
+          }
         }
       } catch (e) {}
       return m;

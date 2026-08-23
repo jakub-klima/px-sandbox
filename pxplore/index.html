@@ -1923,8 +1923,9 @@
     }
     // --- záloha postupu do JSON ---
     // Postup hráče = kronika navštívených míst; počet míst, úroveň i odznaky se
-    // z ní jen dopočítávají, takže stačí zálohovat ji. Sezóna je čistě lokální
-    // pohled na kroniku (zapnuto/od kdy), do zálohy tedy nepatří.
+    // z ní jen dopočítávají, takže stačí zálohovat ji (plus jméno průzkumníka).
+    // Sezóna je čistě lokální pohled na kroniku (zapnuto/od kdy) a špendlíky
+    // jsou vlastní značky na mapě – ani jedno do zálohy postupu nepatří.
     const BACKUP_VERSION = 1;
     function buildBackup() {
       return {
@@ -1932,6 +1933,7 @@
         kind: 'visited',
         version: BACKUP_VERSION,
         exportedAt: new Date().toISOString(),
+        name: playerName,
         count: visited.size,
         places: Array.from(visited.values()),
       };

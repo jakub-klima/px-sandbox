@@ -41,6 +41,7 @@
       position: fixed; left: 0; right: 0; bottom: 12px; z-index: 3;
       display: flex; justify-content: center; gap: 8px; pointer-events: none;
     }
+    .buff.bad { border-color: rgba(255,80,110,.6); color: #ffc2ce; }
     .buff {
       display: flex; align-items: center; gap: 5px;
       padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 700;
@@ -177,6 +178,8 @@
         <div><b>🐌</b><span>zpomalení koule</span></div>
         <div><b>🔫</b><span>laser – střílej do cihel</span></div>
         <div><b>🧲</b><span>lepkavá pálka – koule se chytí</span></div>
+        <div><b>🔻</b><span>červené hroty = riziko: body navíc, ale užší pálka
+          nebo rychlejší koule – chytat, nebo uhnout?</span></div>
       </div>
       <div class="keys">
         <code>myš</code> míří přímo, <code>prstem</code> táhni kdekoliv po ploše &nbsp;·&nbsp; <code>←</code> <code>→</code> klávesnice<br>
@@ -221,6 +224,7 @@
 
   const PADDLE_W_BASE = 5.4;
   const PADDLE_W_WIDE = 8.4;
+  const PADDLE_W_NARROW = 3.5;
   const PADDLE_D = 1.3, PADDLE_H = 0.9;
 
   const SPEED_BASE = 22;
@@ -535,8 +539,12 @@
     multi:  { label: '⋯',  text: 'TŘI KOULE',   color: 0xffd166, letter: '3', weight: 18 },
     slow:   { label: '🐌', text: 'ZPOMALENÍ',   color: 0x9be36b, letter: 'S', weight: 16 },
     laser:  { label: '🔫', text: 'LASER',       color: 0xff7a3d, letter: 'L', weight: 18 },
-    catch:  { label: '🧲', text: 'LEPKAVÁ PÁLKA', color: 0xc08bff, letter: 'C', weight: 12 }
+    catch:  { label: '🧲', text: 'LEPKAVÁ PÁLKA', color: 0xc08bff, letter: 'C', weight: 12 },
+    // rizikové – dají body, ale na chvíli hru ztíží
+    shrink: { label: '⌐',  text: 'RISK: ÚZKÁ PÁLKA', color: 0xff3b6b, letter: '!', weight: 11, bad: true },
+    rush:   { label: '⚡', text: 'RISK: ZRYCHLENÍ',  color: 0xff6b1f, letter: '»', weight: 11, bad: true }
   };
+  const RISK_BONUS = 350;
   const puGeo = new THREE.BoxGeometry(1.5, 0.5, 1.5);
   const puMats = {};
   function puTexture(kind) {
@@ -551,12 +559,18 @@
     g.fillText(POWERUPS[kind].letter, 64, 70);
     return new THREE.CanvasTexture(c);
   }
+  const badGeo = new THREE.OctahedronGeometry(1.05);
   for (const k in POWERUPS) {
-    puMats[k] = new THREE.MeshStandardMaterial({
-      map: puTexture(k), color: 0xffffff,
-      emissive: POWERUPS[k].color, emissiveIntensity: 0.5,
-      roughness: 0.4, metalness: 0.2
-    });
+    puMats[k] = POWERUPS[k].bad
+      ? new THREE.MeshStandardMaterial({
+          color: POWERUPS[k].color, emissive: POWERUPS[k].color, emissiveIntensity: 0.9,
+          roughness: 0.25, metalness: 0.5, flatShading: true
+        })
+      : new THREE.MeshStandardMaterial({
+          map: puTexture(k), color: 0xffffff,
+          emissive: POWERUPS[k].color, emissiveIntensity: 0.5,
+          roughness: 0.4, metalness: 0.2
+        });
   }
 
   const boltGeo = new THREE.CylinderGeometry(0.14, 0.14, 1.8, 8);
@@ -694,7 +708,7 @@
   const powerups = [];
   const bolts = [];
   const particles = [];
-  const buffs = { expand: 0, slow: 0, laser: 0, catch: 0 };
+  const buffs = { expand: 0, slow: 0, laser: 0, catch: 0, shrink: 0, rush: 0 };
   let laserCooldown = 0, shake = 0, lastComboFloat = -9;
 
   // ---------- Zvuk ----------
@@ -825,16 +839,19 @@
     }
   }
 
-  function maybeDropPowerup(x, z) {
-    if (Math.random() > 0.19) return;
-    const pool = [];
-    for (const k in POWERUPS) for (let i = 0; i < POWERUPS[k].weight; i++) pool.push(k);
-    const kind = pool[(Math.random() * pool.length) | 0];
-    const mesh = new THREE.Mesh(puGeo, puMats[kind]);
+  function dropPowerup(kind, x, z) {
+    const mesh = new THREE.Mesh(POWERUPS[kind].bad ? badGeo : puGeo, puMats[kind]);
     mesh.position.set(x, 0.7, z);
     mesh.castShadow = true;
     scene.add(mesh);
     powerups.push({ mesh, kind, x, z, spin: Math.random() * Math.PI });
+  }
+
+  function maybeDropPowerup(x, z) {
+    if (Math.random() > 0.21) return;
+    const pool = [];
+    for (const k in POWERUPS) for (let i = 0; i < POWERUPS[k].weight; i++) pool.push(k);
+    dropPowerup(pool[(Math.random() * pool.length) | 0], x, z);
   }
 
   function destroyBrick(brick, depth = 0) {
@@ -1005,7 +1022,8 @@
   function currentSpeed() {
     let s = state.speed;
     if (buffs.slow > 0) s *= 0.68;
-    return clamp(s, 8, SPEED_MAX);
+    if (buffs.rush > 0) s *= 1.32;
+    return clamp(s, 8, SPEED_MAX * 1.3);
   }
 
   // ---------- Skóre / životy ----------
@@ -1046,7 +1064,10 @@
   function updateBuffs() {
     let html = '';
     for (const k in buffs) {
-      if (buffs[k] > 0) html += `<div class="buff">${POWERUPS[k].label} ${Math.ceil(buffs[k])}s</div>`;
+      if (buffs[k] > 0) {
+        const cls = POWERUPS[k].bad ? 'buff bad' : 'buff';
+        html += `<div class="${cls}">${POWERUPS[k].label} ${Math.ceil(buffs[k])}s</div>`;
+      }
     }
     el.buffs.innerHTML = html;
     el.fireBtn.classList.toggle('on', buffs.laser > 0 && state.mode === 'play');
@@ -1055,8 +1076,10 @@
   function applyPowerup(kind) {
     const info = POWERUPS[kind];
     floatText(info.text, '#' + info.color.toString(16).padStart(6, '0'), paddleX, 2.4, PADDLE_Z);
-    beep(660, 0.12, 'triangle', 0.06, 1200);
-    setTimeout(() => beep(990, 0.1, 'triangle', 0.05, 1480), 70);
+    if (!info.bad) {
+      beep(660, 0.12, 'triangle', 0.06, 1200);
+      setTimeout(() => beep(990, 0.1, 'triangle', 0.05, 1480), 70);
+    }
     shockwave(paddleX, PADDLE_Z, info.color, 6, 0.5);
     screenFlash(0.16);
     if (kind === 'life') {
@@ -1072,8 +1095,18 @@
         }
       }
       if (!balls.length) resetBallOnPaddle();
+    } else if (info.bad) {
+      // riziko se vyplácí body, ale pálku nebo kouli to na chvíli zhorší
+      buffs[kind] = kind === 'shrink' ? 13 : 11;
+      if (kind === 'shrink') buffs.expand = 0;
+      if (kind === 'rush') buffs.slow = 0;
+      addScore(RISK_BONUS);
+      floatText('+' + RISK_BONUS, '#ffd166', paddleX, 3.4, PADDLE_Z);
+      beep(150, 0.22, 'sawtooth', 0.07, 480);
     } else {
       buffs[kind] = kind === 'expand' ? 22 : kind === 'laser' ? 16 : kind === 'slow' ? 13 : 20;
+      if (kind === 'expand') buffs.shrink = 0;
+      if (kind === 'slow') buffs.rush = 0;
     }
     updateBuffs();
   }
@@ -1387,7 +1420,7 @@
     for (let i = powerups.length - 1; i >= 0; i--) {
       const p = powerups[i];
       p.z += 8.5 * dt;
-      p.spin += dt * 2.4;
+      p.spin += dt * (POWERUPS[p.kind].bad ? 5.2 : 2.4);
       p.mesh.position.set(p.x, 0.7 + Math.sin(p.spin * 2) * 0.12, p.z);
       p.mesh.rotation.y = p.spin;
       const caught = Math.abs(p.x - paddleX) < paddleW / 2 + 0.9 && Math.abs(p.z - PADDLE_Z) < PADDLE_D / 2 + 1.0;
@@ -1462,12 +1495,14 @@
     paddleX = clamp(paddleX, -lim, lim);
     paddleVel = dt > 0 ? (paddleX - prev) / dt : 0;
 
-    const wantW = buffs.expand > 0 ? PADDLE_W_WIDE : PADDLE_W_BASE;
+    const wantW = buffs.shrink > 0 ? PADDLE_W_NARROW
+      : buffs.expand > 0 ? PADDLE_W_WIDE : PADDLE_W_BASE;
     paddleW += (wantW - paddleW) * Math.min(1, dt * 8);
     paddle.scale.x = paddleW;
     paddle.position.x = paddleX;
     paddleGlow.position.x = paddleX;
-    paddleMat.emissive.setHex(buffs.laser > 0 ? 0xff7a3d : buffs.catch > 0 ? 0xc08bff : 0x18c8b0);
+    paddleMat.emissive.setHex(buffs.shrink > 0 ? 0xff3b6b : buffs.laser > 0 ? 0xff7a3d
+      : buffs.catch > 0 ? 0xc08bff : 0x18c8b0);
     paddleGlow.color.copy(paddleMat.emissive);
   }
 
@@ -1552,7 +1587,7 @@
 
   if (new URLSearchParams(location.search).get('dev') === '1') {
     window.__ark = {
-      state, balls, bricks, powerups, buffs, applyPowerup, destroyBrick, hitBrick,
+      state, balls, bricks, powerups, buffs, applyPowerup, destroyBrick, hitBrick, dropPowerup,
       get paddleX() { return paddleX; },
       set target(v) { paddleTargetX = v; }
     };

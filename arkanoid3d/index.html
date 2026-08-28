@@ -153,7 +153,7 @@
   <div id="overlay">
     <div id="panel">
       <h1>ARKANOID 3D</h1>
-      <p>Odrážej kouli pálkou, rozbij všechny cihly a chytej bonusy.</p>
+      <p>Odrážej kouli pálkou, rozbij všechny cihly a chytej bonusy.<br>Zaměřovač se houpe – vypusť kouli ve chvíli, kdy míří tam, kam chceš.</p>
       <div class="legend">
         <div><b>❤️</b><span>život navíc</span></div>
         <div><b>↔</b><span>širší pálka</span></div>
@@ -164,7 +164,7 @@
       </div>
       <div class="keys">
         <code>myš</code> / <code>prst</code> posouvá pálku &nbsp;·&nbsp; <code>←</code> <code>→</code> klávesnice<br>
-        <code>mezerník</code> / <code>klik</code> vypustí kouli a střílí &nbsp;·&nbsp; <code>P</code> pauza
+        <code>mezerník</code> / <code>klik</code> vypustí kouli ve směru zaměřovače a střílí &nbsp;·&nbsp; <code>P</code> pauza
       </div>
       <button id="ovBtn">Hrát</button>
       <button id="ovFsBtn" class="ghost">📱 Hrát na celou obrazovku</button>
@@ -210,6 +210,7 @@
   const SPEED_BASE = 22;
   const SPEED_MAX = 34;
   const MAX_BOUNCE_ANGLE = 1.05; // rad (~60°)
+  const AIM_MAX = 0.95;          // rozsah kývání zaměřovače
 
   // ---------- Renderer, scéna, kamera ----------
   const canvas = document.getElementById('game');
@@ -427,6 +428,21 @@
   scene.add(paddleGlow);
 
   let paddleW = PADDLE_W_BASE, paddleX = 0, paddleTargetX = 0, paddleVel = 0;
+
+  // ---------- Zaměřovač (kývá se, dokud koule sedí na pálce) ----------
+  const aimGroup = new THREE.Group();
+  aimGroup.visible = false;
+  scene.add(aimGroup);
+  {
+    const g = new THREE.SphereGeometry(0.17, 8, 6);
+    for (let i = 0; i < 9; i++) {
+      const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+        color: 0x7ffbe4, transparent: true, opacity: 0.8 - i * 0.075
+      }));
+      aimGroup.add(m);
+    }
+  }
+  let aimAngle = 0, aimSwing = 1;
 
   // ---------- Sdílené geometrie / materiály ----------
   const ballGeo = new THREE.SphereGeometry(BALL_R, 22, 16);
@@ -747,6 +763,7 @@
   function clearBalls() { while (balls.length) removeBall(balls[0]); }
 
   function resetBallOnPaddle() {
+    aimAngle = 0; aimSwing = Math.random() < 0.5 ? -1 : 1;
     clearBalls();
     newBall(paddleX, PADDLE_Z - PADDLE_D / 2 - BALL_R - 0.05, 0, -1, true);
   }
@@ -756,12 +773,29 @@
     for (const b of balls) {
       if (!b.stuck) continue;
       b.stuck = false;
-      const a = (Math.random() - 0.5) * 0.5;
-      b.vx = Math.sin(a); b.vz = -Math.cos(a);
+      b.vx = Math.sin(aimAngle); b.vz = -Math.cos(aimAngle);
       launched = true;
     }
-    if (launched) beep(520, 0.09, 'triangle', 0.05, 880);
+    if (launched) {
+      aimGroup.visible = false;
+      beep(520, 0.09, 'triangle', 0.05, 880);
+    }
     return launched;
+  }
+
+  // Zaměřovač se sám houpe do stran – vypuštění koule je tak rozhodnutí hráče.
+  function updateAim(dt) {
+    const held = balls.find(b => b.stuck);
+    if (!held || state.mode !== 'play') { aimGroup.visible = false; return; }
+    aimAngle += aimSwing * dt * 1.25;
+    if (aimAngle > AIM_MAX) { aimAngle = AIM_MAX; aimSwing = -1; }
+    if (aimAngle < -AIM_MAX) { aimAngle = -AIM_MAX; aimSwing = 1; }
+    const dx = Math.sin(aimAngle), dz = -Math.cos(aimAngle);
+    for (let i = 0; i < aimGroup.children.length; i++) {
+      const t = 1.4 + i * 1.2;
+      aimGroup.children[i].position.set(held.x + dx * t, BALL_R + 0.05, held.z + dz * t);
+    }
+    aimGroup.visible = true;
   }
 
   function currentSpeed() {
@@ -1228,6 +1262,7 @@
       state.speed = Math.min(SPEED_MAX, SPEED_BASE + (state.level - 1) * 1.1 + state.levelTime * 0.12);
       laserCooldown = Math.max(0, laserCooldown - dt);
       updatePaddle(dt);
+      updateAim(dt);
       updateBalls(dt);
       updatePowerups(dt);
       updateBolts(dt);

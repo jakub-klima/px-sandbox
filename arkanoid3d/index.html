@@ -119,6 +119,11 @@
       text-shadow: 0 2px 6px rgba(0,0,0,.9);
       will-change: transform, opacity;
     }
+    #flash {
+      position: fixed; inset: 0; pointer-events: none; z-index: 5;
+      background: #fff; opacity: 0; transition: opacity .18s ease-out;
+      mix-blend-mode: screen;
+    }
     #vignette {
       position: fixed; inset: 0; pointer-events: none; z-index: 4;
       background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%);
@@ -127,6 +132,7 @@
 </head>
 <body>
   <canvas id="game"></canvas>
+  <div id="flash"></div>
   <div id="vignette"></div>
   <div id="floaters"></div>
 
@@ -469,6 +475,49 @@
     });
   }
 
+  // ---------- Rázové vlny ----------
+  const ringGeo = new THREE.RingGeometry(0.45, 1.0, 40);
+  ringGeo.rotateX(-Math.PI / 2);
+  const rings = [];
+  function shockwave(x, z, colorHex, size = 5.5, life = 0.45) {
+    let r = rings.find(q => !q.alive);
+    if (!r) {
+      r = {
+        mesh: new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
+          transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+        })), alive: false
+      };
+      scene.add(r.mesh);
+      rings.push(r);
+    }
+    r.alive = true; r.t = 0; r.life = life; r.size = size;
+    r.mesh.material.color.setHex(colorHex);
+    r.mesh.visible = true;
+    r.mesh.position.set(x, 0.12, z);
+    r.mesh.scale.setScalar(0.2);
+    r.mesh.material.opacity = 1;
+  }
+  function updateRings(dt) {
+    for (const r of rings) {
+      if (!r.alive) continue;
+      r.t += dt;
+      const k = r.t / r.life;
+      if (k >= 1) { r.alive = false; r.mesh.visible = false; continue; }
+      r.mesh.scale.setScalar(0.2 + k * r.size);
+      r.mesh.material.opacity = (1 - k) * (1 - k);
+    }
+  }
+
+  // Krátké zatuhnutí obrazu dodá zásahu důraz.
+  let freeze = 0;
+  const flashEl = document.getElementById('flash');
+  let flashTimer = null;
+  function screenFlash(alpha = 0.25) {
+    flashEl.style.opacity = String(alpha);
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => { flashEl.style.opacity = '0'; }, 60);
+  }
+
   // ---------- Bonusy ----------
   const POWERUPS = {
     life:   { label: '❤️', text: 'ŽIVOT +1',    color: 0xff4d6d, letter: '+', weight: 6 },
@@ -559,7 +608,7 @@
   const bolts = [];
   const particles = [];
   const buffs = { expand: 0, slow: 0, laser: 0, catch: 0 };
-  let laserCooldown = 0, shake = 0;
+  let laserCooldown = 0, shake = 0, lastComboFloat = -9;
 
   // ---------- Zvuk ----------
   let audioCtx = null, soundOn = true;
@@ -571,6 +620,26 @@
     }
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
   }
+  let noiseBuf = null;
+  function noiseBurst(dur = 0.35, vol = 0.09, freq = 900) {
+    if (!soundOn || !audioCtx) return;
+    if (!noiseBuf) {
+      noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.6, audioCtx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    }
+    const t = audioCtx.currentTime;
+    const src = audioCtx.createBufferSource(); src.buffer = noiseBuf;
+    const flt = audioCtx.createBiquadFilter(); flt.type = 'lowpass';
+    flt.frequency.setValueAtTime(freq, t);
+    flt.frequency.exponentialRampToValueAtTime(120, t + dur);
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(flt); flt.connect(g); g.connect(audioCtx.destination);
+    src.start(t); src.stop(t + dur);
+  }
+
   function beep(freq, dur = 0.08, type = 'square', vol = 0.06, slideTo = null) {
     if (!soundOn || !audioCtx) return;
     const t = audioCtx.currentTime;
@@ -692,16 +761,29 @@
     const mult = 1 + (state.combo - 1) * 0.5;
     const gain = Math.round(brick.score * mult);
     addScore(gain);
-    if (state.combo >= 3) floatText('×' + mult.toFixed(1), '#ffd166', brick.x, 2, brick.z);
+    if (state.combo >= 3 && depth === 0 && time - lastComboFloat > 0.3) {
+      lastComboFloat = time;
+      floatText('×' + mult.toFixed(1), '#ffd166', brick.x, 2, brick.z);
+    }
+
+    shockwave(brick.x, brick.z, BRICK_KINDS[brick.kind].color, brick.kind === 'E' ? 11 : 4.5,
+              brick.kind === 'E' ? 0.6 : 0.4);
 
     if (brick.kind === 'E') {
       shake = Math.max(shake, 0.9);
+      freeze = Math.max(freeze, 0.07);
+      screenFlash(0.3);
+      noiseBurst(0.45, 0.1, 1400);
       beep(90, 0.28, 'sawtooth', 0.09, 40);
       if (depth < 4) {
+        const before = state.score;
         for (const o of bricks) {
           if (!o.alive || o.kind === 'X') continue;
           const dx = o.x - brick.x, dz = o.z - brick.z;
           if (dx * dx + dz * dz < 5.4 * 5.4) destroyBrick(o, depth + 1);
+        }
+        if (depth === 0 && state.score > before) {
+          floatText('VÝBUCH +' + (state.score - before), '#ff9b3d', brick.x, 2.6, brick.z);
         }
       }
     } else {
@@ -887,6 +969,9 @@
     const info = POWERUPS[kind];
     floatText(info.text, '#' + info.color.toString(16).padStart(6, '0'), paddleX, 2.4, PADDLE_Z);
     beep(660, 0.12, 'triangle', 0.06, 1200);
+    setTimeout(() => beep(990, 0.1, 'triangle', 0.05, 1480), 70);
+    shockwave(paddleX, PADDLE_Z, info.color, 6, 0.5);
+    screenFlash(0.16);
     if (kind === 'life') {
       state.lives = Math.min(state.lives + 1, 6);
       updateHud();
@@ -1048,6 +1133,9 @@
     resetBuffs();
     paddleW = PADDLE_W_BASE;
     beep(220, 0.35, 'sawtooth', 0.07, 60);
+    noiseBurst(0.5, 0.07, 600);
+    screenFlash(0.22);
+    freeze = Math.max(freeze, 0.1);
     shake = 1.1;
     updateHud();
     if (state.lives <= 0) {
@@ -1106,7 +1194,9 @@
     b.vz = -Math.cos(ang);
     state.combo = 0;
     updateHud();
-    beep(180 + Math.abs(off) * 220, 0.07, 'triangle', 0.05);
+    b.squash = 0.14;
+    shockwave(b.x, PADDLE_Z, 0x18c8b0, 2.6, 0.28);
+    beep(150 + Math.abs(off) * 160, 0.11, 'sine', 0.07, 90);
 
     if (buffs.catch > 0) {
       b.stuck = true;
@@ -1170,6 +1260,13 @@
         }
       }
       b.mesh.position.set(b.x, BALL_R + 0.05, b.z);
+      if (b.squash > 0) {
+        b.squash = Math.max(0, b.squash - dt);
+        const k = b.squash / 0.14;
+        b.mesh.scale.set(1 + k * 0.35, 1 - k * 0.35, 1 + k * 0.2);
+      } else if (b.mesh.scale.x !== 1) {
+        b.mesh.scale.setScalar(1);
+      }
       // vlečka
       for (let t = b.trail.length - 1; t > 0; t--) b.trail[t].position.copy(b.trail[t - 1].position);
       b.trail[0].position.copy(b.mesh.position);
@@ -1291,10 +1388,11 @@
 
   function animate() {
     requestAnimationFrame(animate);
-    const dt = Math.min(0.033, clock.getDelta());
+    let dt = Math.min(0.033, clock.getDelta());
     time += dt;
+    if (freeze > 0) { freeze -= dt; dt = 0; }
 
-    if (state.mode === 'play') {
+    if (state.mode === 'play' && dt > 0) {
       state.levelTime += dt;
       // koule se v průběhu kola pozvolna zrychluje
       // rychlost roste s časem i s tím, kolik zdi už je pryč – konec kola je svižný
@@ -1318,6 +1416,7 @@
     }
 
     updateParticles(dt);
+    updateRings(dt);
     updateBricksVisual(dt, time);
 
     // otřesy kamery

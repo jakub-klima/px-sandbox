@@ -228,7 +228,7 @@
   const PADDLE_D = 1.3, PADDLE_H = 0.9;
 
   const SPEED_BASE = 22;
-  const SPEED_MAX = 34;
+  const SPEED_MAX = 30;
   const MAX_BOUNCE_ANGLE = 1.05; // rad (~60°)
   const AIM_MAX = 0.95;          // rozsah kývání zaměřovače
 
@@ -857,11 +857,44 @@
         mesh.scale.set(0.01, 0.01, 0.01);
         scene.add(mesh);
         bricks.push({
-          mesh, x: mesh.position.x, z: mesh.position.z,
+          mesh, x: mesh.position.x, z: mesh.position.z, baseX: mesh.position.x, row: j,
           hp, maxHp: hp, kind, alive: true, score: BRICK_KINDS[kind].score,
           grow: 0, delay: (j * 0.05 + i * 0.02)
         });
       }
+    }
+  }
+
+  // Od čtvrtého kola se řady houpou do stran. Rozkyv má každá řada podle
+  // toho, kolik má po krajích volného místa – plná řada se sotva pohne,
+  // krátká uprostřed se rozhoupe pořádně.
+  const rowDrift = [];
+  function computeRowDrift(n) {
+    rowDrift.length = 0;
+    const strength = n >= 4 ? Math.min(1, 0.4 + (n - 4) * 0.12) : 0;
+    const byRow = new Map();
+    for (const b of bricks) {
+      const r = byRow.get(b.row) || { min: Infinity, max: -Infinity };
+      r.min = Math.min(r.min, b.baseX);
+      r.max = Math.max(r.max, b.baseX);
+      byRow.set(b.row, r);
+    }
+    for (const [row, r] of byRow) {
+      const space = Math.min(r.min - BRICK_W / 2 + WALL_X, WALL_X - r.max - BRICK_W / 2) - 0.3;
+      rowDrift[row] = {
+        amp: Math.max(0, Math.min(2.4, space)) * strength,
+        speed: 0.45 + Math.min(0.5, n * 0.03),
+        phase: row * 1.1
+      };
+    }
+  }
+
+  function updateBrickDrift(t) {
+    for (const b of bricks) {
+      const d = rowDrift[b.row];
+      if (!d || d.amp <= 0.01) continue;
+      b.x = b.baseX + Math.sin(t * d.speed + d.phase) * d.amp;
+      b.mesh.position.x = b.x;
     }
   }
 
@@ -1073,8 +1106,8 @@
   function currentSpeed() {
     let s = state.speed;
     if (buffs.slow > 0) s *= 0.68;
-    if (buffs.rush > 0) s *= 1.32;
-    return clamp(s, 8, SPEED_MAX * 1.3);
+    if (buffs.rush > 0) s *= 1.28;
+    return clamp(s, 8, SPEED_MAX * 1.28);
   }
 
   // ---------- Skóre / životy ----------
@@ -1267,12 +1300,13 @@
     state.level = n;
     state.levelTime = 0;
     state.combo = 0;
-    state.speed = SPEED_BASE + (n - 1) * 1.1;
+    state.speed = SPEED_BASE + (n - 1) * 0.8;
     buildLevel(n);
     for (const p of powerups) scene.remove(p.mesh);
     powerups.length = 0;
     for (const b of bolts) scene.remove(b.mesh);
     bolts.length = 0;
+    computeRowDrift(n);
     state.lastKill = 0;
     state.wallSteps = 0;
     state.brickCount = breakableAlive();
@@ -1588,12 +1622,13 @@
       // rychlost roste s časem i s tím, kolik zdi už je pryč – konec kola je svižný
       const done = state.brickCount ? 1 - breakableAlive() / state.brickCount : 0;
       state.speed = Math.min(SPEED_MAX,
-        (SPEED_BASE + (state.level - 1) * 1.1 + state.levelTime * 0.12) * (1 + done * 0.3));
+        (SPEED_BASE + (state.level - 1) * 0.8 + state.levelTime * 0.1) * (1 + done * 0.25));
       if (state.levelTime - state.lastKill > 16) {
         if (advanceWall()) state.lastKill = state.levelTime;
         else state.lastKill = state.levelTime - 12;
       }
       laserCooldown = Math.max(0, laserCooldown - dt);
+      updateBrickDrift(time);
       updatePaddle(dt);
       updateAim(dt);
       updateBalls(dt);

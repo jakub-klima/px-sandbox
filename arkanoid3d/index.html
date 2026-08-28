@@ -56,8 +56,9 @@
       color: #fff; font-size: 18px; line-height: 1; cursor: pointer;
     }
     .iconBtn:active { transform: scale(.94); }
-    #soundBtn { top: 62px; right: 12px; }
-    #pauseBtn { top: 110px; right: 12px; }
+    /* dole vlevo, ať nepřekrývají skóre ani životy */
+    #soundBtn { left: 12px; bottom: 12px; }
+    #pauseBtn { left: 62px; bottom: 12px; }
 
     #fireBtn {
       position: fixed; right: 16px; bottom: 74px; z-index: 6;
@@ -115,8 +116,7 @@
       .big { font-size: 26px; }
       #lives { font-size: 18px; }
       #soundBtn, #pauseBtn { width: 46px; height: 46px; font-size: 20px; }
-      #soundBtn { top: 100px; }
-      #pauseBtn { top: 154px; }
+      #pauseBtn { left: 68px; }
       #fireBtn { width: 88px; height: 88px; right: 14px; bottom: 88px; }
       #buffs { bottom: 18px; }
     }
@@ -600,8 +600,85 @@
      "3X2222X3",
      "33333333",
      ".3X22X3.",
-     "..3333.."]
+     "..3333.."],
+
+    ["...11...",
+     "..1221..",
+     ".122221.",
+     "12233221",
+     ".122221.",
+     "..1221..",
+     "...11..."],
+
+    ["22....22",
+     "22.EE.22",
+     "22.22.22",
+     "2X.22.X2",
+     "22....22",
+     "11111111"],
+
+    ["3.3.3.3.",
+     ".3X3X3.3",
+     "3.3E3.3.",
+     ".3X3X3.3",
+     "3.3.3.3.",
+     "22222222"],
+
+    ["XX3333XX",
+     "X322223X",
+     "33E22E33",
+     "X322223X",
+     "XX3333XX",
+     "..2222.."],
+
+    ["33333333",
+     "3E3223E3",
+     "33322333",
+     "3X3223X3",
+     "33333333",
+     "3E3223E3",
+     ".333333."]
   ];
+
+
+  // Po ručně navržených kolech pokračuje hra generovanými vzory.
+  // Generátor je deterministický – stejné kolo vypadá vždy stejně.
+  function levelRandom(seed) {
+    let x = (seed * 1103515245 + 12345) >>> 0;
+    return () => {
+      x = (x * 1103515245 + 12345) >>> 0;
+      return ((x >>> 8) % 100000) / 100000;
+    };
+  }
+
+  function generatePattern(n) {
+    const rnd = levelRandom(n * 7919);
+    const rows = 5 + (n % 3);
+    const hardest = Math.min(3, 1 + Math.floor((n - LEVELS.length) / 4));
+    const solidChance = Math.min(0.12, 0.03 * (n - LEVELS.length));
+    const out = [];
+    let breakable = 0;
+    for (let j = 0; j < rows; j++) {
+      let half = '';
+      for (let i = 0; i < COLS / 2; i++) {
+        const r = rnd();
+        let ch;
+        if (r < 0.13) ch = '.';
+        else if (r < 0.13 + solidChance) ch = 'X';
+        else if (r < 0.20 + solidChance) ch = 'E';
+        else ch = String(1 + Math.floor(rnd() * hardest));
+        if (ch !== '.' && ch !== 'X') breakable++;
+        half += ch;
+      }
+      out.push(half + half.split('').reverse().join(''));
+    }
+    if (!breakable) out[rows - 1] = '22222222';
+    return out;
+  }
+
+  function levelPattern(n) {
+    return n <= LEVELS.length ? LEVELS[n - 1] : generatePattern(n);
+  }
 
   // ---------- Stav hry ----------
   const state = {
@@ -701,7 +778,7 @@
 
   function buildLevel(n) {
     clearBricks();
-    const pattern = LEVELS[(n - 1) % LEVELS.length];
+    const pattern = levelPattern(n);
     for (let j = 0; j < pattern.length; j++) {
       const row = pattern[j];
       for (let i = 0; i < COLS; i++) {

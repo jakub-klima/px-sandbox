@@ -111,6 +111,16 @@
     .legend div { display: flex; gap: 8px; align-items: baseline; opacity: .85; }
     .legend b { color: #7ffbe4; min-width: 18px; }
 
+    @media (max-width: 560px) {
+      .big { font-size: 26px; }
+      #lives { font-size: 18px; }
+      #soundBtn, #pauseBtn { width: 46px; height: 46px; font-size: 20px; }
+      #soundBtn { top: 100px; }
+      #pauseBtn { top: 154px; }
+      #fireBtn { width: 88px; height: 88px; right: 14px; bottom: 88px; }
+      #buffs { bottom: 18px; }
+    }
+
     /* Poletující text (bonusy, kombo) */
     #floaters { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
     .floater {
@@ -169,7 +179,7 @@
         <div><b>🧲</b><span>lepkavá pálka – koule se chytí</span></div>
       </div>
       <div class="keys">
-        <code>myš</code> / <code>prst</code> posouvá pálku &nbsp;·&nbsp; <code>←</code> <code>→</code> klávesnice<br>
+        <code>myš</code> míří přímo, <code>prstem</code> táhni kdekoliv po ploše &nbsp;·&nbsp; <code>←</code> <code>→</code> klávesnice<br>
         <code>mezerník</code> / <code>klik</code> vypustí kouli ve směru zaměřovače a střílí &nbsp;·&nbsp; <code>P</code> pauza
       </div>
       <button id="ovBtn">Hrát</button>
@@ -1006,18 +1016,34 @@
     return null;
   }
 
+  // Myš míří absolutně (kurzor = pálka), prst táhne relativně –
+  // hráč tak pálku neschovává pod dlaní a nemusí sahat na její pozici.
+  let dragId = null, dragX = 0;
+  const touchSens = () => (ARENA_W * 1.4) / Math.max(1, innerWidth);
+
   function onPointer(e) {
-    if (e.target.closest('button')) return;
+    if (e.target.closest && e.target.closest('button')) return;
+    if (e.pointerType === 'touch') {
+      if (e.pointerId !== dragId) return;
+      const lim = WALL_X - paddleW / 2;
+      paddleTargetX = clamp(paddleTargetX + (e.clientX - dragX) * touchSens(), -lim, lim);
+      dragX = e.clientX;
+      return;
+    }
     const x = pointerToArenaX(e.clientX, e.clientY);
     if (x !== null) paddleTargetX = x;
   }
   canvas.addEventListener('pointermove', onPointer);
   canvas.addEventListener('pointerdown', e => {
     ensureAudio();
-    onPointer(e);
+    if (e.pointerType === 'touch') { dragId = e.pointerId; dragX = e.clientX; }
+    else onPointer(e);
     if (state.mode !== 'play') return;
     if (!launchBalls()) fireLaser();
   });
+  const endDrag = e => { if (e.pointerId === dragId) dragId = null; };
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
 
   addEventListener('keydown', e => {
     if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
@@ -1428,7 +1454,11 @@
     }
     camera.lookAt(CAM_TARGET);
 
-    deadLine.material.opacity = 0.35 + Math.sin(time * 3) * 0.18;
+    let danger = 0;
+    for (const b of balls) if (!b.stuck) danger = Math.max(danger, (b.z + 12) / 14);
+    danger = clamp(danger, 0, 1);
+    deadLine.material.opacity = 0.3 + Math.sin(time * (3 + danger * 12)) * 0.18 + danger * 0.4;
+    deadLine.scale.z = 1 + danger * 1.6;
     renderer.render(scene, camera);
   }
 

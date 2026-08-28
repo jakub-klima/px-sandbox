@@ -548,7 +548,8 @@
   const state = {
     mode: 'menu',            // menu | play | pause | clear | over
     score: 0, best: 0, lives: 3, level: 1,
-    combo: 0, speed: SPEED_BASE, levelTime: 0, clearTimer: 0
+    combo: 0, speed: SPEED_BASE, levelTime: 0, clearTimer: 0,
+    lastKill: 0, wallSteps: 0, brickCount: 0
   };
   try { state.best = parseInt(localStorage.getItem('arkanoid3d_best') || '0', 10) || 0; } catch (e) {}
 
@@ -683,6 +684,7 @@
   function destroyBrick(brick, depth = 0) {
     if (!brick.alive) return;
     brick.alive = false;
+    state.lastKill = state.levelTime;
     scene.remove(brick.mesh);
     spawnParticles(brick.x, brick.z, BRICK_KINDS[brick.kind].color, brick.kind === 'E' ? 22 : 12);
 
@@ -732,6 +734,39 @@
 
   function bricksLeft() {
     return bricks.some(b => b.alive && b.kind !== 'X');
+  }
+
+  function breakableAlive() {
+    let n = 0;
+    for (const b of bricks) if (b.alive && b.kind !== 'X') n++;
+    return n;
+  }
+
+  // Když se dlouho nic nerozbilo, celá zeď se přisune blíž k pálce.
+  // Konec kola se tím nikdy nezasekne na pár cihlách vzadu.
+  const WALL_STEP = BRICK_D + ROW_GAP;
+  const WALL_LIMIT_Z = -14;
+  function advanceWall() {
+    let nearest = -Infinity;
+    for (const b of bricks) if (b.alive) nearest = Math.max(nearest, b.z);
+    if (nearest === -Infinity || nearest + WALL_STEP > WALL_LIMIT_Z) return false;
+    // neposouvej zeď na kouli
+    const hw = BRICK_W / 2 + BALL_R + 0.1, hd = BRICK_D / 2 + BALL_R + 0.1;
+    for (const ball of balls) {
+      for (const b of bricks) {
+        if (!b.alive) continue;
+        if (Math.abs(ball.x - b.x) < hw && Math.abs(ball.z + WALL_STEP - b.z) < hd) return false;
+      }
+    }
+    for (const b of bricks) {
+      b.z += WALL_STEP;
+      b.mesh.position.z = b.z;
+    }
+    state.wallSteps++;
+    shake = Math.max(shake, 0.7);
+    beep(120, 0.3, 'sawtooth', 0.07, 70);
+    floatText('ZEĎ SE PŘISOUVÁ!', '#ff7a3d', 0, 2.5, -18);
+    return true;
   }
 
   // ---------- Koule ----------
@@ -965,6 +1000,9 @@
     powerups.length = 0;
     for (const b of bolts) scene.remove(b.mesh);
     bolts.length = 0;
+    state.lastKill = 0;
+    state.wallSteps = 0;
+    state.brickCount = breakableAlive();
     resetBallOnPaddle();
     updateHud();
   }
@@ -1259,7 +1297,14 @@
     if (state.mode === 'play') {
       state.levelTime += dt;
       // koule se v průběhu kola pozvolna zrychluje
-      state.speed = Math.min(SPEED_MAX, SPEED_BASE + (state.level - 1) * 1.1 + state.levelTime * 0.12);
+      // rychlost roste s časem i s tím, kolik zdi už je pryč – konec kola je svižný
+      const done = state.brickCount ? 1 - breakableAlive() / state.brickCount : 0;
+      state.speed = Math.min(SPEED_MAX,
+        (SPEED_BASE + (state.level - 1) * 1.1 + state.levelTime * 0.12) * (1 + done * 0.3));
+      if (state.levelTime - state.lastKill > 16) {
+        if (advanceWall()) state.lastKill = state.levelTime;
+        else state.lastKill = state.levelTime - 12;
+      }
       laserCooldown = Math.max(0, laserCooldown - dt);
       updatePaddle(dt);
       updateAim(dt);

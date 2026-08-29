@@ -220,13 +220,17 @@
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
     }
   }
   </script>
 
   <script type="module">
   import * as THREE from 'three';
+  import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+  import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+  import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
   // ======================================================================
   //  Arkanoid 3D – 1. iterace
@@ -323,9 +327,36 @@
     }
   }
 
+  // ---------- Záře (bloom) ----------
+  // Neonová aréna z ní hodně těží, ale na slabém zařízení stojí moc výkonu,
+  // proto se po pár sekundách měření sama vypne (a volba se uloží).
+  const urlParams = new URLSearchParams(location.search);
+  const bloomParam = urlParams.get('bloom');
+  let bloomOn = bloomParam !== null
+    ? bloomParam === '1'
+    : (() => { try { return localStorage.getItem('arkanoid3d_bloom') !== 'off'; } catch (e) { return true; } })();
+  let composer = null, bloomPass = null;
+
+  function buildComposer() {
+    composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(innerWidth, innerHeight), 0.72, 0.8, 0.2);
+    composer.addPass(bloomPass);
+  }
+  if (bloomOn) buildComposer();
+
+  function setBloom(on) {
+    if (on === bloomOn) return;
+    bloomOn = on;
+    if (on && !composer) buildComposer();
+    try { localStorage.setItem('arkanoid3d_bloom', on ? 'on' : 'off'); } catch (e) {}
+  }
+
   function onResize() {
     const w = innerWidth, h = innerHeight;
     renderer.setSize(w, h, false);
+    if (composer) composer.setSize(w, h);
     camera.aspect = w / Math.max(1, h);
     fitCamera();
   }
@@ -1715,7 +1746,7 @@
 
   // ---------- Smyčka ----------
   const clock = new THREE.Clock();
-  let time = 0;
+  let time = 0, perfFrames = 0, perfT0 = 0, perfPhase = 0;
 
   function animate() {
     requestAnimationFrame(animate);
@@ -1766,7 +1797,28 @@
     danger = clamp(danger, 0, 1);
     deadLine.material.opacity = 0.3 + Math.sin(time * (3 + danger * 12)) * 0.18 + danger * 0.4;
     deadLine.scale.z = 1 + danger * 1.6;
-    renderer.render(scene, camera);
+    if (bloomOn && composer) composer.render();
+    else renderer.render(scene, camera);
+
+    // Po dvou sekundách rozehrání se čtyři sekundy měří skutečná snímková
+    // frekvence (reálný čas, ne herní); když nestačí, záře se vypne.
+    if (bloomOn && state.mode === 'play' && bloomParam === null && perfPhase < 3) {
+      const now = performance.now();
+      if (perfPhase === 0) { perfT0 = now; perfPhase = 1; }
+      else if (perfPhase === 1) {
+        if (now - perfT0 > 2000) { perfT0 = now; perfFrames = 0; perfPhase = 2; }
+      } else {
+        perfFrames++;
+        const elapsed = (now - perfT0) / 1000;
+        if (elapsed > 4) {
+          if (perfFrames / elapsed < 28) {
+            setBloom(false);
+            floatText('ZÁŘE VYPNUTA (výkon)', '#8a97a8', 0, 2, PADDLE_Z - 6);
+          }
+          perfPhase = 3;
+        }
+      }
+    }
   }
 
   // ---------- Start ----------

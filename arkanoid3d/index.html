@@ -204,6 +204,8 @@
         <div><b>🐌</b><span>zpomalení koule</span></div>
         <div><b>🔫</b><span>laser – střílej do cihel</span></div>
         <div><b>🧲</b><span>lepkavá pálka – koule se chytí</span></div>
+        <div><b>🛸</b><span>rušiči od 3. kola: sestřel je koulí nebo laserem,
+          jinak ti u pálky vybuchnou</span></div>
         <div><b>🔻</b><span>červené hroty = riziko: body navíc, ale užší pálka
           nebo rychlejší koule – chytat, nebo uhnout?</span></div>
       </div>
@@ -1132,6 +1134,97 @@
     return true;
   }
 
+  // ---------- Rušiči ----------
+  // Od 3. kola se z dálky snášejí drony. Koule i laser je rozbijí a dají body,
+  // ale když dolétnou k pálce, vybuchnou a na chvíli ji zúží.
+  const droneGeo = new THREE.IcosahedronGeometry(0.85, 0);
+  const droneMat = new THREE.MeshStandardMaterial({
+    color: 0x2a3550, emissive: 0xff6b1f, emissiveIntensity: 0.8,
+    roughness: 0.3, metalness: 0.6, flatShading: true
+  });
+  const drones = [];
+  let droneTimer = 0;
+
+  function spawnDrone() {
+    const mesh = new THREE.Mesh(droneGeo, droneMat);
+    const x = (Math.random() - 0.5) * (ARENA_W - 6);
+    mesh.position.set(x, 1.5, BACK_Z + 3);
+    mesh.castShadow = true;
+    scene.add(mesh);
+    drones.push({ mesh, x, baseX: x, z: BACK_Z + 3, t: Math.random() * 6, dead: false });
+    beep(300, 0.5, 'sine', 0.05, 190);
+  }
+
+  function killDrone(d, byPlayer) {
+    if (d.dead) return;
+    d.dead = true;
+    scene.remove(d.mesh);
+    drones.splice(drones.indexOf(d), 1);
+    spawnParticles(d.x, d.z, 0xff6b1f, 16);
+    shockwave(d.x, d.z, 0xff6b1f, 6, 0.45);
+    noiseBurst(0.3, 0.07, 1100);
+    if (byPlayer) {
+      addScore(220);
+      floatText('RUŠIČ +220', '#ff9b3d', d.x, 2.4, d.z);
+    }
+  }
+
+  function updateDrones(dt) {
+    // nasazování podle kola
+    if (state.level >= 3 && drones.length < 2) {
+      droneTimer -= dt;
+      if (droneTimer <= 0) {
+        spawnDrone();
+        droneTimer = Math.max(7, 15 - state.level * 0.4);
+      }
+    }
+    const hitR = BALL_R + 0.95;
+    for (let i = drones.length - 1; i >= 0; i--) {
+      const d = drones[i];
+      d.t += dt;
+      d.z += 3.1 * dt;
+      d.x = d.baseX + Math.sin(d.t * 1.3) * 3.2;
+      d.x = clamp(d.x, -WALL_X + 1.2, WALL_X - 1.2);
+      d.mesh.position.set(d.x, 1.5 + Math.sin(d.t * 2.5) * 0.25, d.z);
+      d.mesh.rotation.y += dt * 2.2;
+      d.mesh.rotation.x += dt * 1.3;
+      droneMat.emissiveIntensity = 0.6 + Math.sin(time * 7) * 0.35;
+
+      // srážka s koulí – dron končí a koule se odrazí
+      for (const b of balls) {
+        if (b.stuck) continue;
+        const dx = b.x - d.x, dz = b.z - d.z;
+        if (dx * dx + dz * dz < hitR * hitR) {
+          const len = Math.hypot(dx, dz) || 1;
+          b.vx = dx / len; b.vz = dz / len;
+          normalizeDir(b);
+          killDrone(d, true);
+          state.combo = Math.min(state.combo + 1, 9);
+          updateHud();
+          break;
+        }
+      }
+      if (d.dead) continue;
+
+      // dolétl k pálce
+      if (d.z > PADDLE_Z - 0.8) {
+        killDrone(d, false);
+        buffs.shrink = Math.max(buffs.shrink, 6);
+        buffs.expand = 0;
+        updateBuffs();
+        screenFlash(0.22);
+        shake = Math.max(shake, 0.8);
+        floatText('RUŠIČ ZASÁHL PÁLKU', '#ff3b6b', d.x, 2.4, PADDLE_Z);
+      }
+    }
+  }
+
+  function clearDrones() {
+    for (const d of drones) scene.remove(d.mesh);
+    drones.length = 0;
+    droneTimer = 12;
+  }
+
   // ---------- Koule ----------
   function newBall(x, z, vx, vz, stuck) {
     const mesh = new THREE.Mesh(ballGeo, ballMat);
@@ -1409,6 +1502,7 @@
     powerups.length = 0;
     for (const b of bolts) scene.remove(b.mesh);
     bolts.length = 0;
+    clearDrones();
     computeRowDrift(n);
     state.lastKill = 0;
     state.wallSteps = 0;
@@ -1668,6 +1762,11 @@
       bo.mesh.position.z = bo.z;
       let hit = bo.z < BACK_Z;
       if (!hit) {
+        for (const d of drones) {
+          if (Math.abs(bo.x - d.x) < 1.1 && Math.abs(bo.z - d.z) < 1.2) { killDrone(d, true); hit = true; break; }
+        }
+      }
+      if (!hit) {
         for (const br of bricks) {
           if (!br.alive) continue;
           if (Math.abs(bo.x - br.x) < hw && Math.abs(bo.z - br.z) < hd) { hitBrick(br); hit = true; break; }
@@ -1770,6 +1869,7 @@
       updatePaddle(dt);
       updateAim(dt);
       updateBalls(dt);
+      updateDrones(dt);
       updatePowerups(dt);
       updateBolts(dt);
       updateBuffTimers(dt);
@@ -1834,7 +1934,8 @@
 
   if (new URLSearchParams(location.search).get('dev') === '1') {
     window.__ark = {
-      state, balls, bricks, powerups, buffs, applyPowerup, destroyBrick, hitBrick, dropPowerup,
+      state, balls, bricks, powerups, buffs, drones, applyPowerup, destroyBrick, hitBrick,
+      dropPowerup, spawnDrone,
       get paddleX() { return paddleX; },
       set target(v) { paddleTargetX = v; }
     };

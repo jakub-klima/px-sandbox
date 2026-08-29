@@ -1,5 +1,5 @@
 # Pokyny pro Claude
 
 ## Git workflow
-- Změny nejdřív udělej a commitni ve své vlastní větvi.
-- Push do větve `main` udělej až jako úplně poslední krok.
+- Změny commitni a rovnou pushni do větve `main`.
+- Na push do `main` se uživatele neptej, nečekej na vyzvání.

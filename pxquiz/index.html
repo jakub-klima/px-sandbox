@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#07070f">
+<title>PxQuiz</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.92em%22 font-size=%2290%22>%E2%9D%93</text></svg>">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #07070f;
+    --fg: #eef2ff;
+    --dim: #8a90b8;
+    --line: rgba(150, 160, 255, 0.18);
+    --accent: #7c5cff;
+    --a0: #e0245e;
+    --a1: #2d7ff9;
+    --a2: #f5a623;
+    --a3: #17b978;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--fg);
+    background:
+      radial-gradient(circle at 12% 8%, rgba(124, 92, 255, 0.16), transparent 45%),
+      radial-gradient(circle at 88% 4%, rgba(0, 220, 190, 0.12), transparent 45%),
+      linear-gradient(170deg, #07070f, #0b0b18 60%, #050509);
+    background-attachment: fixed;
+    overflow: hidden;
+  }
+
+  .screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    padding: clamp(0.9rem, 2.4vmin, 2rem);
+    gap: clamp(0.6rem, 1.6vmin, 1.4rem);
+  }
+
+  .screen[hidden] { display: none; }
+
+  button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    border: 0;
+    background: none;
+  }
+
+  h1 { margin: 0; }
+
+  /* ---------- obecné prvky ---------- */
+
+  .brand {
+    font-size: clamp(2rem, 7vmin, 4.6rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .brand span { color: var(--accent); }
+
+  .muted { color: var(--dim); }
+
+  .btn {
+    padding: 0.85rem 1.5rem;
+    border-radius: 14px;
+    background: rgba(124, 92, 255, 0.14);
+    border: 1px solid rgba(124, 92, 255, 0.45);
+    font-weight: 700;
+    font-size: clamp(1rem, 2.2vmin, 1.3rem);
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  .btn:hover { background: rgba(124, 92, 255, 0.26); }
+  .btn:active { transform: scale(0.97); }
+  .btn.ghost {
+    background: transparent;
+    border-color: var(--line);
+    color: var(--dim);
+    font-weight: 600;
+  }
+  .btn.big {
+    padding: 1.15rem 2rem;
+    font-size: clamp(1.1rem, 3vmin, 1.6rem);
+  }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+
+  input {
+    font: inherit;
+    color: var(--fg);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    width: 100%;
+    text-align: center;
+    font-size: 1.3rem;
+    font-weight: 700;
+  }
+  input:focus { outline: 2px solid rgba(124, 92, 255, 0.6); outline-offset: 1px; }
+
+  .center {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+
+  .stack { display: flex; flex-direction: column; gap: 0.8rem; width: min(420px, 100%); }
+
+  .row { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; justify-content: center; }
+
+  /* ---------- start ---------- */
+
+  #scr-start .tagline {
+    font-size: clamp(0.95rem, 2vmin, 1.15rem);
+    max-width: 34ch;
+    line-height: 1.5;
+  }
+
+  /* ---------- lobby (TV) ---------- */
+
+  .lobby-wrap {
+    flex: 1;
+    display: flex;
+    gap: clamp(1rem, 4vmin, 3rem);
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .joincard {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.9rem;
+  }
+
+  #qr {
+    width: clamp(160px, 30vmin, 340px);
+    aspect-ratio: 1;
+    background: #fff;
+    border-radius: 16px;
+    padding: 10px;
+    display: flex;
+  }
+  #qr svg, #qr img { width: 100%; height: 100%; display: block; }
+  #qr[hidden] { display: none; }
+
+  .code {
+    font-size: clamp(2.6rem, 11vmin, 7rem);
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    line-height: 1;
+    color: #fff;
+    text-shadow: 0 0 30px rgba(124, 92, 255, 0.7);
+    padding-left: 0.14em;
+  }
+
+  .url {
+    font-size: clamp(0.9rem, 2vmin, 1.35rem);
+    color: var(--dim);
+    word-break: break-all;
+  }
+
+  .players {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    justify-content: center;
+    align-content: flex-start;
+    min-height: 3rem;
+  }
+
+  #lobby-players {
+    width: 100%;
+    margin-top: clamp(0.5rem, 3vmin, 2rem);
+  }
+  #lobby-players .chip {
+    font-size: clamp(1rem, 3vmin, 2rem);
+    padding: 0.55rem 1.4rem;
+  }
+
+  .chip {
+    padding: 0.5rem 1.1rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.05);
+    font-weight: 700;
+    font-size: clamp(0.95rem, 2.2vmin, 1.4rem);
+  }
+  /* animuje se jen nově přibylý hráč, ne celý seznam znovu */
+  .chip.fresh { animation: pop 0.25s ease; }
+  .chip.off { opacity: 0.35; }
+  .chip.done { border-color: rgba(23, 185, 120, 0.8); background: rgba(23, 185, 120, 0.18); }
+
+  @keyframes pop {
+    from { transform: scale(0.7); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  /* ---------- otázka ---------- */
+
+  .qhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: clamp(0.85rem, 2vmin, 1.3rem);
+    font-weight: 700;
+    color: var(--dim);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .bar {
+    height: clamp(8px, 1.4vmin, 16px);
+    border-radius: 99px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .bar > i {
+    display: block;
+    height: 100%;
+    width: 100%;
+    border-radius: 99px;
+    background: linear-gradient(90deg, #17b978, #f5a623 65%, #e0245e);
+    transform-origin: left;
+  }
+
+  .qtext {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: clamp(1.5rem, 5.6vmin, 4.2rem);
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    padding: 0.5rem;
+  }
+
+  .answers {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(0.5rem, 1.4vmin, 1rem);
+  }
+
+  .ans {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: clamp(0.7rem, 2vmin, 1.4rem) clamp(0.9rem, 2.4vmin, 1.8rem);
+    min-height: clamp(56px, 12vmin, 140px);
+    border-radius: 16px;
+    font-size: clamp(1rem, 3vmin, 2.2rem);
+    font-weight: 700;
+    text-align: left;
+    background: var(--c);
+    color: #fff;
+    box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.25);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  .ans .sh { font-size: 1.15em; line-height: 1; opacity: 0.9; }
+  .ans.faded { opacity: 0.22; transform: scale(0.97); }
+  .ans.win { animation: win 0.6s ease; box-shadow: inset 0 -4px 0 rgba(0,0,0,.25), 0 0 0 4px #fff; }
+
+  @keyframes win {
+    0%, 100% { transform: scale(1); }
+    40% { transform: scale(1.05); }
+  }
+
+  .a0 { --c: var(--a0); }
+  .a1 { --c: var(--a1); }
+  .a2 { --c: var(--a2); }
+  .a3 { --c: var(--a3); }
+
+  /* ---------- scoreboard ---------- */
+
+  .board {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    width: min(760px, 100%);
+    margin: 0 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .brow {
+    display: grid;
+    grid-template-columns: 2.2rem 1fr auto auto;
+    gap: 0.8rem;
+    align-items: center;
+    padding: clamp(0.5rem, 1.4vmin, 0.9rem) clamp(0.7rem, 2vmin, 1.2rem);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--line);
+    font-size: clamp(1rem, 2.4vmin, 1.6rem);
+    font-weight: 700;
+    text-align: left;
+  }
+  .brow .pos { color: var(--dim); }
+  .brow .gain { color: #17b978; font-variant-numeric: tabular-nums; }
+  .brow .gain.zero { color: #6b6f8e; }
+  .brow .sc { font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
+  .brow.top { border-color: rgba(245, 166, 35, 0.6); background: rgba(245, 166, 35, 0.1); }
+
+  #e-board .brow {
+    grid-template-columns: 3.2rem 1fr auto auto;
+    font-size: clamp(1.1rem, 3.2vmin, 2.4rem);
+    padding: clamp(0.7rem, 2vmin, 1.2rem) clamp(0.9rem, 2.4vmin, 1.5rem);
+  }
+
+  /* ---------- telefon ---------- */
+
+  body.mode-phone .screen { padding: 0.8rem; gap: 0.7rem; }
+
+  .phead {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 700;
+    font-size: 1rem;
+    padding: 0.1rem 0.2rem;
+  }
+  .phead .sc { color: #b9a5ff; font-variant-numeric: tabular-nums; }
+
+  .pad {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 0.7rem;
+  }
+
+  .pbtn {
+    border-radius: 20px;
+    background: var(--c);
+    color: #fff;
+    font-weight: 800;
+    font-size: 1.05rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.6rem;
+    text-align: center;
+    line-height: 1.25;
+    box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.28);
+    transition: opacity 0.2s ease, transform 0.1s ease;
+  }
+  .pbtn .sh { font-size: 2rem; line-height: 1; }
+  .pbtn:active { transform: scale(0.96); }
+  .pbtn.dim { opacity: 0.22; }
+  .pbtn.pick { outline: 4px solid #fff; }
+
+  .verdict {
+    font-size: clamp(3rem, 22vmin, 8rem);
+    line-height: 1;
+  }
+  body.mode-phone .gain {
+    font-size: clamp(1.6rem, 9vmin, 3rem);
+    font-weight: 800;
+  }
+
+  /* žlutá potřebuje tmavý text, jinak není čitelná */
+  .ans.a2, .pbtn.a2 { color: #2a1c00; }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 1rem;
+    transform: translateX(-50%);
+    padding: 0.6rem 1.2rem;
+    border-radius: 99px;
+    background: rgba(224, 36, 94, 0.9);
+    font-weight: 700;
+    font-size: 0.95rem;
+    z-index: 10;
+  }
+  .toast[hidden] { display: none; }
+
+  .spinner {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    border: 4px solid rgba(255,255,255,0.15);
+    border-top-color: var(--accent);
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .pulse { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+  .tvfoot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    font-size: clamp(0.8rem, 1.8vmin, 1.1rem);
+    color: var(--dim);
+  }
+</style>
+</head>
+<body>
+
+<!-- ======== ÚVOD ======== -->
+<section class="screen center" id="scr-start" hidden>
+  <div class="brand">Px<span>Quiz</span></div>
+  <p class="tagline muted">Kvízová party hra. Otevři si tuhle stránku na televizi, ostatní se připojí telefonem.</p>
+  <div class="stack">
+    <button class="btn big" id="btn-host">📺 Spustit na TV</button>
+    <button class="btn ghost" id="btn-showjoin">📱 Připojit se jako hráč</button>
+  </div>
+  <div class="stack" id="joinbox" hidden>
+    <input id="in-code" maxlength="4" placeholder="KÓD" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    <button class="btn" id="btn-gojoin">Pokračovat</button>
+  </div>
+</section>
+
+<!-- ======== TV: LOBBY ======== -->
+<section class="screen" id="scr-lobby" hidden>
+  <div class="row" style="justify-content: space-between;">
+    <div class="brand">Px<span>Quiz</span></div>
+    <button class="btn ghost" id="btn-fs">⛶ Celá obrazovka</button>
+  </div>
+
+  <div class="lobby-wrap">
+    <div class="joincard">
+      <div id="qr"></div>
+      <div class="url" id="lobby-url"></div>
+    </div>
+    <div class="joincard">
+      <div class="muted" style="font-size: clamp(.9rem,2vmin,1.3rem); letter-spacing:.1em;">KÓD HRY</div>
+      <div class="code" id="lobby-code">····</div>
+    </div>
+    <div class="players" id="lobby-players"></div>
+  </div>
+
+  <div class="tvfoot">
+    <span id="lobby-hint" class="muted">Naskenuj QR kód mobilem a připoj se.</span>
+    <button class="btn" id="btn-start" disabled>▶ Spustit hru</button>
+  </div>
+</section>
+
+<!-- ======== TV: OTÁZKA ======== -->
+<section class="screen" id="scr-q" hidden>
+  <div class="qhead">
+    <span id="q-cat"></span>
+    <span id="q-num"></span>
+  </div>
+  <div class="bar"><i id="q-bar"></i></div>
+  <div class="qtext" id="q-text"></div>
+  <div class="answers" id="q-answers"></div>
+  <div class="players" id="q-players" style="min-height: 0;"></div>
+</section>
+
+<!-- ======== TV: VYHODNOCENÍ ======== -->
+<section class="screen" id="scr-reveal" hidden>
+  <div class="qhead">
+    <span id="r-cat"></span>
+    <span id="r-num"></span>
+  </div>
+  <div class="qtext" id="r-text" style="flex: 0; font-size: clamp(1.1rem, 3vmin, 2.2rem);"></div>
+  <div class="answers" id="r-answers"></div>
+  <div class="board" id="r-board" style="flex: 1; justify-content: center;"></div>
+</section>
+
+<!-- ======== TV: KONEC ======== -->
+<section class="screen center" id="scr-end" hidden>
+  <div class="brand" style="font-size: clamp(1.6rem, 5vmin, 3rem);">🏆 Konec hry</div>
+  <div class="board" id="e-board"></div>
+  <button class="btn big" id="btn-again">↻ Hrát znovu</button>
+</section>
+
+<!-- ======== TELEFON: JMÉNO ======== -->
+<section class="screen center" id="scr-name" hidden>
+  <div class="brand" style="font-size: clamp(1.8rem, 9vmin, 3rem);">Px<span>Quiz</span></div>
+  <p class="muted">Hra <b id="name-code"></b></p>
+  <div class="stack">
+    <input id="in-name" maxlength="12" placeholder="Tvoje jméno" autocomplete="off">
+    <button class="btn big" id="btn-join">Připojit se</button>
+  </div>
+</section>
+
+<!-- ======== TELEFON: ČEKÁNÍ ======== -->
+<section class="screen center" id="scr-wait" hidden>
+  <div class="spinner" id="wait-spin"></div>
+  <div style="font-size: 1.4rem; font-weight: 800;" id="wait-title">Připojuji…</div>
+  <div class="muted" id="wait-sub"></div>
+  <button class="btn big" id="btn-pstart" hidden>▶ Spustit hru</button>
+</section>
+
+<!-- ======== TELEFON: ODPOVĚĎ ======== -->
+<section class="screen" id="scr-play" hidden>
+  <div class="phead">
+    <span id="p-name"></span>
+    <span id="p-num" class="muted"></span>
+    <span class="sc" id="p-score">0</span>
+  </div>
+  <div class="pad" id="p-pad"></div>
+  <div class="muted" style="text-align:center; font-size:.9rem;" id="p-status">Vyber odpověď</div>
+</section>
+
+<!-- ======== TELEFON: VÝSLEDEK KOLA ======== -->
+<section class="screen center" id="scr-result" hidden>
+  <div class="verdict" id="res-icon"></div>
+  <div class="gain" id="res-gain"></div>
+  <div class="muted" id="res-rank"></div>
+</section>
+
+<!-- ======== TELEFON: KONEC ======== -->
+<section class="screen center" id="scr-pend" hidden>
+  <div class="verdict" id="pe-icon">🏁</div>
+  <div style="font-size: 1.6rem; font-weight: 800;" id="pe-place"></div>
+  <div class="muted" id="pe-score"></div>
+  <button class="btn big" id="btn-pagain">↻ Hrát znovu</button>
+</section>
+
+<!-- ======== CHYBA ======== -->
+<section class="screen center" id="scr-error" hidden>
+  <div class="verdict">⚠️</div>
+  <div style="font-size: 1.2rem; font-weight: 700; max-width: 30ch;" id="err-text"></div>
+  <button class="btn" onclick="location.reload()">Zkusit znovu</button>
+</section>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="questions.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

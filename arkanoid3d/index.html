@@ -216,6 +216,8 @@
         <div><b>🐌</b><span>zpomalení koule</span></div>
         <div><b>🔫</b><span>laser – střílej do cihel</span></div>
         <div><b>🧲</b><span>lepkavá pálka – koule se chytí</span></div>
+        <div><b>🔥</b><span>pět cihel bez doteku pálky kouli zapálí –
+          na čtyři zásahy propaluje zeď skrz</span></div>
         <div><b>🛸</b><span>rušiči od 3. kola: sestřel je koulí nebo laserem,
           jinak ti u pálky vybuchnou</span></div>
         <div><b>🔻</b><span>červené hroty = riziko: body navíc, ale užší pálka
@@ -1401,21 +1403,45 @@
 
   // ---------- Koule ----------
   function newBall(x, z, vx, vz, stuck) {
-    const mesh = new THREE.Mesh(ballGeo, ballMat);
+    const mesh = new THREE.Mesh(ballGeo, ballMat.clone());
     mesh.castShadow = true;
     mesh.position.set(x, BALL_R + 0.05, z);
     scene.add(mesh);
     const light = new THREE.PointLight(0x9ff7ff, 8, 12, 2);
     mesh.add(light);
     const trail = [];
+    const tMat = trailMat.clone();
     for (let i = 0; i < 6; i++) {
-      const t = new THREE.Mesh(ballGeo, trailMat);
+      const t = new THREE.Mesh(ballGeo, tMat);
       t.scale.setScalar(0.75 - i * 0.1);
       t.position.copy(mesh.position);
       scene.add(t);
       trail.push(t);
     }
-    balls.push({ mesh, trail, x, z, vx, vz, stuck: !!stuck, offset: 0 });
+    balls.push({ mesh, trail, tMat, x, z, vx, vz, stuck: !!stuck, offset: 0, fire: 0 });
+  }
+
+  // Pět zásahů bez doteku pálky kouli zapálí: projde skrz cihly,
+  // dokud nespálí čtyři nebo se nevrátí na pálku.
+  const FIRE_HITS = 4;
+  function igniteBall(b) {
+    b.fire = FIRE_HITS;
+    b.mesh.material.emissive.setHex(0xff7a1f);
+    b.mesh.material.color.setHex(0xffd9a0);
+    b.tMat.color.setHex(0xff9b3d);
+    floatText('OHNIVÁ KOULE!', '#ff9b3d', b.x, 2.4, b.z);
+    screenFlash(0.14);
+    beep(320, 0.22, 'sawtooth', 0.06, 900);
+    el.combo.style.color = '#ff9b3d';
+  }
+
+  function extinguishBall(b) {
+    if (b.fire <= 0) return;
+    b.fire = 0;
+    b.mesh.material.emissive.setHex(0x9ff7ff);
+    b.mesh.material.color.setHex(0xffffff);
+    b.tMat.color.setHex(0x7ffbe4);
+    if (!balls.some(o => o.fire > 0)) el.combo.style.color = '';
   }
 
   function removeBall(b) {
@@ -1423,9 +1449,13 @@
     for (const t of b.trail) scene.remove(t);
     const i = balls.indexOf(b);
     if (i >= 0) balls.splice(i, 1);
+    if (!balls.some(o => o.fire > 0)) el.combo.style.color = '';
   }
 
-  function clearBalls() { while (balls.length) removeBall(balls[0]); }
+  function clearBalls() {
+    while (balls.length) removeBall(balls[0]);
+    el.combo.style.color = '';
+  }
 
   function resetBallOnPaddle() {
     aimAngle = 0; aimSwing = Math.random() < 0.5 ? -1 : 1;
@@ -1837,6 +1867,7 @@
     b.vx = Math.sin(ang);
     b.vz = -Math.cos(ang);
     state.combo = 0;
+    extinguishBall(b);
     updateHud();
     b.squash = 0.14;
     shockwave(b.x, PADDLE_Z, 0x18c8b0, 2.6, 0.28);
@@ -1855,6 +1886,14 @@
       if (!br.alive) continue;
       const dx = b.x - br.x, dz = b.z - br.z;
       if (Math.abs(dx) > hw || Math.abs(dz) > hd) continue;
+      // ohnivá koule cihlu propálí a letí dál beze změny směru
+      if (b.fire > 0 && br.kind !== 'X') {
+        destroyBrick(br);
+        spawnParticles(br.x, br.z, 0xff7a1f, 8);
+        b.fire--;
+        if (b.fire <= 0) extinguishBall(b);
+        return false;
+      }
       // odraz podle menšího průniku
       const px = hw - Math.abs(dx), pz = hd - Math.abs(dz);
       if (px < pz) {
@@ -1865,6 +1904,7 @@
         b.vz = Math.abs(b.vz) * Math.sign(dz || 1);
       }
       hitBrick(br);
+      if (state.combo >= 5 && b.fire <= 0) igniteBall(b);
       return true;
     }
     return false;

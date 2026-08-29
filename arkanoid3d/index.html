@@ -1399,9 +1399,9 @@
     // echo v rytmu skladby – bez něj zní všechno ploše
     delayNode = audioCtx.createDelay(1.2);
     delayNode.delayTime.value = 0.3;
-    const fb = audioCtx.createGain(); fb.gain.value = 0.34;
+    const fb = audioCtx.createGain(); fb.gain.value = 0.2;
     delayNode.connect(fb); fb.connect(delayNode);
-    const echoWet = audioCtx.createGain(); echoWet.gain.value = 0.7;
+    const echoWet = audioCtx.createGain(); echoWet.gain.value = 0.5;
     delayNode.connect(echoWet); echoWet.connect(duckGain);
 
     reverb = audioCtx.createConvolver();
@@ -1689,10 +1689,19 @@
   function musicTick() {
     if (!audioCtx || !soundOn || state.mode !== 'play') { nextNoteAt = 0; return; }
     const now = audioCtx.currentTime;
-    if (!nextNoteAt || nextNoteAt < now - 0.8) { nextNoteAt = now + 0.05; musicStep = 0; }
     const done = state.brickCount ? 1 - breakableAlive() / state.brickCount : 0;
-    const bpm = 94 + Math.min(28, (state.level - 1) * 2.2) + done * 24;
+    const bpm = 92 + Math.min(20, (state.level - 1) * 1.6) + done * 16;
     const stepDur = 30 / bpm;                 // osminy
+    if (!nextNoteAt) {
+      nextNoteAt = now + 0.05;
+    } else if (nextNoteAt < now) {
+      // Po zadrhnutí se nesmí fráze rozjet znovu od začátku – to by se
+      // překryla s tóny, které už jsou naplánované. Zameškané kroky se
+      // přeskočí a skladba plyne dál na svém místě.
+      const missed = Math.ceil((now - nextNoteAt) / stepDur);
+      musicStep += missed;
+      nextNoteAt += missed * stepDur;
+    }
     if (delayNode) delayNode.delayTime.value = Math.min(0.9, stepDur * 1.5);  // tečkovaná osmina
     while (nextNoteAt < now + 0.55) {   // předstih přežije i propad snímků
       playMusicStep(musicStep, nextNoteAt, stepDur);
@@ -1767,31 +1776,29 @@
     if (beat === 0) {
       for (const n of ch.tri) {
         mVoice({ freq: hz(n - 12), type: 'triangle', gain: 0.055, attack: 0.15,
-                 release: stepDur * 7.5, delay: d, detune: 8,
+                 release: stepDur * 5.5, delay: d, detune: 8,
                  filter: 'lowpass', cutoff: 1100 + intensity * 350, reverb: 0.4 });
       }
     }
 
-    // ---- arpeggio z tónů akordu ----
-    if (intensity >= 2 && beat % 2 === 1) {
-      const n = ch.tri[((i / 2) | 0) % ch.tri.length] + (beat > 4 ? 12 : 0);
-      mVoice({ freq: hz(n), type: 'square', gain: 0.085, attack: 0.004,
-               release: stepDur * 0.7, delay: d + swing, detune: 7,
-               filter: 'lowpass', cutoff: 2400, cutoffTo: 1100, reverb: 0.18, echo: 0.28 });
-    }
+    // ---- melodie a arpeggio ----
+    // Vedou spolu jeden hlas: kde zpívá melodie, arpeggio mlčí. Dvě
+    // melodické linky přes sebe zněly zmateně.
+    const leadIdx = intensity >= 3 ? LEAD[phrase][(barIdx % 4) * 8 + beat] : null;
+    const leadPlaying = leadIdx !== null && leadIdx !== undefined;
 
-    // ---- melodie ----
-    if (intensity >= 3) {
-      const idx = LEAD[phrase][(barIdx % 4) * 8 + beat];
-      if (idx !== null && idx !== undefined) {
-        const n = ch.scale[Math.min(ch.scale.length - 1, idx)];
-        mVoice({ freq: hz(n), type: 'sawtooth', gain: 0.13, attack: 0.008,
-                 release: stepDur * 1.6, delay: d + swing, detune: 11,
-                 filter: 'lowpass', cutoff: 1700 + intensity * 500, cutoffTo: 900, q: 2,
-                 reverb: 0.25, echo: 0.34 });
-        mVoice({ freq: hz(n + 12), type: 'triangle', gain: 0.045, attack: 0.006,
-                 release: stepDur * 0.9, delay: d + swing, echo: 0.2 });
-      }
+    if (leadPlaying) {
+      const n = ch.scale[Math.min(ch.scale.length - 1, leadIdx)];
+      mVoice({ freq: hz(n), type: 'sawtooth', gain: 0.14, attack: 0.01,
+               release: stepDur * 1.5, delay: d + swing, detune: 7,
+               filter: 'lowpass', cutoff: 1600, cutoffTo: 850, q: 1.5,
+               reverb: 0.22, echo: 0.2 });
+    } else if (intensity >= 2 && beat % 2 === 1) {
+      // arpeggio drží spodní polohu, aby melodii nelezlo do rejstříku
+      const n = ch.tri[((i / 2) | 0) % ch.tri.length] - 12;
+      mVoice({ freq: hz(n), type: 'square', gain: 0.07, attack: 0.004,
+               release: stepDur * 0.55, delay: d + swing, detune: 5,
+               filter: 'lowpass', cutoff: 1700, cutoffTo: 900, reverb: 0.12 });
     }
   }
 

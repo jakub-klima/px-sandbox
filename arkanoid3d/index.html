@@ -223,7 +223,7 @@
       </div>
       <div class="keys">
         <code>myš</code> míří přímo, <code>prstem</code> táhni kdekoliv po ploše &nbsp;·&nbsp; <code>←</code> <code>→</code> klávesnice<br>
-        <code>mezerník</code> / <code>klik</code> vypustí kouli ve směru zaměřovače a střílí &nbsp;·&nbsp; <code>P</code> pauza
+        <code>mezerník</code> / <code>klik</code> vypustí kouli ve směru zaměřovače a střílí &nbsp;·&nbsp; <code>P</code> pauza · <code>R</code> nová hra
       </div>
       <div class="stats" id="menuBest"></div>
       <button id="ovBtn">Hrát</button>
@@ -769,6 +769,8 @@
     return n <= LEVELS.length ? LEVELS[n - 1] : generatePattern(n);
   }
 
+  const clock = new THREE.Clock();
+
   // ---------- Stav hry ----------
   const state = {
     mode: 'menu',            // menu | play | pause | clear | over
@@ -784,7 +786,7 @@
   const bolts = [];
   const particles = [];
   const buffs = { expand: 0, slow: 0, laser: 0, catch: 0, shrink: 0, rush: 0 };
-  let laserCooldown = 0, shake = 0, lastComboFloat = -9;
+  let laserCooldown = 0, shake = 0, lastComboFloat = -9, noPauseUntil = 0;
 
   // Statistiky jednoho běhu – shrnutí po konci hry.
   const run = { bricks: 0, bestCombo: 0, powerups: 0, risks: 0, started: 0 };
@@ -1601,13 +1603,15 @@
   addEventListener('keydown', e => {
     if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
     if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
-    if (e.code === 'Space') {
+    if (e.code === 'Space' || e.code === 'Enter') {
       e.preventDefault();
       ensureAudio();
       if (state.mode === 'play') { if (!launchBalls()) fireLaser(); }
+      else if (state.mode === 'clear') nextLevel();
       else if (state.mode === 'menu' || state.mode === 'over') startGame();
       else if (state.mode === 'pause') resume();
     }
+    if (e.code === 'KeyR' && (state.mode === 'over' || state.mode === 'pause')) startGame();
     if (e.code === 'KeyP' || e.code === 'Escape') togglePause();
   });
   addEventListener('keyup', e => {
@@ -1616,6 +1620,16 @@
   });
 
   el.fireBtn.addEventListener('click', () => { ensureAudio(); fireLaser(); });
+
+  // Přepnutí panelu nebo odchod z okna hru zastaví – jinak by koule
+  // mezitím propadla a hráč by přišel o život.
+  // Přechod do celé obrazovky v některých prohlížečích vyvolá blur –
+  // chvíli po startu hry proto pauzu ignorujeme.
+  function autoPause() {
+    if (state.mode === 'play' && performance.now() > noPauseUntil) togglePause();
+  }
+  addEventListener('blur', autoPause);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) autoPause(); });
 
   const soundBtn = document.getElementById('soundBtn');
   soundBtn.addEventListener('click', () => {
@@ -1709,6 +1723,7 @@
 
   function startGame() {
     resetRun();
+    noPauseUntil = performance.now() + 900;
     state.score = 0;
     state.lives = 3;
     resetBuffs();
@@ -1734,6 +1749,7 @@
   }
   function resume() {
     if (state.mode !== 'pause') return;
+    clock.getDelta();          // zahoď čas strávený v pauze
     state.mode = 'play';
     hidePanel();
     updateBuffs();
@@ -1788,7 +1804,7 @@
     setTimeout(() => beep(880, 0.18, 'triangle', 0.06, 1760), 130);
     showPanel(`<h2>Kolo ${state.level} splněno!</h2>
       <div class="stats">Bonus <b>+${bonus}</b><br>Skóre <b>${state.score.toLocaleString('cs-CZ')}</b></div>
-      <button id="ovNext">Další kolo</button>`);
+      <button id="ovNext">Další kolo (mezerník)</button>`);
     document.getElementById('ovNext').onclick = nextLevel;
   }
 
@@ -2023,7 +2039,6 @@
   }
 
   // ---------- Smyčka ----------
-  const clock = new THREE.Clock();
   let time = 0, perfFrames = 0, perfT0 = 0, perfPhase = 0;
 
   function animate() {

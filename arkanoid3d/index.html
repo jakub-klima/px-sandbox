@@ -1355,10 +1355,11 @@
   // ---------- Zvuk ----------
   // Malý syntezátor: každý zvuk je několik hlasů s obálkou a filtrem,
   // vše jde přes sběrnice do kompresoru a krátkého dozvuku arény.
-  let audioCtx = null, soundOn = true;
-  let master = null, sfxBus = null, musicBus = null, reverb = null, noiseBuf = null;
+  let audioCtx = null, soundOn = true, musicTimer = null;
+  let master = null, sfxBus = null, musicBus = null, drumBus = null, duckGain = null;
+  let reverb = null, delayNode = null, noiseBuf = null;
   const MASTER_LEVEL = 2.0;   // celkový mix byl proti systémové hlasitosti moc tichý
-  const MUSIC_LEVEL = 0.18;   // hudba je znatelně hlasitější než dřív
+  const MUSIC_LEVEL = 0.15;   // aranž je hustší než dřív, tak stačí míň
   const SFX_LEVEL = 0.65;
 
   try { soundOn = localStorage.getItem('arkanoid3d_sound') !== 'off'; } catch (e) {}
@@ -1389,7 +1390,19 @@
     comp.connect(audioCtx.destination);
 
     sfxBus = audioCtx.createGain(); sfxBus.gain.value = SFX_LEVEL; sfxBus.connect(master);
-    musicBus = audioCtx.createGain(); musicBus.gain.value = MUSIC_LEVEL; musicBus.connect(master);
+
+    // melodická část se při každém kopáku na okamžik přidusí, bicí ne
+    duckGain = audioCtx.createGain(); duckGain.gain.value = 1; duckGain.connect(master);
+    musicBus = audioCtx.createGain(); musicBus.gain.value = MUSIC_LEVEL; musicBus.connect(duckGain);
+    drumBus = audioCtx.createGain(); drumBus.gain.value = MUSIC_LEVEL * 1.2; drumBus.connect(master);
+
+    // echo v rytmu skladby – bez něj zní všechno ploše
+    delayNode = audioCtx.createDelay(1.2);
+    delayNode.delayTime.value = 0.3;
+    const fb = audioCtx.createGain(); fb.gain.value = 0.34;
+    delayNode.connect(fb); fb.connect(delayNode);
+    const echoWet = audioCtx.createGain(); echoWet.gain.value = 0.7;
+    delayNode.connect(echoWet); echoWet.connect(duckGain);
 
     reverb = audioCtx.createConvolver();
     reverb.buffer = makeImpulse(1.15, 3.2);
@@ -1411,6 +1424,9 @@
       buildAudioGraph();
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
+    // Plánování hudby nesmí viset na vykreslování: při propadu snímků by
+    // ve smyčce vznikaly díry. Vlastní časovač běží nezávisle na FPS.
+    if (!musicTimer) musicTimer = setInterval(musicTick, 110);
   }
 
   // Jeden tón: oscilátor (volitelně rozladěná dvojice) -> filtr -> obálka.
@@ -1442,6 +1458,12 @@
       send.gain.value = o.reverb;
       out.connect(send);
       send.connect(reverb);
+    }
+    if (o.echo && delayNode) {
+      const send = audioCtx.createGain();
+      send.gain.value = o.echo;
+      out.connect(send);
+      send.connect(delayNode);
     }
 
     for (const cents of (o.detune ? [-o.detune, o.detune] : [0])) {
@@ -1609,22 +1631,70 @@
   };
 
   // ---------- Hudba ----------
-  // Smyčka z basy, arpeggia, bicích a podkresu; tempo roste s kolem
-  // i s tím, kolik zdi už je pryč.
+  // Skladba v a moll: dvě osmitaktové fráze se střídají, každý takt má svůj
+  // akord, k tomu basová linka, melodie, arpeggio, pady a bicí. Aranž houstne
+  // podle toho, jak je ve hře horko, takže smyčka nezní pořád stejně.
   let nextNoteAt = 0, musicStep = 0;
-  const BASS = [55, 55, 43.65, 49];                       // A1 A1 F1 G1
-  const ARP = [220, 261.63, 329.63, 392, 329.63, 261.63]; // A moll pentatonika
-  const PAD = [[220, 261.63, 329.63], [220, 261.63, 329.63],
-               [174.61, 220, 261.63], [196, 246.94, 293.66]];
+
+  const hz = m => 440 * Math.pow(2, (m - 69) / 12);   // MIDI -> Hz
+
+  // akordy: [basový tón, tóny akordu, stupnice pro melodii]
+  const CHORD = {
+    Am: { bass: 45, tri: [57, 60, 64], scale: [57, 60, 62, 64, 67, 69, 72] },
+    F:  { bass: 41, tri: [53, 57, 60], scale: [53, 57, 60, 62, 65, 69, 72] },
+    C:  { bass: 48, tri: [60, 64, 67], scale: [55, 60, 62, 64, 67, 72, 76] },
+    G:  { bass: 43, tri: [55, 59, 62], scale: [55, 59, 62, 64, 67, 71, 74] },
+    Dm: { bass: 50, tri: [53, 57, 62], scale: [57, 62, 65, 69, 72, 74, 77] },
+    E:  { bass: 40, tri: [52, 56, 59], scale: [56, 59, 64, 68, 71, 76, 80] }
+  };
+  // dvě fráze po čtyřech taktech
+  const PHRASES = [
+    ['Am', 'F', 'C', 'G'],
+    ['Am', 'Dm', 'F', 'E']
+  ];
+  // melodie: index do stupnice akordu, null = pomlka (8 osmin na takt)
+  const LEAD = [
+    [0, null, 2, null, 4, null, 2, null,
+     1, null, null, 2, 1, null, 0, null,
+     4, null, 3, null, 2, null, 0, null,
+     2, null, null, null, 1, null, null, null],
+    [4, null, null, 3, 2, null, 4, null,
+     5, null, 4, null, 2, null, null, null,
+     3, null, 2, null, 1, null, 2, null,
+     0, null, null, 1, 2, null, null, null]
+  ];
+  // basové rytmy (osminy) – střídají se podle taktu
+  const BASS_RHYTHM = [
+    [1, 0, 0, 1, 0, 1, 0, 0],
+    [1, 0, 1, 0, 0, 1, 0, 1],
+    [1, 0, 0, 1, 0, 0, 1, 0],
+    [1, 1, 0, 1, 0, 1, 0, 1]
+  ];
+  const KICK = [
+    [1, 0, 0, 0, 1, 0, 0, 0],
+    [1, 0, 0, 1, 1, 0, 0, 0],
+    [1, 0, 0, 0, 1, 0, 1, 0],
+    [1, 0, 1, 0, 1, 0, 0, 1]
+  ];
+
+  // Jak je ve hře horko – podle toho se přidávají nástroje.
+  function musicIntensity() {
+    const done = state.brickCount ? 1 - breakableAlive() / state.brickCount : 0;
+    let i = 1;
+    if (done > 0.28 || state.level > 3) i = 2;
+    if (done > 0.62 || (boss && boss.hp > 0) || state.lives <= 1) i = 3;
+    return i;
+  }
 
   function musicTick() {
     if (!audioCtx || !soundOn || state.mode !== 'play') { nextNoteAt = 0; return; }
     const now = audioCtx.currentTime;
-    if (!nextNoteAt || nextNoteAt < now - 0.5) { nextNoteAt = now + 0.05; musicStep = 0; }
+    if (!nextNoteAt || nextNoteAt < now - 0.8) { nextNoteAt = now + 0.05; musicStep = 0; }
     const done = state.brickCount ? 1 - breakableAlive() / state.brickCount : 0;
-    const bpm = 92 + Math.min(30, (state.level - 1) * 2.5) + done * 26;
-    const stepDur = 30 / bpm; // osminy
-    while (nextNoteAt < now + 0.25) {
+    const bpm = 94 + Math.min(28, (state.level - 1) * 2.2) + done * 24;
+    const stepDur = 30 / bpm;                 // osminy
+    if (delayNode) delayNode.delayTime.value = Math.min(0.9, stepDur * 1.5);  // tečkovaná osmina
+    while (nextNoteAt < now + 0.55) {   // předstih přežije i propad snímků
       playMusicStep(musicStep, nextNoteAt, stepDur);
       nextNoteAt += stepDur;
       musicStep++;
@@ -1632,44 +1702,95 @@
   }
 
   function mVoice(o) { voice(Object.assign({ bus: musicBus }, o)); }
-  function mNoise(o) { noise(Object.assign({ bus: musicBus }, o)); }
+  function mNoise(o) { noise(Object.assign({ bus: drumBus }, o)); }
+
+  // Kopák krátce přidusí melodickou část, aby měl prostor.
+  function duckAt(at) {
+    if (!duckGain) return;
+    const g = duckGain.gain;
+    g.cancelScheduledValues(at);
+    g.setValueAtTime(1, at);
+    g.linearRampToValueAtTime(0.62, at + 0.03);
+    g.linearRampToValueAtTime(1, at + 0.2);
+  }
 
   function playMusicStep(i, at, stepDur) {
-    const bar = (i >> 3) % 4;
+    const barIdx = (i >> 3);                       // pořadí taktu od začátku
+    const phrase = (barIdx >> 2) % PHRASES.length; // fráze se střídají po 4 taktech
+    const bar = barIdx % 4;
     const beat = i % 8;
-    const t = at - audioCtx.currentTime;   // voice() počítá delay od "teď"
-    const d = Math.max(0, t);
-    const root = BASS[bar];
+    const ch = CHORD[PHRASES[phrase][bar]];
+    const d = Math.max(0, at - audioCtx.currentTime);
+    const intensity = musicIntensity();
+    const swing = (beat % 2 === 1) ? stepDur * 0.14 : 0;   // lehký šraňk
+    const lastBar = bar === 3;
 
-    // basa: pila přes dolní propust + sub
-    if (beat === 0 || beat === 3 || beat === 6) {
-      mVoice({ freq: root, type: 'sawtooth', gain: 0.4, attack: 0.006, release: stepDur * 1.5,
-               delay: d, filter: 'lowpass', cutoff: 900, cutoffTo: 260, q: 4 });
-      mVoice({ freq: root / 2, type: 'sine', gain: 0.3, attack: 0.008, release: stepDur * 1.4, delay: d });
+    // ---- basa: pila s obálkou filtru + sub ----
+    if (BASS_RHYTHM[bar][beat]) {
+      const slide = beat === 0 ? hz(ch.bass - 5) : null;
+      mVoice({
+        freq: slide || hz(ch.bass), to: slide ? hz(ch.bass) : null, glide: 0.05,
+        type: 'sawtooth', gain: 0.36, attack: 0.006, release: stepDur * 1.25, delay: d,
+        filter: 'lowpass', cutoff: 620 + intensity * 260, cutoffTo: 200, q: 6
+      });
+      mVoice({ freq: hz(ch.bass - 12), type: 'sine', gain: 0.3,
+               attack: 0.008, release: stepDur * 1.1, delay: d });
     }
-    // kopák
-    if (beat === 0 || beat === 4) {
-      mVoice({ freq: 130, to: 45, type: 'sine', gain: 0.5, attack: 0.003, release: 0.22, delay: d });
+
+    // ---- bicí ----
+    if (KICK[bar][beat]) {
+      voice({ bus: drumBus, freq: 140, to: 44, type: 'sine', gain: 0.55,
+              attack: 0.002, release: 0.24, glide: 0.09, delay: d });
+      duckAt(at);
     }
-    // virbl na druhou dobu
-    if (beat === 4 && (bar === 1 || bar === 3)) {
-      mNoise({ dur: 0.18, gain: 0.16, filter: 'bandpass', cutoff: 1800, q: 0.8, delay: d, reverb: 0.25 });
+    if (intensity >= 2 && (beat === 4 || (lastBar && beat === 6))) {
+      mNoise({ dur: 0.19, gain: 0.2, filter: 'bandpass', cutoff: 1900, q: 0.9,
+               delay: d, reverb: 0.28 });
+      voice({ bus: drumBus, freq: 210, to: 150, type: 'triangle', gain: 0.14,
+              attack: 0.002, release: 0.12, delay: d });
     }
-    // hi-hat
-    if (beat % 2 === 1) {
-      mNoise({ dur: 0.05, gain: 0.05, filter: 'highpass', cutoff: 6500, delay: d });
+    // hi-hat: osminy s přízvuky, na konci fráze rozjezd v šestnáctinách
+    mNoise({ dur: beat % 4 === 2 ? 0.09 : 0.045, gain: beat % 4 === 0 ? 0.055 : 0.035,
+             filter: 'highpass', cutoff: 7000, delay: d + swing });
+    if (intensity >= 3 && lastBar && beat >= 6) {
+      for (let k = 0; k < 4; k++) {
+        mNoise({ dur: 0.06, gain: 0.09 + k * 0.03, filter: 'bandpass', cutoff: 2200,
+                 q: 0.8, delay: d + k * stepDur / 4 });
+      }
     }
-    // arpeggio
-    if (beat % 2 === 1) {
-      const n = ARP[(i / 2 | 0) % ARP.length] * (bar === 2 ? 0.8909 : 1);
-      mVoice({ freq: n, type: 'square', gain: 0.11, attack: 0.004, release: stepDur * 0.8,
-               delay: d, detune: 7, filter: 'lowpass', cutoff: 2600, cutoffTo: 1200, reverb: 0.2 });
+    // činel na začátku fráze
+    if (beat === 0 && bar === 0) {
+      mNoise({ dur: 0.9, gain: 0.09, filter: 'highpass', cutoff: 5200, delay: d, reverb: 0.4 });
     }
-    // podkres na začátku taktu
+
+    // ---- pad: akord na začátku taktu ----
     if (beat === 0) {
-      for (const f of PAD[bar]) {
-        mVoice({ freq: f, type: 'triangle', gain: 0.05, attack: 0.12, release: stepDur * 7,
-                 delay: d, detune: 9, filter: 'lowpass', cutoff: 1500, reverb: 0.35 });
+      for (const n of ch.tri) {
+        mVoice({ freq: hz(n - 12), type: 'triangle', gain: 0.055, attack: 0.15,
+                 release: stepDur * 7.5, delay: d, detune: 8,
+                 filter: 'lowpass', cutoff: 1100 + intensity * 350, reverb: 0.4 });
+      }
+    }
+
+    // ---- arpeggio z tónů akordu ----
+    if (intensity >= 2 && beat % 2 === 1) {
+      const n = ch.tri[((i / 2) | 0) % ch.tri.length] + (beat > 4 ? 12 : 0);
+      mVoice({ freq: hz(n), type: 'square', gain: 0.085, attack: 0.004,
+               release: stepDur * 0.7, delay: d + swing, detune: 7,
+               filter: 'lowpass', cutoff: 2400, cutoffTo: 1100, reverb: 0.18, echo: 0.28 });
+    }
+
+    // ---- melodie ----
+    if (intensity >= 3) {
+      const idx = LEAD[phrase][(barIdx % 4) * 8 + beat];
+      if (idx !== null && idx !== undefined) {
+        const n = ch.scale[Math.min(ch.scale.length - 1, idx)];
+        mVoice({ freq: hz(n), type: 'sawtooth', gain: 0.13, attack: 0.008,
+                 release: stepDur * 1.6, delay: d + swing, detune: 11,
+                 filter: 'lowpass', cutoff: 1700 + intensity * 500, cutoffTo: 900, q: 2,
+                 reverb: 0.25, echo: 0.34 });
+        mVoice({ freq: hz(n + 12), type: 'triangle', gain: 0.045, attack: 0.006,
+                 release: stepDur * 0.9, delay: d + swing, echo: 0.2 });
       }
     }
   }
@@ -2930,6 +3051,7 @@
     window.__ark = {
       readyAt: performance.now(),
       sfx, scene, renderer, get audioCtx() { return audioCtx; }, get master() { return master; },
+      get duck() { return duckGain; },
       state, balls, bricks, powerups, buffs, drones, applyPowerup, destroyBrick, hitBrick,
       dropPowerup, spawnDrone, damageBoss,
       get boss() { return boss; },

@@ -303,7 +303,7 @@
     t.colorSpace = THREE.SRGBColorSpace;
     scene.background = t;
   })();
-  scene.fog = new THREE.Fog(0x04060c, 55, 125);
+  scene.fog = new THREE.Fog(0x04060c, 75, 210);
 
   const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 260);
   const CAM_TARGET = new THREE.Vector3(0, 0.8, -14);
@@ -343,15 +343,13 @@
     }
   }
 
-  // ---------- Záře (bloom) ----------
-  // Neonová aréna z ní hodně těží, ale na slabém zařízení stojí moc výkonu,
-  // proto se po pár sekundách měření sama vypne (a volba se uloží).
+  // ---------- Stupně kvality ----------
+  // 2 = záře + plné rozlišení + stíny, 1 = bez záře, 0 = navíc bez stínů,
+  // bez jisker a v základním rozlišení. Hra si stupeň sama změří a uloží.
   const urlParams = new URLSearchParams(location.search);
   const bloomParam = urlParams.get('bloom');
-  let bloomOn = bloomParam !== null
-    ? bloomParam === '1'
-    : (() => { try { return localStorage.getItem('arkanoid3d_bloom') !== 'off'; } catch (e) { return true; } })();
-  let composer = null, bloomPass = null;
+  const qParam = urlParams.get('q');
+  let composer = null, bloomPass = null, bloomOn = false, quality = 2;
 
   function buildComposer() {
     composer = new EffectComposer(renderer);
@@ -359,14 +357,25 @@
     bloomPass = new UnrealBloomPass(
       new THREE.Vector2(innerWidth, innerHeight), 0.72, 0.8, 0.2);
     composer.addPass(bloomPass);
+    composer.setSize(innerWidth, innerHeight);
   }
-  if (bloomOn) buildComposer();
 
-  function setBloom(on) {
-    if (on === bloomOn) return;
-    bloomOn = on;
-    if (on && !composer) buildComposer();
-    try { localStorage.setItem('arkanoid3d_bloom', on ? 'on' : 'off'); } catch (e) {}
+  function applyQuality(q, remember) {
+    quality = q;
+    bloomOn = bloomParam !== null ? bloomParam === '1' : q >= 2;
+    if (bloomOn && !composer) buildComposer();
+    renderer.setPixelRatio(q <= 0 ? 1 : Math.min(devicePixelRatio, 2));
+    const wantShadows = q >= 1;
+    if (renderer.shadowMap.enabled !== wantShadows) {
+      renderer.shadowMap.enabled = wantShadows;
+      scene.traverse(o => { if (o.isMesh && o.material) o.material.needsUpdate = true; });
+    }
+    if (typeof dust !== 'undefined' && dust) dust.visible = q >= 1;
+    // na nejnižším stupni prořídne i zástavba – kryje velkou část obrazovky
+    if (typeof cityMeshes !== 'undefined') {
+      for (const c of cityMeshes) c.mesh.count = q <= 0 ? Math.ceil(c.full * 0.4) : c.full;
+    }
+    if (remember) { try { localStorage.setItem('arkanoid3d_quality', String(q)); } catch (e) {} }
   }
 
   function onResize() {
@@ -777,21 +786,84 @@
       g.fillStyle = rg;
       g.beginPath(); g.arc(x, y, 14, 0, 7); g.fill();
     }
-    return canvasTexture(c, { srgb: true, repeat: [16, 22], aniso: 8 });
+    return canvasTexture(c, { srgb: true, repeat: [64, 64], aniso: 8 });
   }
-  const skirt = new THREE.Mesh(
-    new THREE.PlaneGeometry(ARENA_W * 10, (ARENA_D + 8) * 5),
-    // levný materiál – plocha kryje celou obrazovku a PBR by ji zbytečně
-    // prodražilo (na slabém stroji to stálo polovinu snímků)
-    new THREE.MeshBasicMaterial({ map: outerGridTexture(), color: 0xbfd0ff })
-  );
-  skirt.rotation.x = -Math.PI / 2;
-  skirt.position.set(0, -0.35, BACK_Z / 2 + 3);
-  scene.add(skirt);
+  // ---------- Aréna jako plošina nad městem ----------
+  // Dřív se kolem hřiště táhla plochá mřížka, což hlavně na výšku vypadalo
+  // prázdně. Teď hřiště stojí na plošině a hned za jejím okrajem se propadá
+  // pohled dolů do neonového města.
+  const CITY_CENTER_Z = BACK_Z / 2 + 3;
+  const CITY_Y = -46;                  // úroveň města hluboko pod arénou
 
-  // ---------- Vzdálené město kolem arény ----------
-  // Kamera míří dolů, takže obloha není v záběru – prostor kolem hřiště
-  // vyplní siluety věží se svítícími okny, majáky a poletující prach.
+  // Přibližná pozice kamery – nic z pozadí nesmí trčet těsně před objektiv.
+  const CAM_SPOT = new THREE.Vector3(0, 26, 24);
+  const farFromCamera = (x, y, z, min) =>
+    CAM_SPOT.distanceToSquared(new THREE.Vector3(x, y, z)) > min * min;
+
+  // Trup plošiny: tmavý kov se svítící hranou po obvodu
+  {
+    const hullTex = wallTextures();
+    const hull = new THREE.Mesh(
+      new THREE.BoxGeometry(ARENA_W + 3.6, 3.4, ARENA_D + 11),
+      new THREE.MeshStandardMaterial({
+        color: 0x7fa8b8,
+        map: canvasTexture(hullTex.c, { srgb: true, repeat: [8, 1], aniso: 8 }),
+        normalMap: canvasTexture(hullTex.nc, { repeat: [8, 1] }),
+        normalScale: new THREE.Vector2(0.6, 0.6),
+        emissive: 0x0d6f7e, emissiveIntensity: 0.35,
+        roughness: 0.5, metalness: 0.6, envMapIntensity: 0.5
+      })
+    );
+    hull.position.set(0, -1.9, CITY_CENTER_Z);
+    hull.receiveShadow = true;
+    scene.add(hull);
+
+    const rim = new THREE.Mesh(
+      new THREE.BoxGeometry(ARENA_W + 4.4, 0.35, ARENA_D + 11.8),
+      new THREE.MeshBasicMaterial({ color: 0x35ffe0, transparent: true, opacity: 0.75 })
+    );
+    rim.position.set(0, -0.42, CITY_CENTER_Z);
+    scene.add(rim);
+
+    // podsvícení plošiny zespodu
+    const under = new THREE.Mesh(
+      new THREE.PlaneGeometry(ARENA_W + 10, ARENA_D + 18),
+      new THREE.MeshBasicMaterial({
+        color: 0x0affd0, transparent: true, opacity: 0.1,
+        blending: THREE.AdditiveBlending, depthWrite: false
+      })
+    );
+    under.rotation.x = Math.PI / 2;
+    under.position.set(0, -3.8, CITY_CENTER_Z);
+    scene.add(under);
+  }
+
+  // Země města hluboko dole
+  {
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(700, 700),
+      new THREE.MeshBasicMaterial({ map: outerGridTexture(), color: 0xb9c8ff })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set(0, CITY_Y, CITY_CENTER_Z);
+    scene.add(ground);
+
+    // světelné kruhy v ulicích pod arénou
+    for (const [r, col, op] of [[26, 0x18c8b0, 0.5], [44, 0x6b7cff, 0.35], [66, 0xa06bff, 0.22]]) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(r, 0.5, 8, 96),
+        new THREE.MeshBasicMaterial({
+          color: col, transparent: true, opacity: op,
+          blending: THREE.AdditiveBlending, depthWrite: false, fog: true
+        })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(0, CITY_Y + 0.4, CITY_CENTER_Z);
+      scene.add(ring);
+    }
+  }
+
+  // ---------- Věže ----------
   function windowsTexture(tint) {
     const { c, g } = makeCanvas(128, 256);
     g.fillStyle = '#05070f'; g.fillRect(0, 0, 128, 256);
@@ -803,106 +875,110 @@
         g.fillRect(x, y, 6, 7);
       }
     }
-    // svislé hrany budovy
     g.fillStyle = 'rgba(160,220,255,.12)';
     g.fillRect(0, 0, 3, 256); g.fillRect(125, 0, 3, 256);
-    return canvasTexture(c, { srgb: true, aniso: 4 });
+    // zapečený přechod, aby budovy bez osvětlení nebyly úplně placaté
+    const shade = g.createLinearGradient(0, 0, 128, 0);
+    shade.addColorStop(0, 'rgba(0,0,0,.55)');
+    shade.addColorStop(0.45, 'rgba(0,0,0,0)');
+    shade.addColorStop(1, 'rgba(0,0,0,.4)');
+    g.globalCompositeOperation = 'multiply';
+    g.fillStyle = shade; g.fillRect(0, 0, 128, 256);
+    g.globalCompositeOperation = 'source-over';
+    return canvasTexture(c, { srgb: true, repeat: [1, 3], aniso: 4 });
   }
 
-  const CITY_CENTER_Z = -15;
-  // Přibližná pozice kamery – nic z pozadí nesmí být blíž, jinak to hráči
-  // vlítne do obrazu a bloom z toho udělá světelnou kaňku.
-  const CAM_SPOT = new THREE.Vector3(0, 26, 24);
-  const farFromCamera = (x, y, z, min) => CAM_SPOT.distanceToSquared(new THREE.Vector3(x, y, z)) > min * min;
+  const cityMeshes = [];
   function buildCity() {
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     const palettes = [
-      { tint: [110, 220, 240], emissive: 0x18b8a4, count: 46 },
-      { tint: [170, 140, 230], emissive: 0x7a52c8, count: 28 },
-      { tint: [240, 175, 120], emissive: 0xc9762e, count: 12 }
+      { tint: [120, 235, 250], base: 0xa8e6f0, count: 66 },
+      { tint: [185, 150, 245], base: 0xc4b0f5, count: 44 },
+      { tint: [250, 185, 125], base: 0xf0c69a, count: 22 }
     ];
     const dummy = new THREE.Object3D();
-    const rnd = levelRandom(20260828);   // pevné rozmístění, ať město nepřeskakuje
+    const rnd = levelRandom(20260828);
 
     for (const pal of palettes) {
       const tex = windowsTexture(pal.tint);
-      const mat = new THREE.MeshStandardMaterial({
-        color: 0x0b1220, map: tex,
-        emissive: pal.emissive, emissiveIntensity: 0.42, emissiveMap: tex,
-        roughness: 0.65, metalness: 0.35, envMapIntensity: 0.4
-      });
+      // Věže kryjí velkou část obrazovky. Okna si svítí sama, takže se na
+      // nich nevyplatí počítat žádné osvětlení – jedna textura, žádné světlo.
+      const mat = new THREE.MeshBasicMaterial({ map: tex, color: pal.base, fog: true });
       const mesh = new THREE.InstancedMesh(boxGeo, mat, pal.count);
       let placed = 0, guard = 0;
-      while (placed < pal.count && guard++ < 4000) {
+      while (placed < pal.count && guard++ < 6000) {
         const ang = rnd() * Math.PI * 2;
-        const rad = 46 + rnd() * 58;
+        const rad = 18 + Math.pow(rnd(), 1.6) * 92;   // víc věží blízko plošiny
         const x = Math.cos(ang) * rad;
         const z = CITY_CENTER_Z + Math.sin(ang) * rad;
-        // nesmí stát v aréně ani mezi kamerou a hřištěm
-        if (z > 4) continue;
-        if (Math.abs(x) < 30 && z > -60 && z < 14) continue;
-        if (!farFromCamera(x, 8, z, 58)) continue;
-        const w = 3 + rnd() * 5;
-        const d = 3 + rnd() * 5;
-        const h = 6 + rnd() * rnd() * 52;
-        dummy.position.set(x, h / 2 - 0.4, z);
+        if (z > 12) continue;                          // ne mezi kameru a hřiště
+        const w = 4 + rnd() * 7;
+        const d = 4 + rnd() * 7;
+        const h = 12 + rnd() * rnd() * 62;
+        const top = CITY_Y + h;
+        // věž nesmí prorůst plošinou ani vylézt hráči do obrazu
+        if (top > -3 && Math.abs(x) < ARENA_W / 2 + 12 && z > BACK_Z - 12 && z < 14) continue;
+        if (top > -3 && !farFromCamera(x, top, z, 52)) continue;
+        dummy.position.set(x, CITY_Y + h / 2, z);
         dummy.scale.set(w, h, d);
-        dummy.rotation.y = rnd() * 0.6 - 0.3;
+        dummy.rotation.y = rnd() * 0.7 - 0.35;
         dummy.updateMatrix();
         mesh.setMatrixAt(placed++, dummy.matrix);
       }
       mesh.count = placed;
       mesh.instanceMatrix.needsUpdate = true;
       scene.add(mesh);
+      cityMeshes.push({ mesh, full: placed });
     }
   }
   buildCity();
 
-  // Majáky na nejvyšších věžích – pomalu blikají
+  // Majáky na střechách – pomalu blikají
   const beacons = [];
   {
-    const geo = new THREE.SphereGeometry(0.42, 8, 6);
+    const geo = new THREE.SphereGeometry(0.7, 8, 6);
     const rnd = levelRandom(777);
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 9; i++) {
       const ang = rnd() * Math.PI * 2;
-      const rad = 62 + rnd() * 40;
+      const rad = 26 + rnd() * 70;
       const x = Math.cos(ang) * rad;
       const z = CITY_CENTER_Z + Math.sin(ang) * rad;
-      if (z > 0 || (Math.abs(x) < 32 && z > -60) || !farFromCamera(x, 20, z, 58)) { i--; continue; }
+      const y = CITY_Y + 14 + rnd() * 34;
+      if (z > 6 || (y > -4 && !farFromCamera(x, y, z, 52))) { i--; continue; }
       const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-        color: i % 2 ? 0xff5b7f : 0x7ffbe4, transparent: true, opacity: 0.7, fog: true
+        color: i % 2 ? 0xff5b7f : 0x7ffbe4, transparent: true, opacity: 0.8, fog: true
       }));
-      m.position.set(x, 14 + rnd() * 30, z);
+      m.position.set(x, y, z);
       scene.add(m);
       beacons.push({ mesh: m, phase: rnd() * 6.28, speed: 0.6 + rnd() * 0.8 });
     }
   }
 
-  // Prach ve vzduchu – dodá scéně hloubku
+  // Jiskry stoupající od města k aréně
   const dust = (function makeDust() {
-    const N = 220;
+    const N = 260;
     const pos = new Float32Array(N * 3);
     const rnd = levelRandom(4242);
     for (let i = 0; i < N; i++) {
       let x, y, z, guard = 0;
       do {
-        x = (rnd() - 0.5) * 80;
-        y = rnd() * 24;
-        z = CITY_CENTER_Z + (rnd() - 0.5) * 80;
-      } while (!farFromCamera(x, y, z, 26) && guard++ < 40);
+        x = (rnd() - 0.5) * 96;
+        y = CITY_Y + rnd() * 58;
+        z = CITY_CENTER_Z + (rnd() - 0.5) * 96;
+      } while (!farFromCamera(x, y, z, 30) && guard++ < 40);
       pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     const { c, g } = makeCanvas(64, 64);
     const rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    rg.addColorStop(0, 'rgba(255,255,255,.9)');
-    rg.addColorStop(0.4, 'rgba(150,240,255,.35)');
+    rg.addColorStop(0, 'rgba(255,255,255,.85)');
+    rg.addColorStop(0.35, 'rgba(150,240,255,.3)');
     rg.addColorStop(1, 'rgba(120,220,255,0)');
     g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
     const mat = new THREE.PointsMaterial({
-      map: canvasTexture(c, { srgb: true }), size: 0.34, transparent: true,
-      depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.32, fog: true
+      map: canvasTexture(c, { srgb: true }), size: 0.4, transparent: true,
+      depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.35, fog: true
     });
     const pts = new THREE.Points(geo, mat);
     scene.add(pts);
@@ -912,50 +988,16 @@
   function updateBackground(t, dt) {
     for (const b of beacons) {
       const k = Math.sin(t * b.speed + b.phase);
-      b.mesh.material.opacity = k > 0.7 ? 0.7 : 0.08;
-      b.mesh.scale.setScalar(k > 0.7 ? 1.35 : 0.8);
+      b.mesh.material.opacity = k > 0.7 ? 0.8 : 0.08;
+      b.mesh.scale.setScalar(k > 0.7 ? 1.3 : 0.8);
     }
     const pos = dust.geometry.attributes.position;
     for (let i = 0; i < pos.count; i++) {
-      let y = pos.getY(i) + dt * (0.35 + (i % 7) * 0.06);
-      if (y > 27) y -= 27;
+      let y = pos.getY(i) + dt * (1.2 + (i % 7) * 0.25);
+      if (y > CITY_Y + 60) y = CITY_Y;
       pos.setY(i, y);
     }
     pos.needsUpdate = true;
-    dust.rotation.y = Math.sin(t * 0.03) * 0.05;
-  }
-
-
-  // Světelné kruhy kolem arény a měkká záře na zemi – v záběru jsou i na
-  // výšku, kdy je kamera strmější a město zůstává mimo obraz.
-  {
-    const ringMat = c => new THREE.MeshBasicMaterial({
-      color: c, transparent: true, opacity: 0.5,
-      blending: THREE.AdditiveBlending, depthWrite: false, fog: true
-    });
-    for (const [r, col, op] of [[24, 0x18c8b0, 0.38], [36, 0x6b7cff, 0.26], [52, 0xa06bff, 0.16]]) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.16, 8, 96), ringMat(col));
-      ring.material.opacity = op;
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.set(0, -0.3, CITY_CENTER_Z);
-      scene.add(ring);
-    }
-    const { c: gc, g } = makeCanvas(256);
-    const rg = g.createRadialGradient(128, 128, 10, 128, 128, 128);
-    rg.addColorStop(0, 'rgba(80,200,255,.16)');
-    rg.addColorStop(0.4, 'rgba(60,120,255,.05)');
-    rg.addColorStop(1, 'rgba(40,80,200,0)');
-    g.fillStyle = rg; g.fillRect(0, 0, 256, 256);
-    const pool = new THREE.Mesh(
-      new THREE.PlaneGeometry(96, 96),
-      new THREE.MeshBasicMaterial({
-        map: canvasTexture(gc, { srgb: true }), transparent: true,
-        blending: THREE.AdditiveBlending, depthWrite: false, fog: true
-      })
-    );
-    pool.rotation.x = -Math.PI / 2;
-    pool.position.set(0, -0.32, CITY_CENTER_Z);
-    scene.add(pool);
   }
 
   // ---------- Mantinely ----------
@@ -2849,9 +2891,9 @@
     if (bloomOn && composer) composer.render();
     else renderer.render(scene, camera);
 
-    // Po dvou sekundách rozehrání se čtyři sekundy měří skutečná snímková
-    // frekvence (reálný čas, ne herní); když nestačí, záře se vypne.
-    if (bloomOn && state.mode === 'play' && bloomParam === null && perfPhase < 3) {
+    // Po dvou sekundách hry se tři sekundy měří skutečná snímková frekvence.
+    // Když nestačí, kvalita klesne o stupeň a měření začne znovu.
+    if (state.mode === 'play' && qParam === null && perfPhase < 3) {
       const now = performance.now();
       if (perfPhase === 0) { perfT0 = now; perfPhase = 1; }
       else if (perfPhase === 1) {
@@ -2859,12 +2901,15 @@
       } else {
         perfFrames++;
         const elapsed = (now - perfT0) / 1000;
-        if (elapsed > 4) {
-          if (perfFrames / elapsed < 28) {
-            setBloom(false);
-            floatText('ZÁŘE VYPNUTA (výkon)', '#8a97a8', 0, 2, PADDLE_Z - 6);
+        if (elapsed > 3) {
+          if (perfFrames / elapsed < 30 && quality > 0) {
+            applyQuality(quality - 1, true);
+            floatText(quality === 1 ? 'ZÁŘE VYPNUTA (výkon)' : 'NIŽŠÍ DETAILY (výkon)',
+                      '#8a97a8', 0, 2, PADDLE_Z - 6);
+            perfPhase = 0;   // změř znovu na novém stupni
+          } else {
+            perfPhase = 3;
           }
-          perfPhase = 3;
         }
       }
     }
@@ -2891,6 +2936,15 @@
       get paddleX() { return paddleX; },
       set target(v) { paddleTargetX = v; }
     };
+  }
+
+  // uložený stupeň kvality z minula, jinak se začíná na nejvyšším
+  {
+    let stored = null;
+    try { stored = localStorage.getItem('arkanoid3d_quality'); } catch (e) {}
+    const want = qParam !== null ? parseInt(qParam, 10)
+      : (stored !== null ? parseInt(stored, 10) : 2);
+    applyQuality(Math.max(0, Math.min(2, isNaN(want) ? 2 : want)), false);
   }
 
   onResize();

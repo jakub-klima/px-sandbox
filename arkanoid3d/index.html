@@ -122,6 +122,17 @@
       #buffs { bottom: 18px; }
     }
 
+    #bossBar {
+      position: fixed; left: 50%; transform: translateX(-50%); top: 96px; z-index: 3;
+      width: min(420px, 70vw); height: 12px; border-radius: 7px; display: none;
+      background: rgba(0,0,0,.5); border: 1px solid rgba(255,60,110,.5); overflow: hidden;
+    }
+    #bossBar > span {
+      display: block; height: 100%; width: 100%;
+      background: linear-gradient(90deg, #ff2f6d, #ffd166);
+      transition: width .12s ease-out;
+    }
+
     #banner {
       position: fixed; left: 0; right: 0; top: 15%; z-index: 5;
       text-align: center; pointer-events: none; opacity: 0;
@@ -188,6 +199,7 @@
   </div>
 
   <div id="buffs"></div>
+  <div id="bossBar"><span></span></div>
 
   <button id="soundBtn" class="iconBtn" title="Zvuk">🔊</button>
   <button id="pauseBtn" class="iconBtn" title="Pauza">⏸</button>
@@ -640,7 +652,7 @@
   // ---------- Úrovně ----------
   // '.' prázdno, 1/2/3 = odolnost, X = nerozbitná, E = výbušná
   const LEVEL_NAMES = ['Rozcvička', 'Pyramida', 'Pevnost', 'Šachovnice', 'Finále',
-    'Diamant', 'Tunel', 'Tvrdé jádro', 'Bašta', 'Poslední zeď'];
+    'Diamant', 'Tunel', 'Tvrdé jádro', 'Bašta'];
 
   const LEVELS = [
     ["11111111",
@@ -936,6 +948,8 @@
 
   function buildLevel(n) {
     clearBricks();
+    clearBoss();
+    if (isBossLevel(n)) return;
     const pattern = levelPattern(n);
     for (let j = 0; j < pattern.length; j++) {
       const row = pattern[j];
@@ -1225,6 +1239,164 @@
     droneTimer = 12;
   }
 
+  // ---------- Boss ----------
+  // Každé desáté kolo místo zdi čeká Strážce: kouli i laser snese mnohokrát,
+  // uhýbá do stran, vysílá rušiče a střílí po pálce.
+  let boss = null;
+  const bossShots = [];
+  const shotGeo = new THREE.SphereGeometry(0.42, 12, 10);
+  const shotMat = new THREE.MeshBasicMaterial({ color: 0xff3b6b });
+  const bossBar = document.getElementById('bossBar');
+  const bossFill = bossBar.querySelector('span');
+
+  function isBossLevel(n) { return n % 10 === 0; }
+
+  function spawnBoss(n) {
+    const group = new THREE.Group();
+    const core = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(2.6, 1),
+      new THREE.MeshStandardMaterial({
+        color: 0x3a1b4d, emissive: 0xff2f6d, emissiveIntensity: 0.9,
+        roughness: 0.25, metalness: 0.6, flatShading: true
+      }));
+    core.castShadow = true;
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(4.2, 0.35, 10, 40),
+      new THREE.MeshStandardMaterial({
+        color: 0x0d2b3a, emissive: 0x18c8b0, emissiveIntensity: 0.8, roughness: 0.3, metalness: 0.7
+      }));
+    ring.rotation.x = Math.PI / 2;
+    group.add(core, ring);
+    group.position.set(0, 2.6, BACK_Z + 6);
+    scene.add(group);
+    const hp = 24 + Math.floor(n / 10) * 8;
+    boss = { group, core, ring, hp, maxHp: hp, x: 0, dir: 1, t: 0, shotIn: 4, droneIn: 5, hurt: 0 };
+    bossBar.style.display = 'block';
+    updateBossBar();
+  }
+
+  function clearBoss() {
+    if (boss) { scene.remove(boss.group); boss = null; }
+    for (const s of bossShots) scene.remove(s.mesh);
+    bossShots.length = 0;
+    bossBar.style.display = 'none';
+  }
+
+  function updateBossBar() {
+    if (!boss) return;
+    bossFill.style.width = Math.max(0, (boss.hp / boss.maxHp) * 100) + '%';
+  }
+
+  function damageBoss(n) {
+    if (!boss || boss.hp <= 0) return;
+    boss.hp -= n;
+    boss.hurt = 0.12;
+    shake = Math.max(shake, 0.35);
+    shockwave(boss.x, boss.group.position.z, 0xff2f6d, 7, 0.35);
+    beep(220 + (1 - boss.hp / boss.maxHp) * 300, 0.06, 'square', 0.05);
+    updateBossBar();
+    if (boss.hp <= 0) killBoss();
+  }
+
+  function killBoss() {
+    const bx = boss.x, bz = boss.group.position.z;
+    scene.remove(boss.group);
+    for (let i = 0; i < 5; i++) {
+      setTimeout(() => {
+        spawnParticles(bx + (Math.random() - 0.5) * 6, bz + (Math.random() - 0.5) * 4, 0xff2f6d, 18);
+        shockwave(bx, bz, 0xffd166, 16, 0.7);
+        noiseBurst(0.5, 0.1, 1500);
+        shake = 1.2;
+      }, i * 150);
+    }
+    boss.hp = 0;
+    boss.group = new THREE.Group();
+    addScore(4000 + state.level * 200);
+    floatText('STRÁŽCE ZNIČEN!', '#ffd166', 0, 4, bz);
+    freeze = Math.max(freeze, 0.12);
+    screenFlash(0.35);
+    bossBar.style.display = 'none';
+    clearDrones();
+    for (const s of bossShots) scene.remove(s.mesh);
+    bossShots.length = 0;
+  }
+
+  function updateBoss(dt) {
+    if (!boss || boss.hp <= 0) return;
+    boss.t += dt;
+    const rage = 1 - boss.hp / boss.maxHp;
+    boss.x += boss.dir * (5 + rage * 6) * dt;
+    const lim = WALL_X - 5;
+    if (boss.x > lim) { boss.x = lim; boss.dir = -1; }
+    if (boss.x < -lim) { boss.x = -lim; boss.dir = 1; }
+    boss.group.position.x = boss.x;
+    boss.group.position.y = 2.6 + Math.sin(boss.t * 1.6) * 0.5;
+    boss.core.rotation.y += dt * 0.9;
+    boss.core.rotation.x += dt * 0.4;
+    boss.ring.rotation.z += dt * (1.2 + rage);
+    boss.core.material.emissiveIntensity = boss.hurt > 0 ? 3 : 0.9 + Math.sin(time * 5) * 0.25;
+    if (boss.hurt > 0) boss.hurt -= dt;
+
+    // střelba po pálce
+    boss.shotIn -= dt;
+    if (boss.shotIn <= 0) {
+      boss.shotIn = Math.max(1.6, 4.2 - rage * 2.2);
+      const mesh = new THREE.Mesh(shotGeo, shotMat);
+      mesh.position.set(boss.x, 1.2, boss.group.position.z);
+      scene.add(mesh);
+      const dx = paddleX - boss.x, dz = PADDLE_Z - boss.group.position.z;
+      const len = Math.hypot(dx, dz) || 1;
+      bossShots.push({ mesh, x: boss.x, z: boss.group.position.z, vx: dx / len, vz: dz / len });
+      beep(520, 0.12, 'sawtooth', 0.05, 160);
+    }
+
+    // nasazení rušičů
+    boss.droneIn -= dt;
+    if (boss.droneIn <= 0 && drones.length < 2) {
+      boss.droneIn = Math.max(3, 7 - rage * 3);
+      spawnDrone();
+    }
+
+    // zásah koulí
+    for (const b of balls) {
+      if (b.stuck) continue;
+      const dx = b.x - boss.x, dz = b.z - boss.group.position.z;
+      if (dx * dx + dz * dz < 3.3 * 3.3) {
+        const len = Math.hypot(dx, dz) || 1;
+        b.vx = dx / len; b.vz = dz / len;
+        normalizeDir(b);
+        b.z = boss.group.position.z + b.vz * 3.4;
+        damageBoss(1);
+        state.combo = Math.min(state.combo + 1, 9);
+        updateHud();
+      }
+    }
+  }
+
+  function updateBossShots(dt) {
+    for (let i = bossShots.length - 1; i >= 0; i--) {
+      const sh = bossShots[i];
+      sh.x += sh.vx * 15 * dt;
+      sh.z += sh.vz * 15 * dt;
+      sh.mesh.position.set(sh.x, 1.2, sh.z);
+      const hitPaddle = Math.abs(sh.x - paddleX) < paddleW / 2 + 0.5 && Math.abs(sh.z - PADDLE_Z) < 1.2;
+      if (hitPaddle) {
+        buffs.shrink = Math.max(buffs.shrink, 6);
+        buffs.expand = 0;
+        updateBuffs();
+        screenFlash(0.25);
+        shake = Math.max(shake, 0.8);
+        spawnParticles(sh.x, PADDLE_Z, 0xff3b6b, 10);
+        floatText('ZÁSAH!', '#ff3b6b', sh.x, 2.4, PADDLE_Z);
+        noiseBurst(0.3, 0.07, 700);
+      }
+      if (hitPaddle || sh.z > DEAD_Z + 2 || Math.abs(sh.x) > WALL_X) {
+        scene.remove(sh.mesh);
+        bossShots.splice(i, 1);
+      }
+    }
+  }
+
   // ---------- Koule ----------
   function newBall(x, z, vx, vz, stuck) {
     const mesh = new THREE.Mesh(ballGeo, ballMat);
@@ -1486,7 +1658,8 @@
   const bannerEl = document.getElementById('banner');
   function showBanner(n) {
     bannerEl.querySelector('.lvl').textContent = 'KOLO ' + n;
-    bannerEl.querySelector('.name').textContent = LEVEL_NAMES[n - 1] || 'Nekonečná zeď';
+    bannerEl.querySelector('.name').textContent =
+      isBossLevel(n) ? 'Strážce zdi' : (LEVEL_NAMES[n - 1] || 'Nekonečná zeď');
     bannerEl.classList.remove('show');
     void bannerEl.offsetWidth;
     bannerEl.classList.add('show');
@@ -1503,6 +1676,7 @@
     for (const b of bolts) scene.remove(b.mesh);
     bolts.length = 0;
     clearDrones();
+    if (isBossLevel(n)) spawnBoss(n);
     computeRowDrift(n);
     state.lastKill = 0;
     state.wallSteps = 0;
@@ -1761,6 +1935,11 @@
       bo.z -= 42 * dt;
       bo.mesh.position.z = bo.z;
       let hit = bo.z < BACK_Z;
+      if (!hit && boss && boss.hp > 0 &&
+          Math.abs(bo.x - boss.x) < 3 && Math.abs(bo.z - boss.group.position.z) < 3) {
+        damageBoss(1);
+        hit = true;
+      }
       if (!hit) {
         for (const d of drones) {
           if (Math.abs(bo.x - d.x) < 1.1 && Math.abs(bo.z - d.z) < 1.2) { killDrone(d, true); hit = true; break; }
@@ -1870,10 +2049,12 @@
       updateAim(dt);
       updateBalls(dt);
       updateDrones(dt);
+      updateBoss(dt);
+      updateBossShots(dt);
       updatePowerups(dt);
       updateBolts(dt);
       updateBuffTimers(dt);
-      if (!bricksLeft()) levelClear();
+      if (!bricksLeft() && !(boss && boss.hp > 0)) levelClear();
     } else if (state.mode === 'clear' || state.mode === 'over' || state.mode === 'menu') {
       updatePaddle(dt);
     }
@@ -1935,7 +2116,8 @@
   if (new URLSearchParams(location.search).get('dev') === '1') {
     window.__ark = {
       state, balls, bricks, powerups, buffs, drones, applyPowerup, destroyBrick, hitBrick,
-      dropPowerup, spawnDrone,
+      dropPowerup, spawnDrone, damageBoss,
+      get boss() { return boss; },
       get paddleX() { return paddleX; },
       set target(v) { paddleTargetX = v; }
     };

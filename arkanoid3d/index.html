@@ -32,6 +32,10 @@
     .big { font-size: 22px; font-weight: 800; letter-spacing: .02em; color: #7ffbe4; }
     .small { font-size: 12px; opacity: .75; }
     #lives { font-size: 15px; letter-spacing: 2px; }
+    /* kolik bodů chybí do nejbližší příčky v tabulce */
+    #chase { font-size: 12px; color: #ffd166; opacity: .95; }
+    #chase:empty { display: none; }
+    #chase b { font-weight: 800; }
     #combo {
       font-size: 14px; font-weight: 700; color: #ffd166; opacity: 0;
       transition: opacity .2s ease;
@@ -123,13 +127,17 @@
     }
     @keyframes shine { to { background-position: -260% 0; } }
     .tag { font-size: 14px; opacity: .8; margin-bottom: 16px; }
-    .best {
-      display: inline-block; margin-bottom: 18px; padding: 5px 14px;
-      border-radius: 999px; font-size: 13px; letter-spacing: .04em;
-      border: 1px solid rgba(255, 209, 102, .45); color: #ffd166;
+    /* nejlepší tři výsledky na úvodní obrazovce */
+    .scores {
+      display: inline-grid; gap: 5px; margin-bottom: 18px; padding: 9px 16px;
+      border-radius: 14px; font-size: 14px;
+      border: 1px solid rgba(255, 209, 102, .4); color: #ffd166;
       background: rgba(255, 209, 102, .07);
     }
-    .best:empty { display: none; }
+    .scores:empty { display: none; }
+    .scores div { display: flex; align-items: baseline; gap: 10px; }
+    .scores .pts { font-weight: 800; letter-spacing: .02em; margin-left: auto; }
+    .scores .lvl { font-size: 12px; opacity: .6; min-width: 52px; text-align: right; }
     #panel button.primary {
       font-size: 19px; padding: 15px 16px; letter-spacing: .06em;
       background: linear-gradient(180deg, rgba(0,255,200,.22), rgba(0,255,200,.08));
@@ -230,6 +238,7 @@
       <span class="small">SKÓRE</span>
       <span class="big" id="score">0</span>
       <span class="small">rekord <span id="best">0</span></span>
+      <span id="chase"></span>
       <span id="combo">KOMBO ×1</span>
     </div>
     <div class="box right">
@@ -250,7 +259,7 @@
     <div id="panel">
       <h1 class="logo">ARKANOID 3D</h1>
       <p class="tag">Rozbij zeď, chytej bonusy, přežij Strážce.</p>
-      <div class="best" id="menuBest"></div>
+      <div class="scores" id="menuBest"></div>
       <button id="ovBtn" class="primary">▶&nbsp; HRÁT</button>
       <button id="ovFsBtn" class="ghost">📱 Na celou obrazovku</button>
       <button id="ovHelpBtn" class="ghost">Nápověda a ovládání</button>
@@ -1403,17 +1412,39 @@
     run.bricks = 0; run.bestCombo = 0; run.powerups = 0; run.risks = 0; run.started = Date.now();
   }
 
+  // Do tabulky se vejdou tři výsledky – tolik jich ukazuje úvodní obrazovka
+  // i konec hry a na tolik příčky se hráč během hry dotahuje.
+  const TOP_N = 3;
+  const MEDALS = ['🥇', '🥈', '🥉'];
+
   function loadScores() {
-    try { return JSON.parse(localStorage.getItem('arkanoid3d_scores') || '[]'); } catch (e) { return []; }
+    try {
+      const list = JSON.parse(localStorage.getItem('arkanoid3d_scores') || '[]');
+      return Array.isArray(list) ? list.slice(0, TOP_N) : [];
+    } catch (e) { return []; }
   }
   function saveScore(entry) {
     const list = loadScores();
     list.push(entry);
     list.sort((a, b) => b.score - a.score);
-    const top = list.slice(0, 5);
+    const top = list.slice(0, TOP_N);
     try { localStorage.setItem('arkanoid3d_scores', JSON.stringify(top)); } catch (e) {}
     return top;
   }
+
+  // Tabulka platná pro rozehranou hru – během kola se nemění, aby se ukazatel
+  // nehoupal. Vrací příčku, na kterou se hráč zrovna tlačí, a chybějící body.
+  let topSnapshot = [];
+  let chaseRank = 0;
+
+  function chaseInfo() {
+    let rank = 1;
+    for (const e of topSnapshot) if (e.score >= state.score) rank++;
+    const target = Math.min(rank - 1, TOP_N);   // 0 = už je první
+    if (target < 1) return { rank, target: 0, need: 0 };
+    return { rank, target, need: topSnapshot[target - 1].score - state.score + 1 };
+  }
+
   // 1 cihla / 2–4 cihly / 5+ cihel
   function plural(n, one, few, many) {
     return n === 1 ? one : (n >= 2 && n <= 4) ? few : many;
@@ -1422,7 +1453,7 @@
   function boardHtml(top, mineId) {
     if (!top.length) return '';
     return '<table class="board">' + top.map((e, i) =>
-      `<tr class="${e.id === mineId ? 'me' : ''}"><td>${i + 1}.</td>` +
+      `<tr class="${e.id === mineId ? 'me' : ''}"><td>${MEDALS[i] || (i + 1) + '.'}</td>` +
       `<td class="num">${e.score.toLocaleString('cs-CZ')}</td>` +
       `<td>${e.level}. kolo</td><td>${e.date || ''}</td></tr>`).join('') + '</table>';
   }
@@ -2476,6 +2507,7 @@
     best: document.getElementById('best'),
     level: document.getElementById('level'),
     lives: document.getElementById('lives'),
+    chase: document.getElementById('chase'),
     combo: document.getElementById('combo'),
     buffs: document.getElementById('buffs'),
     overlay: document.getElementById('overlay'),
@@ -2492,11 +2524,25 @@
     updateHud();
   }
 
+  // Kolik bodů dělí hráče od nejbližší příčky v tabulce. Když se na některou
+  // dotáhne, hra to dá vědět i nad pálkou.
+  function updateChase() {
+    const c = chaseInfo();
+    el.chase.innerHTML = c.target
+      ? `${MEDALS[c.target - 1]} ${c.target}. místo za <b>${c.need.toLocaleString('cs-CZ')}</b>`
+      : `${MEDALS[0]} vedeš tabulku`;
+    if (state.mode === 'play' && chaseRank && c.rank < chaseRank && c.rank <= TOP_N) {
+      floatText(MEDALS[c.rank - 1] + ' ' + c.rank + '. MÍSTO!', '#ffd166', paddleX, 3.4, PADDLE_Z);
+    }
+    chaseRank = c.rank;
+  }
+
   function updateHud() {
     el.score.textContent = state.score.toLocaleString('cs-CZ');
     el.best.textContent = state.best.toLocaleString('cs-CZ');
     el.level.textContent = state.level;
     el.lives.textContent = '❤️'.repeat(Math.max(0, state.lives));
+    updateChase();
     if (state.combo >= 2) {
       el.combo.textContent = 'KOMBO ×' + (1 + (state.combo - 1) * 0.5).toFixed(1);
       el.combo.classList.add('on');
@@ -2711,9 +2757,13 @@
   function bindMenu() {
     document.getElementById('hud').classList.add('hidden');
     el.buffs.classList.add('hidden');
-    const best = loadScores();
     const box = document.getElementById('menuBest');
-    if (box) box.textContent = best.length ? 'REKORD ' + best[0].score.toLocaleString('cs-CZ') : '';
+    if (box) {
+      box.innerHTML = loadScores().map((e, i) =>
+        `<div><span>${MEDALS[i]}</span>` +
+        `<span class="pts">${e.score.toLocaleString('cs-CZ')}</span>` +
+        `<span class="lvl">${e.level}. kolo</span></div>`).join('');
+    }
     document.getElementById('ovBtn').onclick = () => { ensureAudio(); startGame(); };
     document.getElementById('ovFsBtn').onclick = goFullscreen;
     const help = document.getElementById('ovHelpBtn');
@@ -2747,6 +2797,8 @@
     noPauseUntil = performance.now() + 900;
     state.score = 0;
     state.lives = 3;
+    topSnapshot = loadScores();   // tabulka, na kterou se hráč bude dotahovat
+    chaseRank = 0;                // ať se hned na startu nehlásí posun
     resetBuffs();
     paddleW = PADDLE_W_BASE;
     startLevel(START_LEVEL);
@@ -3204,6 +3256,7 @@
       get audioCtx() { return audioCtx; }, get master() { return master; },
       get duck() { return duckGain; },
       state, balls, bricks, powerups, buffs, drones, applyPowerup, destroyBrick, hitBrick,
+      addScore, loadScores,
       dropPowerup, spawnDrone, damageBoss,
       get boss() { return boss; },
       get paddleX() { return paddleX; },

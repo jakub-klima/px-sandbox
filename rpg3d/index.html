@@ -608,15 +608,33 @@
   neckMesh.position.y = 0.04; neck.add(neckMesh);
   const head = solid(new THREE.SphereGeometry(0.28, 18, 16), skinMat);
   head.position.y = 0.28; head.scale.set(0.95, 1.05, 0.98); neck.add(head);
-  const hair = solid(new THREE.SphereGeometry(0.295, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.62), hairMat);
-  hair.position.y = 0.3; hair.scale.set(0.98, 1.05, 1); neck.add(hair);
+
+  // Vlasy dřív byly kulový výsek větší než hlava a sahal až pod oči –
+  // hlava pak byla jen hnědá koule. Teď: čepička nad čelem a delší díl
+  // vzadu a po stranách, obličej zůstává volný.
+  const FACE_PHI = Math.PI / 2;   // v SphereGeometry míří obličej tímto směrem
+  const hairTop = solid(new THREE.SphereGeometry(0.3, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.42), hairMat);
+  hairTop.position.y = 0.28; hairTop.scale.set(0.99, 1.06, 1); neck.add(hairTop);
+  const hairBack = solid(new THREE.SphereGeometry(0.3, 18, 10,
+    FACE_PHI + 0.62, Math.PI * 2 - 1.24, Math.PI * 0.34, Math.PI * 0.4), hairMat);
+  hairBack.position.y = 0.28; hairBack.scale.set(0.99, 1.06, 1); neck.add(hairBack);
+  // pár pramenů vzadu, ať hlava shora není hladká kupole
+  for (const [hx, hz, hr] of [[-0.12, -0.19, 0.095], [0.12, -0.19, 0.095], [0, -0.25, 0.105]]) {
+    const tuft = solid(new THREE.IcosahedronGeometry(hr, 0), hairMat);
+    tuft.position.set(hx, 0.33, hz); tuft.rotation.set(Math.random(), Math.random(), 0); neck.add(tuft);
+  }
+
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0x1e2126, roughness: 0.25 });
   for (const sx of [-1, 1]) {
     const eye = solid(new THREE.SphereGeometry(0.042, 8, 8), eyeMat);
     eye.position.set(sx * 0.1, 0.3, 0.25); neck.add(eye);
-    const brow = box(0.09, 0.022, 0.03, hairMat);
-    brow.position.set(sx * 0.1, 0.36, 0.25); brow.rotation.z = -sx * 0.14; neck.add(brow);
+    const brow = box(0.085, 0.022, 0.03, hairMat);
+    brow.position.set(sx * 0.1, 0.345, 0.245); brow.rotation.z = -sx * 0.14; neck.add(brow);
   }
+  const nose = solid(new THREE.ConeGeometry(0.045, 0.09, 6), skinMat);
+  nose.position.set(0, 0.26, 0.255); nose.rotation.x = Math.PI / 2; neck.add(nose);
+  const mouth = solid(new THREE.BoxGeometry(0.085, 0.02, 0.03), eyeMat);
+  mouth.position.set(0, 0.195, 0.25); neck.add(mouth);
 
   // --- paže: rameno → nadloktí → loket → předloktí → dlaň ---
   function makeHeroArm(side) {

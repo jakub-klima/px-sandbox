@@ -49,6 +49,12 @@
       position: fixed; inset: 0; pointer-events: none; z-index: 4;
       background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 52%, rgba(0,0,0,.5) 100%);
     }
+    /* Červený záblesk při zranění */
+    #hurtFx {
+      position: fixed; inset: 0; pointer-events: none; z-index: 5; opacity: 0;
+      background: radial-gradient(ellipse at 50% 50%, rgba(160,0,0,0) 45%, rgba(170,10,10,.6) 100%);
+      transition: opacity .12s ease-out;
+    }
 
     /* Plovoucí čísla poškození */
     #floaters { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
@@ -116,6 +122,7 @@
 <body>
   <canvas id="game"></canvas>
   <div id="vignette"></div>
+  <div id="hurtFx"></div>
   <div id="floaters"></div>
 
   <div id="hud">
@@ -154,6 +161,16 @@
   <script type="module">
   import * as THREE from 'three';
 
+  // ---------- Matematické pomůcky pro animace ----------
+  const clamp01 = (v) => v < 0 ? 0 : v > 1 ? 1 : v;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  // plynulý náběh mezi dvěma prahy (0 pod a, 1 nad b)
+  const smoothstep = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+  const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+  const easeInCubic = (t) => t * t * t;
+  // framerate-nezávislé dotahování hodnoty k cíli
+  const damp = (cur, target, lambda, dt) => lerp(cur, target, 1 - Math.exp(-lambda * dt));
+
   // ---------- Základní nastavení scény ----------
   const canvas = document.getElementById('game');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -161,51 +178,68 @@
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.15;
 
-  const SKY_TOP = 0x2a3c63, SKY_BOT = 0x9bb4d6, FOG_COL = 0x7d93b8;
+  const FOG_COL = 0x8ba2c4;
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(FOG_COL, 34, 78);
+  // Vzdálenější mlha – kopce na obzoru se do ní plynule ztrácejí.
+  scene.fog = new THREE.Fog(FOG_COL, 42, 124);
 
   // Obloha jako svislý přechod (canvas textura)
   (function makeSky() {
     const c = document.createElement('canvas'); c.width = 4; c.height = 256;
-    const g = c.getContext('2d').createLinearGradient(0, 0, 0, 256);
-    g.addColorStop(0, '#3a5081'); g.addColorStop(0.5, '#6f8cba'); g.addColorStop(1, '#b9cbe4');
-    const ctx = c.getContext('2d'); ctx.fillStyle = g; ctx.fillRect(0, 0, 4, 256);
+    const ctx = c.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, 0, 256);
+    g.addColorStop(0.00, '#26375e');
+    g.addColorStop(0.38, '#5c7ba9');
+    g.addColorStop(0.72, '#a8bfd8');
+    g.addColorStop(1.00, '#d7e2ec');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 4, 256);
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
     const sky = new THREE.Mesh(
-      new THREE.SphereGeometry(140, 16, 16),
+      new THREE.SphereGeometry(150, 24, 20),
       new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false })
     );
     scene.add(sky);
   })();
 
-  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 320);
-  // Pevná kamera ve stylu Diablo – vysoko a daleko, pod strmým úhlem.
-  const CAM_HEIGHT = 15;  // výška nad hrdinou
-  const CAM_BACK = 11;    // odsazení směrem k divákovi (+z)
+  const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 340);
+  // Pevná kamera ve stylu Diablo – shora pod úhlem, ale dost blízko,
+  // aby byly vidět pohyby postav.
+  const CAM_HEIGHT = 12.5; // výška nad hrdinou
+  const CAM_BACK = 9.5;    // odsazení směrem k divákovi (+z)
   camera.position.set(0, CAM_HEIGHT, CAM_BACK);
   camera.lookAt(0, 0.5, 0);
 
-  // Světla – teplé slunce + chladné nebe + jemné dosvícení
-  scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x3a4030, 0.7));
-  const sun = new THREE.DirectionalLight(0xfff1d6, 2.0);
-  sun.position.set(20, 34, 14);
+  // Světla – teplé nízké slunce, chladné nebe a studený obrys zezadu.
+  scene.add(new THREE.HemisphereLight(0xbcd4f5, 0x505a42, 0.72));
+  const sun = new THREE.DirectionalLight(0xffe7c2, 2.3);
+  sun.position.set(22, 26, 16);   // níž než dřív → delší, čitelnější stíny
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 100;
+  sun.shadow.camera.far = 110;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.02;
+  sun.shadow.radius = 2.5;        // měkčí okraje stínů
   const s = 46;
   sun.shadow.camera.left = -s; sun.shadow.camera.right = s;
   sun.shadow.camera.top = s; sun.shadow.camera.bottom = -s;
   scene.add(sun);
   // chladné dosvícení zezadu pro objem
-  const fill = new THREE.DirectionalLight(0x6f8cc0, 0.5);
-  fill.position.set(-16, 12, -18);
+  const fill = new THREE.DirectionalLight(0x7fa0d6, 0.55);
+  fill.position.set(-18, 10, -20);
   scene.add(fill);
+  // studený obrysový (rim) reflektor – odděluje postavy od pozadí
+  const rim = new THREE.DirectionalLight(0xcfe3ff, 0.8);
+  rim.position.set(-10, 8, 22);
+  scene.add(rim);
+
+  // Krátký světelný záblesk v místě zásahu (jeden sdílený, přesouvá se)
+  const impactLight = new THREE.PointLight(0xffd98a, 0, 9, 2);
+  impactLight.position.set(0, 1.2, 0);
+  scene.add(impactLight);
+  let impactLightLife = 0;
 
   // Procedurální environment mapa z oblohy → realistické odlesky na kovu
   try {
@@ -231,22 +265,31 @@
     const ctx = c.getContext('2d');
     ctx.fillStyle = `rgb(${baseRGB[0]},${baseRGB[1]},${baseRGB[2]})`;
     ctx.fillRect(0, 0, size, size);
+    // Skvrnu u okraje nakreslíme i na protější straně – textura pak
+    // navazuje a v ploše nejsou vidět švy dlaždic.
+    function wrapArc(x, y, r) {
+      for (let ox = -1; ox <= 1; ox++) {
+        for (let oy = -1; oy <= 1; oy++) {
+          const px = x + ox * size, py = y + oy * size;
+          if (px + r < 0 || px - r > size || py + r < 0 || py - r > size) continue;
+          ctx.beginPath();
+          ctx.arc(px, py, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
     for (let i = 0; i < blobs; i++) {
-      const r = 2 + Math.random() * (size / 12);
+      const r = 2 + Math.random() * (size / 16);
       const k = Math.random() * 2 - 1;
       const cr = Math.max(0, Math.min(255, baseRGB[0] + varRGB[0] * k + (Math.random() * 2 - 1) * 10));
       const cg = Math.max(0, Math.min(255, baseRGB[1] + varRGB[1] * k + (Math.random() * 2 - 1) * 10));
       const cb = Math.max(0, Math.min(255, baseRGB[2] + varRGB[2] * k + (Math.random() * 2 - 1) * 10));
-      ctx.fillStyle = `rgba(${cr | 0},${cg | 0},${cb | 0},${0.25 + Math.random() * 0.35})`;
-      ctx.beginPath();
-      ctx.arc(Math.random() * size, Math.random() * size, r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillStyle = `rgba(${cr | 0},${cg | 0},${cb | 0},${0.15 + Math.random() * 0.25})`;
+      wrapArc(Math.random() * size, Math.random() * size, r);
     }
     if (darkSpots) for (let i = 0; i < darkSpots; i++) {
-      ctx.fillStyle = `rgba(50,40,28,${0.10 + Math.random() * 0.18})`;
-      ctx.beginPath();
-      ctx.arc(Math.random() * size, Math.random() * size, 4 + Math.random() * 14, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillStyle = `rgba(50,40,28,${0.06 + Math.random() * 0.12})`;
+      wrapArc(Math.random() * size, Math.random() * size, 3 + Math.random() * 9);
     }
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -256,19 +299,92 @@
     return tex;
   }
 
+  // Měkký kruhový gradient – kontaktní stín pod postavami
+  function makeBlobTexture() {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, 'rgba(0,0,0,0.85)');
+    g.addColorStop(0.45, 'rgba(0,0,0,0.45)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 128);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+  const blobTex = makeBlobTexture();
+  const blobGeo = new THREE.PlaneGeometry(1, 1);
+  // Kontaktní stín zjemňuje přechod postavy do země (stín z mapy je na to moc měkký).
+  function addContactShadow(parent, size, opacity) {
+    const m = new THREE.Mesh(blobGeo, new THREE.MeshBasicMaterial({
+      map: blobTex, transparent: true, opacity, depthWrite: false, fog: true, color: 0x0b1208
+    }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.y = 0.02;
+    m.scale.set(size, size, 1);
+    m.renderOrder = 1;
+    parent.add(m);
+    return m;
+  }
+
   // ---------- Země ----------
-  const grassTex = noiseTexture(512, 4500, [60, 96, 52], [26, 34, 22], 9, 220);
+  const grassTex = noiseTexture(512, 5200, [68, 104, 58], [24, 30, 20], 9, 70);
   const grassBump = grassTex.clone(); grassBump.needsUpdate = true;
   const groundMat = new THREE.MeshStandardMaterial({
-    map: grassTex, bumpMap: grassBump, bumpScale: 0.25, roughness: 0.95, metalness: 0
+    map: grassTex, bumpMap: grassBump, bumpScale: 0.3, roughness: 0.97, metalness: 0
   });
   const ground = new THREE.Mesh(new THREE.BoxGeometry(ARENA * 2, 1, ARENA * 2), groundMat);
   ground.position.y = -0.5; ground.receiveShadow = true;
   scene.add(ground);
 
+  // Druhá, velmi řídká vrstva skvrn hlíny – rozbíjí opakování textury
+  (function addDirtPatches() {
+    const patchTex = makeBlobTexture();
+    const mat = new THREE.MeshStandardMaterial({
+      map: patchTex, color: 0x8a7853, transparent: true, opacity: 0.28,
+      depthWrite: false, roughness: 1
+    });
+    const geo = new THREE.PlaneGeometry(1, 1);
+    for (let i = 0; i < 18; i++) {
+      const m = new THREE.Mesh(geo, mat);
+      m.rotation.x = -Math.PI / 2;
+      m.rotation.z = Math.random() * Math.PI;
+      const sc = 2.5 + Math.random() * 4;
+      m.scale.set(sc, sc * (0.6 + Math.random() * 0.6), 1);
+      m.position.set((Math.random() - 0.5) * ARENA * 1.85, 0.012, (Math.random() - 0.5) * ARENA * 1.85);
+      scene.add(m);
+    }
+  })();
+
+  // Trsy trávy – jedna instancovaná kresba, kolem hrdiny působí porost živě
+  (function addGrassTufts() {
+    const blade = new THREE.ConeGeometry(0.035, 0.3, 3);
+    blade.translate(0, 0.15, 0);
+    // Tři odstíny = tři instancované meshe. Per-instance barva (setColorAt)
+    // se v three r160 do difuzní složky nepromítne bez vertexColors, takže
+    // radši rozdělíme trsy podle materiálu – pořád jsou to jen tři kresby.
+    const COUNT = 2400;
+    const d = new THREE.Object3D();
+    for (const color of [0x3c5c31, 0x496b38, 0x2f4a29]) {
+      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.98, flatShading: true });
+      const inst = new THREE.InstancedMesh(blade, mat, COUNT / 3);
+      inst.castShadow = false; inst.receiveShadow = true;
+      for (let i = 0; i < COUNT / 3; i++) {
+        d.position.set((Math.random() - 0.5) * ARENA * 1.9, 0, (Math.random() - 0.5) * ARENA * 1.9);
+        d.rotation.set((Math.random() - 0.5) * 0.45, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.45);
+        const sc = 0.55 + Math.random() * 0.7;
+        d.scale.set(sc, sc * (0.7 + Math.random() * 0.8), sc);
+        d.updateMatrix();
+        inst.setMatrixAt(i, d.matrix);
+      }
+      inst.instanceMatrix.needsUpdate = true;
+      scene.add(inst);
+    }
+  })();
+
   // ---------- Hradby + věže ----------
   const stoneTex = noiseTexture(256, 1400, [120, 124, 132], [34, 32, 30], 1, 0);
-  const wallMat = new THREE.MeshStandardMaterial({ map: stoneTex, bumpMap: stoneTex, bumpScale: 0.4, roughness: 0.9, metalness: 0.05 });
+  const wallMat = new THREE.MeshStandardMaterial({ map: stoneTex, bumpMap: stoneTex, bumpScale: 0.45, roughness: 0.92, metalness: 0.04 });
   const battlementMat = new THREE.MeshStandardMaterial({ color: 0x9298a6, roughness: 0.9, metalness: 0.05 });
   function addWall(x, z, w, d, horizontal) {
     const wall = solid(new THREE.BoxGeometry(w, 3.4, d), wallMat);
@@ -299,11 +415,34 @@
     roof.position.set(sx * ARENA, 8.5, sz * ARENA); scene.add(roof);
   }
 
+  // ---------- Krajina za hradbami ----------
+  (function addDistantHills() {
+    const hillMat = new THREE.MeshStandardMaterial({ color: 0x54694f, roughness: 1, flatShading: true });
+    for (let i = 0; i < 20; i++) {
+      const a = (i / 20) * Math.PI * 2 + Math.random() * 0.2;
+      const r = 68 + Math.random() * 42;
+      const geo = new THREE.IcosahedronGeometry(9 + Math.random() * 13, 1);
+      const p = geo.attributes.position;
+      for (let v = 0; v < p.count; v++) {
+        p.setXYZ(v, p.getX(v) * (0.9 + Math.random() * 0.25),
+                    p.getY(v) * (0.34 + Math.random() * 0.2),
+                    p.getZ(v) * (0.9 + Math.random() * 0.25));
+      }
+      geo.computeVertexNormals();
+      const m = new THREE.Mesh(geo, hillMat);
+      m.position.set(Math.cos(a) * r, -1.5, Math.sin(a) * r);
+      scene.add(m);
+    }
+  })();
+
   // ---------- Dekorace: stromy, skály, pochodně ----------
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4828, roughness: 0.95 });
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4828, roughness: 0.97 });
   const leafMats = [0x2f6b32, 0x3a7d3e, 0x27592c, 0x4f8c3a].map(c =>
-    new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, flatShading: true }));
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0x787c86, roughness: 0.9, metalness: 0.05, flatShading: true });
+    new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, flatShading: true }));
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x5d6169, roughness: 0.98, metalness: 0.02, flatShading: true });
+
+  // stromy se ve větru pomalu naklánějí
+  const swayers = [];
 
   // jehličnatý / kulatý strom
   function addTree(x, z) {
@@ -311,26 +450,29 @@
     const h = 1.8 + Math.random() * 1.4;
     const trunk = solid(new THREE.CylinderGeometry(0.18, 0.32, h, 8), trunkMat);
     trunk.position.y = h / 2; g.add(trunk);
+    const crown = new THREE.Group();       // koruna se hýbe, kmen stojí
+    crown.position.y = h * 0.55; g.add(crown);
     const lm = leafMats[(Math.random() * leafMats.length) | 0];
     if (Math.random() < 0.55) {
       // jehličnan – vrstvené kužely
       for (let i = 0; i < 3; i++) {
         const r = 1.7 - i * 0.45, ch = 1.5 - i * 0.2;
         const cone = solid(new THREE.ConeGeometry(r, ch, 8), lm);
-        cone.position.y = h + 0.2 + i * 0.85; g.add(cone);
+        cone.position.y = h * 0.45 + 0.2 + i * 0.85; crown.add(cone);
       }
     } else {
       // listnatý – shluk koulí
       for (let i = 0; i < 4; i++) {
         const r = 0.8 + Math.random() * 0.6;
         const blob = solid(new THREE.IcosahedronGeometry(r, 0), lm);
-        blob.position.set((Math.random() - 0.5) * 1.2, h + 0.4 + Math.random() * 1.2, (Math.random() - 0.5) * 1.2);
-        g.add(blob);
+        blob.position.set((Math.random() - 0.5) * 1.2, h * 0.45 + 0.4 + Math.random() * 1.2, (Math.random() - 0.5) * 1.2);
+        crown.add(blob);
       }
     }
     g.position.set(x, 0, z);
     g.rotation.y = Math.random() * Math.PI;
     scene.add(g);
+    swayers.push({ node: crown, phase: Math.random() * 7, amp: 0.03 + Math.random() * 0.03 });
   }
   // přírodně tvarovaný balvan (jitterovaný icosahedron)
   function addRock(x, z) {
@@ -355,6 +497,7 @@
   }
   // pochodeň: kovový stojan + zářící plamen + světlo
   const torchPostMat = new THREE.MeshStandardMaterial({ color: 0x2b2b30, roughness: 0.5, metalness: 0.8 });
+  const torchFlames = [];
   function addTorch(x, z) {
     const g = new THREE.Group();
     const post = solid(new THREE.CylinderGeometry(0.08, 0.12, 2.6, 8), torchPostMat);
@@ -367,9 +510,8 @@
     const light = new THREE.PointLight(0xffa838, 3.0, 16, 2);
     light.position.set(0, 3.0, 0); g.add(light);
     g.position.set(x, 0, z); scene.add(g);
-    torchFlames.push(flame);
+    torchFlames.push({ mesh: flame, light });
   }
-  const torchFlames = [];
 
   // rozmístění dekorací mimo střed
   function randSpot() {
@@ -382,125 +524,273 @@
   for (let i = 0; i < 8; i++) { const [x, z] = randSpot(); addRock(x, z); }
   for (const p of [[-14, -14], [14, -14], [-14, 14], [14, 14]]) addTorch(p[0], p[1]);
 
-  // ---------- Hrdina ----------
+  // =========================================================================
+  //  HRDINA – kloubový "rig" místo pevně slepených dílů.
+  //
+  //  hero (natočení + pozice)
+  //    └ heroBob (pérování, výpad, pád)
+  //        ├ pelvis  → kyčle → kolena → kotníky → chodidla
+  //        └ spine   → trup, ramena → lokty → dlaně (meč / štít), krk → hlava
+  //
+  //  Pánev a hrudník jsou sourozenci, takže se při chůzi mohou protáčet
+  //  proti sobě – to je to, co dělá chůzi "lidskou".
+  // =========================================================================
   const hero = new THREE.Group();
   scene.add(hero);
+  const heroBob = new THREE.Group();
+  hero.add(heroBob);
+  addContactShadow(hero, 1.7, 0.5);
 
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0xe9b48a, roughness: 0.8 });
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2f5fbf, roughness: 0.7, metalness: 0.1 });
-  const beltMat = new THREE.MeshStandardMaterial({ color: 0x5a3d24, roughness: 0.9 });
-  const legMat = new THREE.MeshStandardMaterial({ color: 0x2b3a55, roughness: 0.9 });
-  const armorMat = new THREE.MeshStandardMaterial({ color: 0xb8c0cc, roughness: 0.4, metalness: 0.7 });
-  const capeMat = new THREE.MeshStandardMaterial({ color: 0xb23a48, roughness: 0.85 });
-  const hairMat = new THREE.MeshStandardMaterial({ color: 0x5a3a1e, roughness: 0.9 });
+  const skinMat  = new THREE.MeshStandardMaterial({ color: 0xd9a077, roughness: 0.78 });
+  const tunicMat = new THREE.MeshStandardMaterial({ color: 0x27407a, roughness: 0.88, metalness: 0.02 });
+  const leatherMat = new THREE.MeshStandardMaterial({ color: 0x4a3320, roughness: 0.85, metalness: 0.05 });
+  const legMat   = new THREE.MeshStandardMaterial({ color: 0x2b3a55, roughness: 0.92 });
+  const steelMat = new THREE.MeshStandardMaterial({ color: 0x939cab, roughness: 0.32, metalness: 0.9, envMapIntensity: 1.15 });
+  const goldMat  = new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.3, metalness: 0.85, envMapIntensity: 1.2 });
+  const capeMat  = new THREE.MeshStandardMaterial({ color: 0x8e2b38, roughness: 0.92, side: THREE.DoubleSide });
+  const hairMat  = new THREE.MeshStandardMaterial({ color: 0x3a2413, roughness: 0.92 });
 
-  // tělo – zaoblený trup (kapsle) v modré tunice
-  const torso = solid(new THREE.CapsuleGeometry(0.36, 0.5, 6, 14), bodyMat);
-  torso.position.y = 1.2; torso.scale.z = 0.78; hero.add(torso);
-  // hrudní pancíř
-  const chest = solid(new THREE.CapsuleGeometry(0.34, 0.3, 6, 14), armorMat);
-  chest.position.y = 1.4; chest.scale.set(1.05, 0.8, 0.85); hero.add(chest);
-  const belt = solid(new THREE.CylinderGeometry(0.4, 0.4, 0.16, 14), beltMat);
-  belt.position.y = 0.82; belt.scale.z = 0.78; hero.add(belt);
-  // ramenní pancíř (kulové naramenníky)
-  const pauldL = solid(new THREE.SphereGeometry(0.24, 12, 10), armorMat); pauldL.position.set(-0.46, 1.58, 0); hero.add(pauldL);
-  const pauldR = solid(new THREE.SphereGeometry(0.24, 12, 10), armorMat); pauldR.position.set(0.46, 1.58, 0); hero.add(pauldR);
-  // plášť za zády
-  const cape = box(0.66, 1.05, 0.08, capeMat); cape.position.set(0, 1.18, -0.32); cape.rotation.x = 0.14; hero.add(cape);
+  const HIP_Y = 1.0;
+  const pelvis = new THREE.Group(); pelvis.position.y = HIP_Y; heroBob.add(pelvis);
+  const spine  = new THREE.Group(); spine.position.y = HIP_Y;  heroBob.add(spine);
 
-  const head = solid(new THREE.SphereGeometry(0.3, 16, 14), skinMat); head.position.y = 1.92; hero.add(head);
-  // vlasy jako čepička
-  const hair = solid(new THREE.SphereGeometry(0.32, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.6), hairMat);
-  hair.position.y = 1.96; hero.add(hair);
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.4 });
-  const eyeL = solid(new THREE.SphereGeometry(0.05, 8, 8), eyeMat); eyeL.position.set(-0.11, 1.94, 0.26); hero.add(eyeL);
-  const eyeR = solid(new THREE.SphereGeometry(0.05, 8, 8), eyeMat); eyeR.position.set(0.11, 1.94, 0.26); hero.add(eyeR);
+  // --- nohy: kyčel → stehno → koleno → holeň → kotník → chodidlo ---
+  function makeHeroLeg(side) {
+    const hip = new THREE.Group(); hip.position.set(side * 0.19, 0, 0); pelvis.add(hip);
+    const thigh = solid(new THREE.CapsuleGeometry(0.15, 0.32, 6, 12), legMat);
+    thigh.position.y = -0.25; hip.add(thigh);
+    const knee = new THREE.Group(); knee.position.y = -0.46; hip.add(knee);
+    const shin = solid(new THREE.CapsuleGeometry(0.125, 0.28, 6, 12), legMat);
+    shin.position.y = -0.22; knee.add(shin);
+    const ankle = new THREE.Group(); ankle.position.y = -0.42; knee.add(ankle);
+    const foot = solid(new THREE.BoxGeometry(0.21, 0.12, 0.36), leatherMat);
+    foot.position.set(0, -0.06, 0.07); ankle.add(foot);
+    const cuff = solid(new THREE.CylinderGeometry(0.16, 0.14, 0.16, 10), leatherMat);
+    cuff.position.y = -0.02; ankle.add(cuff);
+    return { hip, knee, ankle, foot };
+  }
+  const legL = makeHeroLeg(-1), legR = makeHeroLeg(1);
 
-  // Nohy visí z kyčelního pivotu (u pasu), aby se při chůzi houpaly celé včetně bot.
-  const HIP_Y = 0.82;
-  const legPivotL = new THREE.Group(); legPivotL.position.set(-0.2, HIP_Y, 0); hero.add(legPivotL);
-  const legPivotR = new THREE.Group(); legPivotR.position.set(0.2, HIP_Y, 0); hero.add(legPivotR);
-  const legL = solid(new THREE.CapsuleGeometry(0.15, 0.5, 5, 10), legMat); legL.position.set(0, 0.42 - HIP_Y, 0); legPivotL.add(legL);
-  const legR = solid(new THREE.CapsuleGeometry(0.15, 0.5, 5, 10), legMat); legR.position.set(0, 0.42 - HIP_Y, 0); legPivotR.add(legR);
-  const bootL = solid(new THREE.SphereGeometry(0.18, 10, 8), beltMat); bootL.position.set(0, 0.1 - HIP_Y, 0.06); bootL.scale.z = 1.4; legPivotL.add(bootL);
-  const bootR = solid(new THREE.SphereGeometry(0.18, 10, 8), beltMat); bootR.position.set(0, 0.1 - HIP_Y, 0.06); bootR.scale.z = 1.4; legPivotR.add(bootR);
+  // --- trup ---
+  const torso = solid(new THREE.CapsuleGeometry(0.33, 0.42, 6, 14), tunicMat);
+  torso.position.y = 0.34; torso.scale.z = 0.8; spine.add(torso);
+  const chest = solid(new THREE.CapsuleGeometry(0.32, 0.26, 6, 14), steelMat);
+  chest.position.y = 0.48; chest.scale.set(1.06, 0.85, 0.88); spine.add(chest);
+  const chestTrim = solid(new THREE.TorusGeometry(0.29, 0.028, 6, 20), goldMat);
+  chestTrim.position.y = 0.36; chestTrim.rotation.x = Math.PI / 2; chestTrim.scale.z = 0.85; spine.add(chestTrim);
+  const belt = solid(new THREE.CylinderGeometry(0.36, 0.36, 0.14, 16), leatherMat);
+  belt.position.y = 0.05; belt.scale.z = 0.8; spine.add(belt);
+  const buckle = solid(new THREE.BoxGeometry(0.13, 0.11, 0.05), goldMat);
+  buckle.position.set(0, 0.05, 0.27); spine.add(buckle);
 
-  // Levá paže + štít
-  const armL = solid(new THREE.CapsuleGeometry(0.12, 0.5, 5, 10), skinMat); armL.position.set(-0.5, 1.2, 0); hero.add(armL);
+  // plášť – tři pruhy na kloubu, aby se za chůze vlnil
+  const capeRoot = new THREE.Group();
+  capeRoot.position.set(0, 0.6, -0.24); spine.add(capeRoot);
+  const capeSegs = [];
+  {
+    let parent = capeRoot;
+    for (let i = 0; i < 3; i++) {
+      const seg = new THREE.Group();
+      seg.position.y = i === 0 ? 0 : -0.38;
+      parent.add(seg);
+      const w = 0.62 - i * 0.05;
+      const panel = box(w, 0.4, 0.035, capeMat);
+      panel.position.y = -0.2; seg.add(panel);
+      capeSegs.push(seg);
+      parent = seg;
+    }
+    capeRoot.rotation.x = 0.1;
+  }
+
+  // --- krk a hlava ---
+  const neck = new THREE.Group(); neck.position.y = 0.7; spine.add(neck);
+  const neckMesh = solid(new THREE.CylinderGeometry(0.1, 0.12, 0.12, 10), skinMat);
+  neckMesh.position.y = 0.04; neck.add(neckMesh);
+  const head = solid(new THREE.SphereGeometry(0.28, 18, 16), skinMat);
+  head.position.y = 0.28; head.scale.set(0.95, 1.05, 0.98); neck.add(head);
+  const hair = solid(new THREE.SphereGeometry(0.295, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.62), hairMat);
+  hair.position.y = 0.3; hair.scale.set(0.98, 1.05, 1); neck.add(hair);
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x1e2126, roughness: 0.25 });
+  for (const sx of [-1, 1]) {
+    const eye = solid(new THREE.SphereGeometry(0.042, 8, 8), eyeMat);
+    eye.position.set(sx * 0.1, 0.3, 0.25); neck.add(eye);
+    const brow = box(0.09, 0.022, 0.03, hairMat);
+    brow.position.set(sx * 0.1, 0.36, 0.25); brow.rotation.z = -sx * 0.14; neck.add(brow);
+  }
+
+  // --- paže: rameno → nadloktí → loket → předloktí → dlaň ---
+  function makeHeroArm(side) {
+    const shoulder = new THREE.Group(); shoulder.position.set(side * 0.4, 0.6, 0); spine.add(shoulder);
+    const pauld = solid(new THREE.SphereGeometry(0.17, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), steelMat);
+    pauld.position.y = 0.03; pauld.rotation.z = -side * 0.25; shoulder.add(pauld);
+    const upper = solid(new THREE.CapsuleGeometry(0.11, 0.26, 5, 10), skinMat);
+    upper.position.y = -0.2; shoulder.add(upper);
+    const elbow = new THREE.Group(); elbow.position.y = -0.38; shoulder.add(elbow);
+    const fore = solid(new THREE.CapsuleGeometry(0.095, 0.24, 5, 10), skinMat);
+    fore.position.y = -0.18; elbow.add(fore);
+    const bracer = solid(new THREE.CylinderGeometry(0.115, 0.105, 0.18, 10), leatherMat);
+    bracer.position.y = -0.26; elbow.add(bracer);
+    const hand = new THREE.Group(); hand.position.y = -0.38; elbow.add(hand);
+    const palm = solid(new THREE.SphereGeometry(0.085, 10, 8), skinMat);
+    palm.scale.set(1, 1.1, 0.8); hand.add(palm);
+    return { shoulder, elbow, hand };
+  }
+  const armL = makeHeroArm(-1), armR = makeHeroArm(1);
+
+  // --- štít v levé ruce ---
   const shield = new THREE.Group();
-  const shieldMat = new THREE.MeshStandardMaterial({ color: 0x6e7787, roughness: 0.45, metalness: 0.6 });
-  const shieldFace = solid(new THREE.CylinderGeometry(0.42, 0.42, 0.1, 20), shieldMat);
-  shieldFace.rotation.z = Math.PI / 2; shieldFace.scale.set(1, 1, 1.25);
-  const shieldBoss = solid(new THREE.SphereGeometry(0.12, 12, 10), new THREE.MeshStandardMaterial({ color: 0xd9b24a, roughness: 0.35, metalness: 0.7 }));
-  shieldBoss.position.x = 0.06; shield.add(shieldFace); shield.add(shieldBoss);
-  shield.position.set(-0.72, 1.2, 0.08); hero.add(shield);
+  const shieldFace = solid(new THREE.CylinderGeometry(0.4, 0.4, 0.07, 22), steelMat);
+  shieldFace.rotation.x = Math.PI / 2; shieldFace.scale.set(1, 1, 1.2);
+  const shieldRim = solid(new THREE.TorusGeometry(0.4, 0.035, 8, 24), goldMat);
+  const shieldBoss = solid(new THREE.SphereGeometry(0.11, 12, 10), goldMat);
+  shieldBoss.position.z = 0.06;
+  shield.add(shieldFace, shieldRim, shieldBoss);
+  shield.position.set(0, -0.06, 0.12);
+  shield.rotation.set(0.15, 0.25, 0);
+  armL.hand.add(shield);
 
-  // Pravá paže + meč (pivot pro animaci úderu)
-  const armPivot = new THREE.Group();
-  armPivot.position.set(0.5, 1.55, 0);
-  hero.add(armPivot);
-  const armR = solid(new THREE.CapsuleGeometry(0.12, 0.5, 5, 10), skinMat); armR.position.y = -0.35; armPivot.add(armR);
-
-  const swordMat = new THREE.MeshStandardMaterial({ color: 0xeef2f7, roughness: 0.18, metalness: 0.95 });
-  const edgeMat = new THREE.MeshStandardMaterial({ color: 0xdfeeff, emissive: 0x4f7bd0, emissiveIntensity: 1.4, roughness: 0.2, metalness: 0.9 });
-  const guardMat = new THREE.MeshStandardMaterial({ color: 0xd9b24a, roughness: 0.4, metalness: 0.7 });
+  // --- meč v pravé ruce ---
+  const bladeMat = new THREE.MeshStandardMaterial({ color: 0xdfe6ef, roughness: 0.13, metalness: 0.98, envMapIntensity: 1.35 });
+  const edgeMat = new THREE.MeshStandardMaterial({ color: 0xdfeeff, emissive: 0x4f7bd0, emissiveIntensity: 1.5, roughness: 0.2, metalness: 0.9 });
   const sword = new THREE.Group();
-  const blade = box(0.14, 1.5, 0.05, swordMat); blade.position.y = -1.0; sword.add(blade);
-  const edge = box(0.04, 1.5, 0.07, edgeMat); edge.position.y = -1.0; sword.add(edge);
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.3, 4), swordMat); tip.position.y = -1.85; tip.rotation.y = Math.PI / 4; sword.add(tip);
-  const guard = solid(new THREE.CylinderGeometry(0.07, 0.07, 0.55, 8), guardMat); guard.rotation.z = Math.PI / 2; guard.position.y = -0.2; sword.add(guard);
-  const grip = solid(new THREE.CylinderGeometry(0.05, 0.05, 0.4, 8), beltMat); grip.position.y = 0; sword.add(grip);
-  const pommel = solid(new THREE.SphereGeometry(0.09, 10, 8), guardMat); pommel.position.y = 0.22; sword.add(pommel);
-  sword.position.set(0, -0.7, 0.05);
-  armPivot.add(sword);
+  {
+    const grip = solid(new THREE.CylinderGeometry(0.045, 0.05, 0.26, 10), leatherMat);
+    grip.position.y = -0.06; sword.add(grip);
+    const pommel = solid(new THREE.SphereGeometry(0.075, 12, 10), goldMat);
+    pommel.position.y = 0.11; sword.add(pommel);
+    const guard = solid(new THREE.BoxGeometry(0.46, 0.07, 0.11), goldMat);
+    guard.position.y = -0.21; sword.add(guard);
+    const guardTipL = solid(new THREE.SphereGeometry(0.05, 8, 8), goldMat); guardTipL.position.set(-0.23, -0.21, 0); sword.add(guardTipL);
+    const guardTipR = solid(new THREE.SphereGeometry(0.05, 8, 8), goldMat); guardTipR.position.set(0.23, -0.21, 0); sword.add(guardTipR);
+    const blade = box(0.13, 0.92, 0.045, bladeMat); blade.position.y = -0.72; sword.add(blade);
+    const fuller = box(0.035, 0.88, 0.06, edgeMat); fuller.position.y = -0.72; sword.add(fuller);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.26, 4), bladeMat);
+    tip.position.y = -1.3; tip.rotation.y = Math.PI / 4; tip.castShadow = true; sword.add(tip);
+  }
+  sword.position.set(0, -0.04, 0.02);
+  sword.rotation.x = -0.12;
+  armR.hand.add(sword);
+
+  // Stopa meče při seku – tenký záblesk v rovině švihu, jen na pár snímků
+  const trailMat = new THREE.MeshBasicMaterial({
+    color: 0x9fc6ff, transparent: true, opacity: 0, side: THREE.DoubleSide,
+    depthWrite: false, blending: THREE.AdditiveBlending, fog: false
+  });
+  const swordTrail = new THREE.Mesh(new THREE.RingGeometry(1.15, 1.72, 24, 1, 0, 1.55), trailMat);
+  swordTrail.position.set(0.1, 1.15, 0.4);
+  swordTrail.rotation.set(-Math.PI / 2 + 0.6, 0, 0);   // nakloněná rovina šikmého seku
+  swordTrail.renderOrder = 2;
+  heroBob.add(swordTrail);
 
   hero.position.set(0, 0, 0);
   let heroAngle = 0;         // směr, kam hrdina kouká (yaw)
   const heroRadius = 0.55;
   const HERO_MAX_HP = 100;
   let heroHP = HERO_MAX_HP;
+  let walkPhase = 0;         // fáze kroku, posouvá se podle ušlé vzdálenosti
+  let walkAmp = 0;           // 0 = stojí, 1 = plný běh (plynule se dotahuje)
+  let heroFlinch = 0;        // ucuknutí po zásahu
+  let heroDeath = 0;         // odpočet pádové animace
+  let heroFallen = false;    // hrdina leží – pod tabulkou už nevstává
+  let lastStepSign = 0;      // pro dopad chodidla (prach + zvuk kroku)
 
-  // ---------- Příšery ----------
+  // Doba trvání seku a fáze, ve které dopadne
+  const ATTACK_DUR = 0.44;
+  const ATTACK_HIT_AT = 0.42;
+
+  // =========================================================================
+  //  PŘÍŠERY – stejný princip rigu, jen hrubší proporce a kolébavá chůze.
+  // =========================================================================
   const enemies = [];
-  const enemyEyeMat = new THREE.MeshBasicMaterial({ color: 0xfff04d });
-  const hornMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d0, roughness: 0.6 });
   // typy příšer: barva, velikost, rychlost, rohy
   const enemyTypes = [
-    { color: 0x7a2f3a, scale: 1.0, speed: 2.1, horns: true,  hp: 30 }, // skřet
-    { color: 0x39603a, scale: 0.85, speed: 2.8, horns: false, hp: 22 }, // skřítek (rychlý)
+    { color: 0x7a2f3a, scale: 1.0,  speed: 2.1, horns: true,  hp: 30 }, // skřet
+    { color: 0x7a9e35, scale: 0.85, speed: 2.8, horns: false, hp: 22 }, // skřítek (rychlý)
     { color: 0x4a3b6b, scale: 1.25, speed: 1.5, horns: true,  hp: 46 }  // obr (pomalý, tuhý)
   ];
 
   function spawnEnemy() {
     const type = enemyTypes[(Math.random() * enemyTypes.length) | 0];
-    const g = new THREE.Group();
-    // vlastní materiál pro každou příšeru (kvůli probliknutí při zásahu)
-    const bodyMat = new THREE.MeshStandardMaterial({ color: type.color, roughness: 0.8, metalness: 0.05, flatShading: true });
-    // zavalité oblé tělo
-    const body = solid(new THREE.IcosahedronGeometry(0.62, 1), bodyMat);
-    body.position.y = 0.78; body.scale.set(1, 1.05, 0.95); g.add(body);
-    const head = solid(new THREE.IcosahedronGeometry(0.4, 1), bodyMat);
-    head.position.y = 1.5; head.scale.set(1.1, 0.95, 1); g.add(head);
-    // tlama
-    const jaw = solid(new THREE.BoxGeometry(0.5, 0.18, 0.42), bodyMat); jaw.position.set(0, 1.28, 0.22); g.add(jaw);
-    // zuby
-    const teethMat = new THREE.MeshStandardMaterial({ color: 0xf0ead6, roughness: 0.6 });
+    const root = new THREE.Group();
+    const bob = new THREE.Group(); root.add(bob);
+    // vlastní materiály pro každou příšeru (kvůli probliknutí při zásahu)
+    const skin = new THREE.MeshStandardMaterial({ color: type.color, roughness: 0.85, metalness: 0.04, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: new THREE.Color(type.color).multiplyScalar(0.6), roughness: 0.9, flatShading: true });
+    const teeth = new THREE.MeshStandardMaterial({ color: 0xf0ead6, roughness: 0.6 });
+    const horn = new THREE.MeshStandardMaterial({ color: 0xe8e2d0, roughness: 0.6 });
+    const eyeM = new THREE.MeshBasicMaterial({ color: 0xfff04d });
+
+    const HIP = 0.72;
+    const pel = new THREE.Group(); pel.position.y = HIP; bob.add(pel);
+    const spn = new THREE.Group(); spn.position.y = HIP; bob.add(spn);
+
+    function leg(side) {
+      const hip = new THREE.Group(); hip.position.set(side * 0.25, 0, 0); pel.add(hip);
+      const thigh = solid(new THREE.CapsuleGeometry(0.16, 0.2, 5, 10), skin);
+      thigh.position.y = -0.18; hip.add(thigh);
+      const knee = new THREE.Group(); knee.position.y = -0.32; hip.add(knee);
+      const shin = solid(new THREE.CapsuleGeometry(0.14, 0.18, 5, 10), skin);
+      shin.position.y = -0.15; knee.add(shin);
+      const ankle = new THREE.Group(); ankle.position.y = -0.28; knee.add(ankle);
+      const foot = solid(new THREE.BoxGeometry(0.26, 0.13, 0.36), dark);
+      foot.position.set(0, -0.05, 0.06); ankle.add(foot);
+      for (let c = -1; c <= 1; c++) {
+        const claw = solid(new THREE.ConeGeometry(0.04, 0.12, 4), teeth);
+        claw.position.set(c * 0.08, -0.05, 0.24); claw.rotation.x = -Math.PI / 2; ankle.add(claw);
+      }
+      return { hip, knee, ankle };
+    }
+    const eLegL = leg(-1), eLegR = leg(1);
+
+    // zavalité oblé tělo (užší, aby z něj byly vidět paže)
+    const body = solid(new THREE.IcosahedronGeometry(0.54, 1), skin);
+    body.position.y = 0.32; body.scale.set(1.0, 1.05, 0.9); spn.add(body);
+    const bellyPatch = solid(new THREE.IcosahedronGeometry(0.38, 1), dark);
+    bellyPatch.position.set(0, 0.2, 0.28); bellyPatch.scale.set(1, 0.9, 0.5); spn.add(bellyPatch);
+
+    // krk posazený výš, ať hlava nesplyne s trupem
+    const nk = new THREE.Group(); nk.position.y = 0.86; spn.add(nk);
+    const eHead = solid(new THREE.IcosahedronGeometry(0.34, 1), skin);
+    eHead.position.y = 0.1; eHead.scale.set(1.1, 0.95, 1); nk.add(eHead);
+    // spodní čelist na kloubu – při útoku se otevře
+    const jawPivot = new THREE.Group(); jawPivot.position.set(0, -0.02, 0.02); nk.add(jawPivot);
+    const jaw = solid(new THREE.BoxGeometry(0.42, 0.16, 0.36), dark);
+    jaw.position.set(0, -0.06, 0.19); jawPivot.add(jaw);
     for (let t = -1; t <= 1; t += 2) {
-      const tooth = solid(new THREE.ConeGeometry(0.05, 0.16, 4), teethMat);
-      tooth.position.set(t * 0.13, 1.34, 0.42); tooth.rotation.x = Math.PI; g.add(tooth);
+      const tooth = solid(new THREE.ConeGeometry(0.05, 0.16, 4), teeth);
+      tooth.position.set(t * 0.12, -0.01, 0.34); tooth.rotation.x = Math.PI; jawPivot.add(tooth);
     }
-    // zářící oči
-    const eyeL = solid(new THREE.SphereGeometry(0.09, 8, 8), enemyEyeMat); eyeL.position.set(-0.16, 1.56, 0.34); g.add(eyeL);
-    const eyeR = solid(new THREE.SphereGeometry(0.09, 8, 8), enemyEyeMat); eyeR.position.set(0.16, 1.56, 0.34); g.add(eyeR);
-    const legL = solid(new THREE.CapsuleGeometry(0.14, 0.3, 4, 8), bodyMat); legL.position.set(-0.26, 0.3, 0); g.add(legL);
-    const legR = solid(new THREE.CapsuleGeometry(0.14, 0.3, 4, 8), bodyMat); legR.position.set(0.26, 0.3, 0); g.add(legR);
-    const armL = solid(new THREE.CapsuleGeometry(0.12, 0.35, 4, 8), bodyMat); armL.position.set(-0.6, 0.85, 0); armL.rotation.z = 0.3; g.add(armL);
-    const armR = solid(new THREE.CapsuleGeometry(0.12, 0.35, 4, 8), bodyMat); armR.position.set(0.6, 0.85, 0); armR.rotation.z = -0.3; g.add(armR);
+    for (const sx of [-1, 1]) {
+      const eye = solid(new THREE.SphereGeometry(0.085, 8, 8), eyeM);
+      eye.position.set(sx * 0.15, 0.16, 0.28); nk.add(eye);
+    }
     if (type.horns) {
-      const hL = solid(new THREE.ConeGeometry(0.1, 0.4, 6), hornMat); hL.position.set(-0.22, 1.9, 0); hL.rotation.z = 0.4; g.add(hL);
-      const hR = solid(new THREE.ConeGeometry(0.1, 0.4, 6), hornMat); hR.position.set(0.22, 1.9, 0); hR.rotation.z = -0.4; g.add(hR);
+      for (const sx of [-1, 1]) {
+        const h = solid(new THREE.ConeGeometry(0.1, 0.42, 6), horn);
+        h.position.set(sx * 0.2, 0.32, -0.02); h.rotation.z = -sx * 0.42; h.rotation.x = -0.2; nk.add(h);
+      }
     }
-    g.scale.setScalar(type.scale);
+
+    function arm(side) {
+      const shoulder = new THREE.Group(); shoulder.position.set(side * 0.66, 0.55, 0); spn.add(shoulder);
+      const upper = solid(new THREE.CapsuleGeometry(0.14, 0.22, 5, 10), skin);
+      upper.position.y = -0.19; shoulder.add(upper);
+      const elbow = new THREE.Group(); elbow.position.y = -0.36; shoulder.add(elbow);
+      const fore = solid(new THREE.CapsuleGeometry(0.12, 0.2, 5, 10), skin);
+      fore.position.y = -0.17; elbow.add(fore);
+      const hand = new THREE.Group(); hand.position.y = -0.32; elbow.add(hand);
+      const fist = solid(new THREE.IcosahedronGeometry(0.16, 0), dark);
+      hand.add(fist);
+      for (let c = -1; c <= 1; c++) {
+        const claw = solid(new THREE.ConeGeometry(0.035, 0.16, 4), teeth);
+        claw.position.set(c * 0.09, -0.06, 0.11); claw.rotation.x = -2.2; hand.add(claw);
+      }
+      return { shoulder, elbow, hand };
+    }
+    const eArmL = arm(-1), eArmR = arm(1);
+
+    root.scale.setScalar(type.scale);
+    addContactShadow(root, 1.8, 0.45);
 
     // Spawn na okraji arény, daleko od hrdiny
     let x, z;
@@ -509,28 +799,59 @@
       const r = ARENA * (0.5 + Math.random() * 0.4);
       x = Math.cos(a) * r; z = Math.sin(a) * r;
     } while (Math.hypot(x - hero.position.x, z - hero.position.z) < 12);
-    g.position.set(x, 0, z);
-    scene.add(g);
+    root.position.set(x, 0, z);
+    scene.add(root);
 
     enemies.push({
-      group: g, bodyMat, hp: type.hp, baseScale: type.scale, radius: 0.6 * type.scale,
+      group: root, bob, pelvis: pel, spine: spn, neck: nk, jaw: jawPivot,
+      legL: eLegL, legR: eLegR, armL: eArmL, armR: eArmR,
+      mats: [skin, dark, bellyPatch.material],
+      baseColor: new THREE.Color(type.color),
+      hp: type.hp, baseScale: type.scale, radius: 0.6 * type.scale,
       speed: type.speed + Math.random() * 0.5,
-      hitCooldown: 0, flash: 0, walk: Math.random() * 10
+      hitCooldown: 0, flash: 0, walk: Math.random() * 10, walkAmp: 0,
+      atk: -1,           // >=0 běží animace útoku
+      atkDidHit: false,
+      stagger: 0,        // zavrávorání po zásahu
+      dying: -1,         // >=0 běží pád
+      angle: Math.atan2(hero.position.x - x, hero.position.z - z)
     });
   }
 
   // ---------- Efekty zásahu ----------
   const sparks = []; // krátké vizuální "jiskry" v místě zásahu
-  const sparkGeo = new THREE.BoxGeometry(0.18, 0.18, 0.18);
-  function spawnHitSpark(x, y, z) {
-    const mat = new THREE.MeshBasicMaterial({ color: 0xfff2a0 });
-    for (let i = 0; i < 8; i++) {
-      const m = new THREE.Mesh(sparkGeo, mat);
+  const sparkGeo = new THREE.BoxGeometry(0.07, 0.07, 0.3);
+  const sparkMat = new THREE.MeshBasicMaterial({ color: 0xfff2a0 });
+  function spawnHitSpark(x, y, z, count = 10) {
+    for (let i = 0; i < count; i++) {
+      const m = new THREE.Mesh(sparkGeo, sparkMat);
       m.position.set(x, y, z);
-      const a = Math.random() * Math.PI * 2, up = Math.random() * 4 + 2;
-      m.userData.v = new THREE.Vector3(Math.cos(a) * 4, up, Math.sin(a) * 4);
+      const a = Math.random() * Math.PI * 2, up = Math.random() * 4 + 2.5;
+      const v = new THREE.Vector3(Math.cos(a) * (3 + Math.random() * 3), up, Math.sin(a) * (3 + Math.random() * 3));
+      m.userData.v = v;
+      m.lookAt(m.position.clone().add(v));   // jiskra letí špičkou napřed
       scene.add(m);
-      sparks.push({ mesh: m, life: 0.4 });
+      sparks.push({ mesh: m, life: 0.35 + Math.random() * 0.2 });
+    }
+    impactLight.position.set(x, y + 0.3, z);
+    impactLightLife = 0.16;
+  }
+
+  // Obláčky prachu – kroky a dopady
+  const puffs = [];
+  const puffGeo = new THREE.IcosahedronGeometry(0.18, 0);
+  function spawnDust(x, y, z, count, power) {
+    if (puffs.length > 60) return;
+    for (let i = 0; i < count; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xbeb49c, transparent: true, opacity: 0.4, depthWrite: false
+      });
+      const m = new THREE.Mesh(puffGeo, mat);
+      m.position.set(x + (Math.random() - 0.5) * 0.3, y + 0.05, z + (Math.random() - 0.5) * 0.3);
+      const a = Math.random() * Math.PI * 2;
+      m.userData.v = new THREE.Vector3(Math.cos(a) * power, 0.5 + Math.random() * power * 0.5, Math.sin(a) * power);
+      scene.add(m);
+      puffs.push({ mesh: m, mat, life: 0.55, max: 0.55 });
     }
   }
 
@@ -619,7 +940,8 @@
   }
 
   const SFX = {
-    swing() { noise({ dur: 0.16, vol: 0.22, filter: 'bandpass', freq: 1600, freq2: 500, q: 1.2 }); },
+    swing() { noise({ dur: 0.16, vol: 0.22, filter: 'bandpass', freq: 1600, freq2: 500, q: 1.2, delay: 0.12 }); },
+    step()  { noise({ dur: 0.07, vol: 0.09, filter: 'lowpass', freq: 420, q: 0.8 }); },
     hit()   { noise({ dur: 0.12, vol: 0.3, filter: 'lowpass', freq: 2200, q: 1 });
               tone({ freq: 180, freq2: 90, type: 'square', dur: 0.12, vol: 0.18 }); },
     crit()  { noise({ dur: 0.16, vol: 0.34, filter: 'lowpass', freq: 3000, q: 1 });
@@ -627,6 +949,8 @@
               tone({ freq: 900, freq2: 1500, type: 'sine', dur: 0.16, vol: 0.12, delay: 0.02 }); },
     kill()  { tone({ freq: 300, freq2: 70, type: 'sawtooth', dur: 0.35, vol: 0.22 });
               noise({ dur: 0.3, vol: 0.2, filter: 'lowpass', freq: 1200, freq2: 300 }); },
+    thud()  { noise({ dur: 0.22, vol: 0.22, filter: 'lowpass', freq: 260, freq2: 90 }); },
+    growl() { tone({ freq: 120, freq2: 70, type: 'sawtooth', dur: 0.26, vol: 0.14 }); },
     hurt()  { tone({ freq: 200, freq2: 80, type: 'sawtooth', dur: 0.22, vol: 0.25 }); },
     over()  { [392, 330, 262, 196].forEach((f, i) => tone({ freq: f, type: 'triangle', dur: 0.5, vol: 0.22, delay: i * 0.16 })); },
     start() { [440, 660].forEach((f, i) => tone({ freq: f, type: 'triangle', dur: 0.18, vol: 0.2, delay: i * 0.09 })); },
@@ -652,7 +976,7 @@
 
   // Pevná kamera ve stylu Diablo (shora pod úhlem, neotáčí se)
   // Kliknutím se útočí mečem.
-  canvas.addEventListener('click', () => { attack(); });
+  canvas.addEventListener('pointerdown', () => { attack(); });
 
   // Mobilní joystick
   const stick = document.getElementById('stick');
@@ -693,8 +1017,8 @@
   let didHit = false;        // zda už zásah v aktuálním úderu proběhl
   function attack() {
     if (!running || attackCooldown > 0) return;
-    attackTimer = 0.32;
-    attackCooldown = 0.42;
+    attackTimer = ATTACK_DUR;
+    attackCooldown = ATTACK_DUR + 0.08;
     didHit = false;
     SFX.swing();
   }
@@ -704,9 +1028,11 @@
   let score = 0;
   let spawnTimer = 0;
   let spawnInterval = 3.6;
+  let camShake = 0;
   const MAX_ENEMIES = 6;
   const hpFill = document.querySelector('#hpBar > span');
   const scoreEl = document.getElementById('score');
+  const hurtFx = document.getElementById('hurtFx');
   const overlay = document.getElementById('overlay');
   const ovTitle = document.getElementById('ovTitle');
   const ovText = document.getElementById('ovText');
@@ -736,9 +1062,14 @@
     enemies.length = 0;
     for (const sp of sparks) scene.remove(sp.mesh);
     sparks.length = 0;
+    for (const p of puffs) scene.remove(p.mesh);
+    puffs.length = 0;
     clearFloaters();
     heroHP = HERO_MAX_HP; score = 0; spawnTimer = 0; spawnInterval = 3.6;
-    hero.position.set(0, 0, 0); heroAngle = 0;
+    hero.position.set(0, 0, 0); heroAngle = 0; hero.rotation.y = 0;
+    heroBob.position.set(0, 0, 0); heroBob.rotation.set(0, 0, 0);
+    heroFlinch = 0; heroDeath = 0; heroFallen = false; attackTimer = 0; attackCooldown = 0;
+    walkPhase = 0; walkAmp = 0; camShake = 0;
     scoreEl.textContent = '⚔️ Skóre: 0';
     hpFill.style.width = '100%';
     overlay.classList.add('hidden');
@@ -747,8 +1078,8 @@
   }
   function gameOver() {
     running = false;
+    heroDeath = 1.35;   // hrdina se nejdřív skácí, teprve pak přijde tabulka
     SFX.over();
-    showOverlay('Padl jsi 💀', `Skóre: ${score} poražených příšer.`, 'Hrát znovu');
   }
   ovBtn.addEventListener('click', startGame);
   ovFsBtn.addEventListener('click', async () => { await goFullscreen(); startGame(); });
@@ -756,6 +1087,7 @@
 
   // ---------- Pomocné vektory ----------
   const tmp = new THREE.Vector3();
+  const camTarget = new THREE.Vector3();
 
   // ---------- Postprocessing: jemný bloom (záře mečů, pochodní, očí) ----------
   // Načítáme defenzivně – když se nepodaří, hra běží bez něj.
@@ -768,10 +1100,255 @@
     composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
     const bloom = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.5, 0.82);
+      new THREE.Vector2(window.innerWidth, window.innerHeight), 0.45, 0.6, 0.85);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
   } catch (e) { composer = null; }
+
+  // =========================================================================
+  //  ANIMACE HRDINY
+  // =========================================================================
+
+  // Klidový postoj – bojová "garda": mírný podřep, štít dopředu, meč u těla.
+  function heroIdlePose(dt, t) {
+    const breathe = Math.sin(t * 1.6) * 0.5 + 0.5;   // 0..1
+    pelvis.rotation.set(0, 0, 0);
+    pelvis.position.y = -0.02 - breathe * 0.012;
+    spine.rotation.x = damp(spine.rotation.x, 0.05 + breathe * 0.02, 8, dt);
+    spine.rotation.y = damp(spine.rotation.y, -0.12, 8, dt);
+    spine.rotation.z = damp(spine.rotation.z, 0, 8, dt);
+    spine.position.y = HIP_Y - 0.02 - breathe * 0.012;
+
+    // nohy v mírném podřepu, špičky ven
+    legL.hip.rotation.set(-0.08, 0.12, 0.06);
+    legR.hip.rotation.set(0.1, -0.16, -0.06);
+    legL.knee.rotation.x = 0.16;
+    legR.knee.rotation.x = 0.2;
+    legL.ankle.rotation.x = -0.08;
+    legR.ankle.rotation.x = -0.1;
+
+    neck.rotation.x = damp(neck.rotation.x, -0.04 + breathe * 0.02, 6, dt);
+    neck.rotation.y = damp(neck.rotation.y, 0.1, 6, dt);
+  }
+
+  // Chůze/běh: pánev a hrudník se protáčejí proti sobě, kolena se ohýbají,
+  // chodidla se odrážejí špičkou a paže kmitají opačně než nohy.
+  function heroWalkPose(dt, amp) {
+    const p = walkPhase;
+    const sw = Math.sin(p), cw = Math.cos(p);
+
+    // pánev: rotace kolem osy, úklon a svislé pérování (2× frekvence kroku)
+    pelvis.rotation.y = sw * 0.16 * amp;
+    pelvis.rotation.z = -sw * 0.06 * amp;
+    pelvis.rotation.x = 0;
+    const bob = -Math.abs(Math.sin(p)) * 0.07 * amp;
+    pelvis.position.y = bob;
+    spine.position.y = HIP_Y + bob;
+
+    // hrudník protisměrně + náklon vpřed podle rychlosti
+    spine.rotation.y = damp(spine.rotation.y, -sw * 0.2 * amp, 16, dt);
+    spine.rotation.x = damp(spine.rotation.x, 0.06 + 0.14 * amp, 10, dt);
+    spine.rotation.z = damp(spine.rotation.z, sw * 0.05 * amp, 14, dt);
+
+    // nohy – kyčel kmitá, koleno se ohýbá hlavně ve švihové fázi
+    const swingL = -sw * 0.8 * amp;
+    const swingR = sw * 0.8 * amp;
+    legL.hip.rotation.set(swingL, 0.06, 0.04);
+    legR.hip.rotation.set(swingR, -0.06, -0.04);
+    legL.knee.rotation.x = (0.12 + Math.max(0, Math.sin(p + 1.9)) * 1.15) * amp + 0.06;
+    legR.knee.rotation.x = (0.12 + Math.max(0, Math.sin(p + 1.9 + Math.PI)) * 1.15) * amp + 0.06;
+    // kotník drží chodidlo víceméně vodorovně + odraz špičkou
+    legL.ankle.rotation.x = -(legL.hip.rotation.x + legL.knee.rotation.x) * 0.55 - Math.max(0, -sw) * 0.3 * amp;
+    legR.ankle.rotation.x = -(legR.hip.rotation.x + legR.knee.rotation.x) * 0.55 - Math.max(0, sw) * 0.3 * amp;
+
+    // hlava zůstává stabilní – kompenzuje protáčení hrudníku
+    neck.rotation.y = damp(neck.rotation.y, sw * 0.1 * amp, 10, dt);
+    neck.rotation.x = damp(neck.rotation.x, -0.06 * amp, 10, dt);
+
+    // levá paže se štítem kmitá proti pravé noze
+    armL.shoulder.rotation.x = damp(armL.shoulder.rotation.x, -0.5 + swingR * 0.45, 14, dt);
+    armL.shoulder.rotation.z = damp(armL.shoulder.rotation.z, 0.34, 12, dt);
+    armL.elbow.rotation.x = damp(armL.elbow.rotation.x, -1.15, 12, dt);
+
+    return cw;
+  }
+
+  // Sek mečem ve třech fázích. Parametr s jde 0 → -1 (nápřah) → +1 (průsek) → 0.
+  function heroAttackPose(dt, att) {
+    let s;
+    if (att < 0.34) {
+      s = -easeOutCubic(att / 0.34);                              // nápřah dozadu
+    } else if (att < 0.62) {
+      s = -1 + 2 * easeOutCubic((att - 0.34) / 0.28);             // prudký průsek
+    } else {
+      s = 1 - easeInCubic((att - 0.62) / 0.38);                   // dojezd do gardy
+    }
+    const back = Math.max(0, -s), fwd = Math.max(0, s);
+
+    // pravá paže: nápřah nad rameno → šikmý sek přes tělo
+    armR.shoulder.rotation.x = lerp(-0.35, 0, 0) + lerp(0, 2.0, back) + lerp(0, -1.55, fwd);
+    armR.shoulder.rotation.z = 0.05 + lerp(0, -0.5, back) + lerp(0, 0.95, fwd);
+    armR.shoulder.rotation.y = lerp(0, -0.55, back) + lerp(0, 0.45, fwd);
+    armR.elbow.rotation.x = -0.5 + lerp(0, -1.15, back) + lerp(0, 0.38, fwd);
+    // zápěstí: v nápřahu čepel vzhůru za rameno, v průseku srovnaná do rány
+    armR.hand.rotation.x = -1.1 + lerp(0, -0.55, back) + lerp(0, 0.8, fwd);
+    armR.hand.rotation.z = lerp(0, -0.5, back) + lerp(0, 0.35, fwd);
+
+    // trup se do rány opře – zákrut a náklon vpřed
+    spine.rotation.y = damp(spine.rotation.y, -0.12 + lerp(0, -0.5, back) + lerp(0, 0.6, fwd), 22, dt);
+    spine.rotation.x = damp(spine.rotation.x, 0.05 + lerp(0, -0.12, back) + lerp(0, 0.26, fwd), 20, dt);
+    pelvis.rotation.y = damp(pelvis.rotation.y, lerp(0, -0.2, back) + lerp(0, 0.26, fwd), 18, dt);
+
+    // levá paže se štítem se stáhne k tělu a zase vrátí
+    armL.shoulder.rotation.x = damp(armL.shoulder.rotation.x, -0.55 - fwd * 0.25 + back * 0.2, 16, dt);
+    armL.shoulder.rotation.z = damp(armL.shoulder.rotation.z, 0.34 + fwd * 0.3, 16, dt);
+    armL.elbow.rotation.x = damp(armL.elbow.rotation.x, -1.2 - fwd * 0.35, 16, dt);
+
+    // hlava sleduje směr seku
+    neck.rotation.y = damp(neck.rotation.y, lerp(0, -0.2, back) + lerp(0, 0.3, fwd), 18, dt);
+    neck.rotation.x = damp(neck.rotation.x, fwd * 0.12, 18, dt);
+
+    // výpad: krok vpřed v okamžiku průseku a zpět do postoje
+    const lunge = smoothstep(0.3, 0.55, att) * (1 - smoothstep(0.7, 1, att));
+    heroBob.position.z = damp(heroBob.position.z, lunge * 0.3, 20, dt);
+    heroBob.position.y = damp(heroBob.position.y, -lunge * 0.09, 20, dt);
+
+    // zadní noha se vzepře, přední vykročí
+    legR.hip.rotation.x = damp(legR.hip.rotation.x, 0.3 * lunge + 0.1, 16, dt);
+    legL.hip.rotation.x = damp(legL.hip.rotation.x, -0.45 * lunge - 0.08, 16, dt);
+    legL.knee.rotation.x = damp(legL.knee.rotation.x, 0.3 + 0.25 * lunge, 16, dt);
+    legR.knee.rotation.x = damp(legR.knee.rotation.x, 0.2 + 0.5 * lunge, 16, dt);
+
+    // svítící stopa meče – jen v okamžiku průseku
+    const trail = smoothstep(0.36, 0.46, att) * (1 - smoothstep(0.52, 0.68, att));
+    trailMat.opacity = trail * 0.42;
+    swordTrail.position.y = 1.25 - fwd * 0.3;
+    swordTrail.rotation.z = -1.1 + s * 1.3;
+    return s;
+  }
+
+  // Klidová "garda" pravé paže: meč zdvižený šikmo vzhůru u ramene.
+  // Za běhu se rameno mírně houpe proti pravé noze.
+  function heroSwordIdle(dt, t, amp = 0) {
+    const b = Math.sin(t * 1.5) * 0.03;
+    const swing = -Math.sin(walkPhase) * 0.28 * amp;
+    armR.shoulder.rotation.x = damp(armR.shoulder.rotation.x, -0.3 + b + swing, 10, dt);
+    armR.shoulder.rotation.z = damp(armR.shoulder.rotation.z, 0.06, 10, dt);
+    armR.shoulder.rotation.y = damp(armR.shoulder.rotation.y, -0.12, 10, dt);
+    armR.elbow.rotation.x = damp(armR.elbow.rotation.x, -1.2 - b, 10, dt);
+    armR.hand.rotation.x = damp(armR.hand.rotation.x, -1.1, 10, dt);
+    armR.hand.rotation.z = damp(armR.hand.rotation.z, 0, 10, dt);
+    trailMat.opacity = damp(trailMat.opacity, 0, 12, dt);
+  }
+
+  // Plášť se vleče za pohybem – každý článek se zpožďuje za tím předchozím.
+  let capeVel = 0;
+  function updateCape(dt, speed, t) {
+    capeVel = damp(capeVel, speed, 6, dt);
+    for (let i = 0; i < capeSegs.length; i++) {
+      const target = -0.05 - capeVel * 0.075 - i * 0.04
+        + Math.sin(t * 3.4 - i * 0.8) * (0.03 + capeVel * 0.012);
+      capeSegs[i].rotation.x = damp(capeSegs[i].rotation.x, target, 9 - i * 1.5, dt);
+      capeSegs[i].rotation.z = damp(capeSegs[i].rotation.z,
+        Math.sin(t * 2.1 - i * 0.6) * (0.02 + capeVel * 0.01), 7, dt);
+    }
+  }
+
+  // Pád hrdiny – kolena povolí, tělo se skácí dozadu.
+  function heroDeathPose(dt) {
+    const k = 1 - clamp01(heroDeath / 1.35);      // 0 → 1
+    const fall = easeInCubic(clamp01(k * 1.5));
+    heroBob.rotation.x = fall * 1.45;
+    heroBob.position.y = -fall * 0.5;
+    spine.rotation.x = damp(spine.rotation.x, -0.35, 5, dt);
+    neck.rotation.x = damp(neck.rotation.x, 0.5, 5, dt);
+    legL.hip.rotation.x = damp(legL.hip.rotation.x, -0.9, 5, dt);
+    legR.hip.rotation.x = damp(legR.hip.rotation.x, -0.7, 5, dt);
+    legL.knee.rotation.x = damp(legL.knee.rotation.x, 1.5, 5, dt);
+    legR.knee.rotation.x = damp(legR.knee.rotation.x, 1.3, 5, dt);
+    armL.shoulder.rotation.x = damp(armL.shoulder.rotation.x, 0.6, 5, dt);
+    armR.shoulder.rotation.x = damp(armR.shoulder.rotation.x, 0.9, 5, dt);
+    armR.elbow.rotation.x = damp(armR.elbow.rotation.x, -0.2, 5, dt);
+    armR.hand.rotation.x = damp(armR.hand.rotation.x, -0.3, 5, dt);  // meč vypadne z gardy
+    trailMat.opacity = 0;
+  }
+
+  // =========================================================================
+  //  ANIMACE PŘÍŠER
+  // =========================================================================
+  function enemyWalkPose(e, dt, amp) {
+    const p = e.walk;
+    const sw = Math.sin(p);
+    // těžkopádná chůze: velký boční úklon, ramena se kolébají
+    e.pelvis.rotation.y = sw * 0.2 * amp;
+    e.pelvis.rotation.z = -sw * 0.14 * amp;
+    e.bob.position.y = Math.abs(Math.sin(p)) * 0.13 * amp;
+    e.spine.rotation.y = damp(e.spine.rotation.y, -sw * 0.22 * amp, 12, dt);
+    e.spine.rotation.z = damp(e.spine.rotation.z, sw * 0.1 * amp, 12, dt);
+    e.spine.rotation.x = damp(e.spine.rotation.x, 0.16 + 0.12 * amp, 8, dt);
+
+    e.legL.hip.rotation.x = -sw * 0.7 * amp;
+    e.legR.hip.rotation.x = sw * 0.7 * amp;
+    e.legL.knee.rotation.x = (0.15 + Math.max(0, Math.sin(p + 1.9)) * 0.95) * amp + 0.1;
+    e.legR.knee.rotation.x = (0.15 + Math.max(0, Math.sin(p + 1.9 + Math.PI)) * 0.95) * amp + 0.1;
+    e.legL.ankle.rotation.x = -(e.legL.hip.rotation.x + e.legL.knee.rotation.x) * 0.5;
+    e.legR.ankle.rotation.x = -(e.legR.hip.rotation.x + e.legR.knee.rotation.x) * 0.5;
+
+    // paže volně visí a houpe se proti nohám
+    e.armL.shoulder.rotation.x = damp(e.armL.shoulder.rotation.x, sw * 0.5 * amp - 0.1, 12, dt);
+    e.armR.shoulder.rotation.x = damp(e.armR.shoulder.rotation.x, -sw * 0.5 * amp - 0.1, 12, dt);
+    e.armL.shoulder.rotation.z = damp(e.armL.shoulder.rotation.z, 0.3, 10, dt);
+    e.armR.shoulder.rotation.z = damp(e.armR.shoulder.rotation.z, -0.3, 10, dt);
+    e.armL.elbow.rotation.x = damp(e.armL.elbow.rotation.x, -0.5 - Math.max(0, sw) * 0.3, 10, dt);
+    e.armR.elbow.rotation.x = damp(e.armR.elbow.rotation.x, -0.5 - Math.max(0, -sw) * 0.3, 10, dt);
+
+    e.neck.rotation.x = damp(e.neck.rotation.x, -0.12 - 0.1 * amp, 8, dt);
+    e.jaw.rotation.x = damp(e.jaw.rotation.x, 0.06 + Math.abs(sw) * 0.06 * amp, 10, dt);
+  }
+
+  // Útok příšery: nápřah oběma pažemi (čitelná telegrafie) → sek dolů → dojezd
+  function enemyAttackPose(e, dt, k) {
+    let s;
+    if (k < 0.45) s = -easeOutCubic(k / 0.45);
+    else if (k < 0.68) s = -1 + 2 * easeOutCubic((k - 0.45) / 0.23);
+    else s = 1 - easeInCubic((k - 0.68) / 0.32);
+    const back = Math.max(0, -s), fwd = Math.max(0, s);
+
+    e.armL.shoulder.rotation.x = damp(e.armL.shoulder.rotation.x, -0.1 + back * 2.1 - fwd * 1.5, 22, dt);
+    e.armR.shoulder.rotation.x = damp(e.armR.shoulder.rotation.x, -0.1 + back * 2.1 - fwd * 1.5, 22, dt);
+    e.armL.shoulder.rotation.z = damp(e.armL.shoulder.rotation.z, 0.3 + back * 0.35 - fwd * 0.2, 20, dt);
+    e.armR.shoulder.rotation.z = damp(e.armR.shoulder.rotation.z, -0.3 - back * 0.35 + fwd * 0.2, 20, dt);
+    e.armL.elbow.rotation.x = damp(e.armL.elbow.rotation.x, -0.6 - back * 0.9 + fwd * 0.45, 20, dt);
+    e.armR.elbow.rotation.x = damp(e.armR.elbow.rotation.x, -0.6 - back * 0.9 + fwd * 0.45, 20, dt);
+
+    e.spine.rotation.x = damp(e.spine.rotation.x, 0.16 - back * 0.3 + fwd * 0.5, 20, dt);
+    e.neck.rotation.x = damp(e.neck.rotation.x, -0.2 - back * 0.35 + fwd * 0.45, 18, dt);
+    e.jaw.rotation.x = damp(e.jaw.rotation.x, 0.08 + back * 0.75, 16, dt);   // otevře tlamu při nápřahu
+    e.bob.position.y = damp(e.bob.position.y, back * 0.08 - fwd * 0.05, 16, dt);
+    e.bob.position.z = damp(e.bob.position.z, -back * 0.12 + fwd * 0.22, 18, dt);
+
+    // nohy se rozkročí do výpadu
+    e.legL.hip.rotation.x = damp(e.legL.hip.rotation.x, -0.3 * fwd, 16, dt);
+    e.legR.hip.rotation.x = damp(e.legR.hip.rotation.x, 0.25 * fwd, 16, dt);
+    e.legL.knee.rotation.x = damp(e.legL.knee.rotation.x, 0.25 + 0.3 * fwd, 16, dt);
+    e.legR.knee.rotation.x = damp(e.legR.knee.rotation.x, 0.25 + 0.2 * fwd, 16, dt);
+  }
+
+  // Pád příšery – zapotácí se, přepadne dozadu a propadne se pod zem.
+  function enemyDeathPose(e, dt) {
+    const k = 1 - clamp01(e.dying / 1.1);
+    const fall = easeInCubic(clamp01(k * 1.6));
+    e.bob.rotation.x = fall * 1.6;
+    e.bob.position.y = -fall * 0.45;
+    e.group.position.y = -Math.max(0, k - 0.55) * 2.6;   // propadnutí pod terén
+    e.spine.rotation.x = damp(e.spine.rotation.x, -0.4, 6, dt);
+    e.neck.rotation.x = damp(e.neck.rotation.x, 0.6, 6, dt);
+    e.jaw.rotation.x = damp(e.jaw.rotation.x, 0.5, 6, dt);
+    e.armL.shoulder.rotation.x = damp(e.armL.shoulder.rotation.x, 0.9, 6, dt);
+    e.armR.shoulder.rotation.x = damp(e.armR.shoulder.rotation.x, 0.9, 6, dt);
+    e.legL.knee.rotation.x = damp(e.legL.knee.rotation.x, 1.4, 6, dt);
+    e.legR.knee.rotation.x = damp(e.legR.knee.rotation.x, 1.2, 6, dt);
+  }
 
   // ---------- Smyčka ----------
   let last = performance.now();
@@ -781,10 +1358,31 @@
     last = now;
 
     if (running) update(dt);
+    else if (heroDeath > 0) {
+      heroDeath -= dt;
+      heroDeathPose(dt);
+      updateEnemies(dt, true);
+      if (heroDeath <= 0) {
+        heroDeath = 0;
+        heroFallen = true;
+        showOverlay('Padl jsi 💀', `Skóre: ${score} poražených příšer.`, 'Hrát znovu');
+      }
+    } else {
+      // klidná animace i pod úvodní tabulkou – scéna nepůsobí zmrzle
+      const t = now / 1000;
+      if (!heroFallen) { heroIdlePose(dt, t); heroSwordIdle(dt, t); }
+      updateCape(dt, 0, t);
+      updateEnemies(dt, true);
+    }
+
+    updateEffects(dt, now / 1000);
+    updateCamera(dt);
     if (composer) composer.render(); else renderer.render(scene, camera);
   }
 
   function update(dt) {
+    const t = performance.now() / 1000;
+
     // --- Vstup pohybu ---
     let ix = 0, iz = 0;
     if (keys['KeyW'] || keys['ArrowUp']) iz -= 1;
@@ -795,15 +1393,18 @@
 
     // Pevná kamera (Diablo styl): pohyb je vůči obrazovce.
     // +x = doprava, -z = nahoru (od kamery do hloubky).
-    let dx = ix;
-    let dz = iz;
+    let dx = ix, dz = iz;
     const len = Math.hypot(dx, dz);
-    const moving = len > 0.01;
-    if (moving) {
+    const attacking = attackTimer > 0;
+    let moved = 0;
+    if (len > 0.01) {
       dx /= len; dz /= len;
-      const speed = 5.6;
-      hero.position.x += dx * speed * dt;
-      hero.position.z += dz * speed * dt;
+      // během seku se hrdina skoro zastaví – rána tím dostane váhu
+      const speed = 5.6 * Math.min(1, len) * (attacking ? 0.25 : 1);
+      const step = speed * dt;
+      hero.position.x += dx * step;
+      hero.position.z += dz * step;
+      moved = step;
       heroAngle = Math.atan2(dx, dz);
     }
 
@@ -812,125 +1413,270 @@
     hero.position.x = Math.max(-lim, Math.min(lim, hero.position.x));
     hero.position.z = Math.max(-lim, Math.min(lim, hero.position.z));
 
-    // Otáčení hrdiny k požadovanému směru
+    // Otáčení hrdiny k požadovanému směru (v seku se otáčí pomaleji)
     let da = heroAngle - hero.rotation.y;
     while (da > Math.PI) da -= Math.PI * 2;
     while (da < -Math.PI) da += Math.PI * 2;
-    hero.rotation.y += da * Math.min(1, dt * 12);
+    hero.rotation.y += da * Math.min(1, dt * (attacking ? 5 : 12));
 
-    // Animace nohou při chůzi – houpání z kyčelního pivotu (noha + bota jako jeden celek)
-    const t = performance.now() / 1000;
-    if (moving) {
-      const sw = Math.sin(t * 10) * 0.5;
-      legPivotL.rotation.x = sw; legPivotR.rotation.x = -sw;
+    // --- Chodicí cyklus ---
+    // Fázi posouváme podle ušlé vzdálenosti, takže chodidla po zemi neklouzají.
+    const STRIDE = 1.6;
+    const targetAmp = moved > 0.0001 ? Math.min(1, moved / dt / 5.6) : 0;
+    walkAmp = damp(walkAmp, targetAmp, 10, dt);
+    walkPhase += (moved / STRIDE) * Math.PI * 2;
+    if (walkPhase > Math.PI * 2) walkPhase -= Math.PI * 2;
+
+    if (walkAmp > 0.05) {
+      heroWalkPose(dt, walkAmp);
+      // dopad chodidla = prach + tichý krok (sin projde nulou)
+      const sign = Math.sin(walkPhase) >= 0 ? 1 : -1;
+      if (sign !== lastStepSign) {
+        lastStepSign = sign;
+        const off = sign > 0 ? -0.19 : 0.19;
+        const fx = Math.sin(hero.rotation.y), fz = Math.cos(hero.rotation.y);
+        spawnDust(hero.position.x + fz * off, 0, hero.position.z - fx * off, 2, 0.5 + walkAmp * 0.5);
+        if (walkAmp > 0.4) SFX.step();
+      }
     } else {
-      legPivotL.rotation.x *= 0.8; legPivotR.rotation.x *= 0.8;
+      heroIdlePose(dt, t);
+    }
+    if (!attacking) heroSwordIdle(dt, t, walkAmp);
+    updateCape(dt, walkAmp * 5.6, t);
+
+    // --- Ucuknutí po zásahu ---
+    if (heroFlinch > 0) {
+      heroFlinch -= dt;
+      const f = Math.max(0, heroFlinch) / 0.28;
+      spine.rotation.x -= f * 0.3;
+      neck.rotation.x -= f * 0.25;
+      heroBob.position.z -= f * 0.12;
+      armL.shoulder.rotation.x -= f * 0.4;   // štít vyletí nahoru
     }
 
     // --- Útok / animace meče ---
     if (attackCooldown > 0) attackCooldown -= dt;
     if (attackTimer > 0) {
       attackTimer -= dt;
-      const p = 1 - Math.max(0, attackTimer) / 0.32; // 0..1
-      // šikmý švih: z pravého ramene dolů doleva (kombinace os X a Z)
-      const swing = Math.sin(p * Math.PI); // 0 -> 1 -> 0
-      armPivot.rotation.x = -1.9 + swing * 2.4;   // shora dolů
-      armPivot.rotation.z = -1.4 + swing * 2.2;   // zprava doleva (šikmo)
-      // zásah uprostřed švihu
-      if (!didHit && p > 0.35) { didHit = true; doMeleeHit(); }
+      const att = 1 - Math.max(0, attackTimer) / ATTACK_DUR; // 0..1
+      heroAttackPose(dt, att);
+      if (!didHit && att > ATTACK_HIT_AT) { didHit = true; doMeleeHit(); }
     } else {
-      armPivot.rotation.x += (0 - armPivot.rotation.x) * Math.min(1, dt * 10);
-      armPivot.rotation.z += (0 - armPivot.rotation.z) * Math.min(1, dt * 10);
+      heroBob.position.z = damp(heroBob.position.z, 0, 12, dt);
+      heroBob.position.y = damp(heroBob.position.y, 0, 12, dt);
     }
 
-    // --- Příšery ---
-    for (let i = enemies.length - 1; i >= 0; i--) {
-      const e = enemies[i];
-      tmp.set(hero.position.x - e.group.position.x, 0, hero.position.z - e.group.position.z);
-      const dist = tmp.length();
-      if (dist > 0.001) tmp.divideScalar(dist);
-
-      // pohyb k hrdinovi
-      if (dist > e.radius + heroRadius + 0.1) {
-        e.group.position.x += tmp.x * e.speed * dt;
-        e.group.position.z += tmp.z * e.speed * dt;
-        e.walk += dt * 8;
-        e.group.position.y = Math.abs(Math.sin(e.walk)) * 0.12;
-      } else {
-        e.group.position.y *= 0.8;
-      }
-      // natočení k hrdinovi
-      e.group.rotation.y = Math.atan2(tmp.x, tmp.z);
-
-      // útok na hrdinu
-      if (e.hitCooldown > 0) e.hitCooldown -= dt;
-      if (dist < e.radius + heroRadius + 0.25 && e.hitCooldown <= 0) {
-        e.hitCooldown = 1.0;
-        const dmg = 6 + Math.floor(Math.random() * 5); // 6–10
-        heroHP = Math.max(0, heroHP - dmg);
-        hpFill.style.width = (heroHP / HERO_MAX_HP * 100) + '%';
-        spawnDamageNumber(hero.position.x, 2.4, hero.position.z, dmg, 'take');
-        SFX.hurt();
-        if (heroHP <= 0) { gameOver(); return; }
-      }
-
-      // probliknutí po zásahu – jasně bílá + nafouknutí
-      if (e.flash > 0) {
-        e.flash -= dt;
-        const f = Math.max(0, e.flash) / 0.25;
-        e.bodyMat.emissive.setRGB(f, f, f);
-        e.group.scale.setScalar(e.baseScale * (1 + f * 0.35));
-      } else {
-        e.bodyMat.emissive.setRGB(0, 0, 0);
-        e.group.scale.setScalar(e.baseScale);
-      }
-    }
-
-    // --- Jiskry zásahu ---
-    for (let i = sparks.length - 1; i >= 0; i--) {
-      const sp = sparks[i];
-      sp.life -= dt;
-      const m = sp.mesh;
-      m.userData.v.y -= 14 * dt; // gravitace
-      m.position.addScaledVector(m.userData.v, dt);
-      m.scale.setScalar(Math.max(0.01, sp.life / 0.4));
-      if (sp.life <= 0) { scene.remove(m); sparks.splice(i, 1); }
-    }
-
-    // --- Plovoucí čísla poškození ---
-    updateFloaters(dt);
-
-    // --- Mihotání pochodní ---
-    const ft = performance.now() / 1000;
-    for (let i = 0; i < torchFlames.length; i++) {
-      const fl = 0.85 + Math.sin(ft * 12 + i * 2.1) * 0.12 + Math.random() * 0.06;
-      torchFlames[i].scale.set(fl, fl + 0.15, fl);
-    }
+    updateEnemies(dt, false);
 
     // --- Spawn (méně příšer, s horním limitem) ---
     spawnTimer += dt;
-    if (spawnTimer > spawnInterval && enemies.length < MAX_ENEMIES) {
+    const alive = enemies.reduce((n, e) => n + (e.dying < 0 ? 1 : 0), 0);
+    if (spawnTimer > spawnInterval && alive < MAX_ENEMIES) {
       spawnTimer = 0;
       spawnEnemy();
       spawnInterval = Math.max(1.8, spawnInterval * 0.98); // časem mírně zrychluj
     }
+  }
 
-    // --- Kamera (pevná, shora pod úhlem jako v Diablu) ---
-    const tx = hero.position.x;
-    const ty = hero.position.y + CAM_HEIGHT;
-    const tz = hero.position.z + CAM_BACK;
-    camera.position.lerp(tmp.set(tx, ty, tz), Math.min(1, dt * 8));
-    camera.lookAt(hero.position.x, hero.position.y + 0.5, hero.position.z);
+  // Příšery: AI, animace, kolize. `frozen` = hra neběží (jen dobíhají animace).
+  function updateEnemies(dt, frozen) {
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const e = enemies[i];
+
+      // --- pád ---
+      if (e.dying >= 0) {
+        e.dying -= dt;
+        enemyDeathPose(e, dt);
+        if (e.dying <= 0) { scene.remove(e.group); enemies.splice(i, 1); }
+        continue;
+      }
+      if (frozen) { enemyWalkPose(e, dt, 0); continue; }
+
+      tmp.set(hero.position.x - e.group.position.x, 0, hero.position.z - e.group.position.z);
+      const dist = tmp.length();
+      if (dist > 0.001) tmp.divideScalar(dist);
+
+      const reach = e.radius + heroRadius + 0.35;
+      const attacking = e.atk >= 0;
+
+      // zavrávorání po zásahu – chvíli se nehne
+      if (e.stagger > 0) e.stagger -= dt;
+
+      let moving = 0;
+      if (!attacking && e.stagger <= 0 && dist > reach) {
+        const step = e.speed * dt;
+        e.group.position.x += tmp.x * step;
+        e.group.position.z += tmp.z * step;
+        moving = step;
+        e.walk += step / (0.9 * e.baseScale) * Math.PI * 2;
+      }
+      e.walkAmp = damp(e.walkAmp, moving > 0.0001 ? 1 : 0, 8, dt);
+
+      // natočení k hrdinovi (plynule, ne skokem)
+      const want = Math.atan2(tmp.x, tmp.z);
+      let da = want - e.angle;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      e.angle += da * Math.min(1, dt * 6);
+      e.group.rotation.y = e.angle;
+
+      // spuštění útoku
+      if (e.hitCooldown > 0) e.hitCooldown -= dt;
+      if (!attacking && e.stagger <= 0 && dist < reach + 0.15 && e.hitCooldown <= 0) {
+        e.atk = 0; e.atkDidHit = false;
+        e.hitCooldown = 1.25 + Math.random() * 0.4;
+        SFX.growl();
+      }
+
+      if (attacking) {
+        e.atk += dt / 0.78;
+        enemyAttackPose(e, dt, Math.min(1, e.atk));
+        // rána dopadne uprostřed švihu a jen když hrdina zůstal v dosahu
+        if (!e.atkDidHit && e.atk > 0.6) {
+          e.atkDidHit = true;
+          if (dist < reach + 0.5) {
+            const dmg = 6 + Math.floor(Math.random() * 5); // 6–10
+            heroHP = Math.max(0, heroHP - dmg);
+            hpFill.style.width = (heroHP / HERO_MAX_HP * 100) + '%';
+            spawnDamageNumber(hero.position.x, 2.4, hero.position.z, dmg, 'take');
+            heroFlinch = 0.28;
+            camShake = 0.35;
+            flashHurt();
+            SFX.hurt();
+            spawnDust(hero.position.x, 0, hero.position.z, 3, 1.2);
+            if (heroHP <= 0) { gameOver(); return; }
+          } else {
+            SFX.thud();   // seklo vedle
+            spawnDust(e.group.position.x + tmp.x, 0, e.group.position.z + tmp.z, 3, 1.0);
+          }
+        }
+        if (e.atk >= 1) e.atk = -1;
+      } else {
+        enemyWalkPose(e, dt, e.walkAmp);
+        // zavrávorání se promítne do náklonu těla
+        if (e.stagger > 0) {
+          const f = e.stagger / 0.3;
+          e.spine.rotation.x -= f * 0.4;
+          e.neck.rotation.x -= f * 0.3;
+          e.bob.position.z -= f * 0.15;
+        }
+      }
+
+      // probliknutí po zásahu – rozzáří se barvou vlastní kůže
+      if (e.flash > 0) {
+        e.flash -= dt;
+        const f = Math.max(0, e.flash) / 0.22;
+        for (const m of e.mats) m.emissive.setRGB(f * 0.9, f * 0.55, f * 0.45);
+        e.group.scale.setScalar(e.baseScale * (1 + f * 0.12));
+      } else {
+        for (const m of e.mats) m.emissive.setRGB(0, 0, 0);
+        e.group.scale.setScalar(e.baseScale);
+      }
+    }
+
+    // Příšery se navzájem neprostupují – jemné rozestrkání.
+    for (let i = 0; i < enemies.length; i++) {
+      const a = enemies[i];
+      if (a.dying >= 0) continue;
+      for (let j = i + 1; j < enemies.length; j++) {
+        const b = enemies[j];
+        if (b.dying >= 0) continue;
+        const ex = b.group.position.x - a.group.position.x;
+        const ez = b.group.position.z - a.group.position.z;
+        const d = Math.hypot(ex, ez);
+        const min = a.radius + b.radius;
+        if (d > 0.0001 && d < min) {
+          const push = (min - d) * 0.5;
+          const nx = ex / d, nz = ez / d;
+          a.group.position.x -= nx * push; a.group.position.z -= nz * push;
+          b.group.position.x += nx * push; b.group.position.z += nz * push;
+        }
+      }
+    }
+  }
+
+  let hurtFxTimer = 0;
+  function flashHurt() {
+    hurtFx.style.opacity = '1';
+    hurtFxTimer = 0.35;
+  }
+
+  // Jiskry, prach, plameny, stromy, plovoucí čísla, doznívající efekty
+  function updateEffects(dt, t) {
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const sp = sparks[i];
+      sp.life -= dt;
+      const m = sp.mesh;
+      m.userData.v.y -= 16 * dt; // gravitace
+      m.position.addScaledVector(m.userData.v, dt);
+      const k = Math.max(0.01, sp.life / 0.5);
+      m.scale.set(k, k, k * (1 + m.userData.v.length() * 0.08));
+      if (sp.life <= 0) { scene.remove(m); sparks.splice(i, 1); }
+    }
+
+    for (let i = puffs.length - 1; i >= 0; i--) {
+      const p = puffs[i];
+      p.life -= dt;
+      const k = clamp01(p.life / p.max);
+      p.mesh.position.addScaledVector(p.mesh.userData.v, dt);
+      p.mesh.userData.v.multiplyScalar(1 - 2.4 * dt);
+      p.mesh.scale.setScalar(0.5 + (1 - k) * 1.5);
+      p.mat.opacity = k * 0.35;
+      if (p.life <= 0) { scene.remove(p.mesh); p.mat.dispose(); puffs.splice(i, 1); }
+    }
+
+    if (impactLightLife > 0) {
+      impactLightLife -= dt;
+      impactLight.intensity = Math.max(0, impactLightLife / 0.16) * 14;
+    } else impactLight.intensity = 0;
+
+    if (hurtFxTimer > 0) {
+      hurtFxTimer -= dt;
+      if (hurtFxTimer <= 0) hurtFx.style.opacity = '0';
+    }
+
+    updateFloaters(dt);
+
+    // mihotání pochodní (mesh i světlo)
+    for (let i = 0; i < torchFlames.length; i++) {
+      const fl = 0.85 + Math.sin(t * 12 + i * 2.1) * 0.12 + Math.random() * 0.06;
+      torchFlames[i].mesh.scale.set(fl, fl + 0.15, fl);
+      torchFlames[i].light.intensity = 2.4 + fl * 0.9;
+    }
+
+    // koruny stromů ve větru
+    for (let i = 0; i < swayers.length; i++) {
+      const sw = swayers[i];
+      sw.node.rotation.z = Math.sin(t * 0.9 + sw.phase) * sw.amp;
+      sw.node.rotation.x = Math.cos(t * 0.7 + sw.phase * 1.3) * sw.amp * 0.7;
+    }
+
+    if (camShake > 0) camShake = Math.max(0, camShake - dt * 1.6);
+  }
+
+  // Kamera pevně nad hrdinou + otřes při zásahu
+  function updateCamera(dt) {
+    const sh = camShake * camShake;
+    camTarget.set(
+      hero.position.x + (Math.random() - 0.5) * sh * 1.2,
+      hero.position.y + CAM_HEIGHT + (Math.random() - 0.5) * sh * 1.2,
+      hero.position.z + CAM_BACK + (Math.random() - 0.5) * sh * 1.2
+    );
+    camera.position.lerp(camTarget, Math.min(1, dt * 8));
+    camera.lookAt(hero.position.x, hero.position.y + 0.6, hero.position.z);
   }
 
   function doMeleeHit() {
-    // dosah meče před hrdinou
-    const reach = 2.4, halfAngle = Math.cos(0.9);
+    // dosah meče před hrdinou (počítáme i s výpadem)
+    const reach = 2.6, halfAngle = Math.cos(1.0);
     const fx = Math.sin(hero.rotation.y), fz = Math.cos(hero.rotation.y);
+    const ox = hero.position.x + fx * 0.3, oz = hero.position.z + fz * 0.3;
+    let any = false;
     for (let i = enemies.length - 1; i >= 0; i--) {
       const e = enemies[i];
-      const ex = e.group.position.x - hero.position.x;
-      const ez = e.group.position.z - hero.position.z;
+      if (e.dying >= 0) continue;
+      const ex = e.group.position.x - ox;
+      const ez = e.group.position.z - oz;
       const d = Math.hypot(ex, ez);
       if (d > reach + e.radius) continue;
       const dot = (ex * fx + ez * fz) / (d || 1);
@@ -939,22 +1685,32 @@
       const crit = Math.random() < 0.18;
       const dmg = (crit ? 2 : 1) * (8 + Math.floor(Math.random() * 5)); // 8–12, krit 2×
       e.hp -= dmg;
-      e.flash = 0.25;
+      e.flash = 0.22;
+      e.stagger = 0.3;
+      e.atk = -1;              // rána mu přeruší rozběhnutý útok
+      any = true;
       // jiskry + plovoucí číslo v místě zásahu
-      spawnHitSpark(e.group.position.x, 1.0, e.group.position.z);
-      spawnDamageNumber(e.group.position.x, 2.1, e.group.position.z, dmg, crit ? 'crit' : 'deal');
+      const hy = 1.05 * e.baseScale;
+      spawnHitSpark(e.group.position.x, hy, e.group.position.z, crit ? 16 : 10);
+      spawnDamageNumber(e.group.position.x, 2.1 * e.baseScale, e.group.position.z, dmg, crit ? 'crit' : 'deal');
       crit ? SFX.crit() : SFX.hit();
+      camShake = Math.max(camShake, crit ? 0.4 : 0.22);
       // odhození
-      e.group.position.x += fx * 0.8;
-      e.group.position.z += fz * 0.8;
+      const kb = crit ? 1.1 : 0.7;
+      e.group.position.x += fx * kb;
+      e.group.position.z += fz * kb;
       if (e.hp <= 0) {
-        scene.remove(e.group);
-        enemies.splice(i, 1);
+        e.dying = 1.1;          // místo okamžitého zmizení se skácí
+        e.flash = 0;
+        for (const m of e.mats) m.emissive.setRGB(0, 0, 0);
+        e.group.scale.setScalar(e.baseScale);
+        spawnDust(e.group.position.x, 0, e.group.position.z, 5, 1.4);
         score++;
         scoreEl.textContent = '⚔️ Skóre: ' + score;
         SFX.kill();
       }
     }
+    if (!any) spawnDust(ox + fx * 1.2, 0, oz + fz * 1.2, 2, 0.6); // sek do prázdna zvíří prach
   }
 
   // ---------- Resize ----------

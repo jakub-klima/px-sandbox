@@ -26,6 +26,7 @@
       color: #d8f4ee; pointer-events: none;
       text-shadow: 0 1px 6px rgba(0,0,0,.8);
     }
+    #hud.hidden, #buffs.hidden { display: none; }
     #hud .box { display: flex; flex-direction: column; gap: 2px; }
     #hud .right { align-items: flex-end; }
     .big { font-size: 22px; font-weight: 800; letter-spacing: .02em; color: #7ffbe4; }
@@ -82,10 +83,10 @@
     #overlay.hidden { display: none; }
     #panel {
       width: min(460px, 100%); text-align: center; color: #d8f4ee;
-      background: rgba(6,14,20,.82);
+      background: rgba(5, 12, 18, .88);
       border: 1px solid rgba(0,255,200,.25);
       border-radius: 16px; padding: 22px 20px;
-      box-shadow: 0 0 40px rgba(0,255,200,.12);
+      box-shadow: 0 0 60px rgba(0,0,0,.55), 0 0 40px rgba(0,255,200,.12);
     }
     #panel h1 {
       font-size: 30px; letter-spacing: .04em; margin-bottom: 6px;
@@ -109,9 +110,52 @@
     }
     #panel button:active { transform: scale(.98); }
     #panel button.ghost { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.18); font-weight: 500; }
-    .legend { display: grid; gap: 5px; margin: 4px 0 14px; font-size: 13px; text-align: left; }
-    .legend div { display: flex; gap: 8px; align-items: baseline; opacity: .85; }
-    .legend b { color: #7ffbe4; min-width: 18px; }
+    /* --- úvodní obrazovka --- */
+    .kicker {
+      font-size: 11px; letter-spacing: .42em; color: #58c8b8;
+      text-transform: uppercase; margin-bottom: 10px;
+    }
+    h1.logo {
+      font-size: clamp(34px, 11vw, 52px); line-height: 1; margin-bottom: 10px;
+      letter-spacing: .06em; font-weight: 900;
+      background: linear-gradient(100deg, #7ffbe4 10%, #ffffff 35%, #a06bff 65%, #7ffbe4 90%);
+      background-size: 260% 100%;
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      animation: shine 6s linear infinite;
+      filter: drop-shadow(0 0 22px rgba(0, 255, 200, .35));
+    }
+    @keyframes shine { to { background-position: -260% 0; } }
+    .tag { font-size: 14px; opacity: .8; margin-bottom: 16px; }
+    .best {
+      display: inline-block; margin-bottom: 18px; padding: 5px 14px;
+      border-radius: 999px; font-size: 13px; letter-spacing: .04em;
+      border: 1px solid rgba(255, 209, 102, .45); color: #ffd166;
+      background: rgba(255, 209, 102, .07);
+    }
+    .best:empty { display: none; }
+    #panel button.primary {
+      font-size: 19px; padding: 15px 16px; letter-spacing: .06em;
+      background: linear-gradient(180deg, rgba(0,255,200,.22), rgba(0,255,200,.08));
+      border-color: rgba(0,255,200,.65);
+      box-shadow: 0 0 24px rgba(0,255,200,.18);
+    }
+
+    /* --- nápověda --- */
+    .help { text-align: left; margin-bottom: 16px; }
+    .help h3 {
+      font-size: 12px; letter-spacing: .22em; text-transform: uppercase;
+      color: #58c8b8; margin: 14px 0 6px;
+    }
+    .help .rows { display: grid; gap: 6px; font-size: 13px; line-height: 1.45; }
+    .help .rows > div { display: flex; gap: 10px; align-items: baseline; opacity: .88; }
+    .help .rows b { color: #7ffbe4; min-width: 84px; flex: 0 0 auto; }
+    #panel { max-height: 88vh; overflow-y: auto; }
+    /* v nápovědě zůstane tlačítko Zpět po ruce i při rolování */
+    #panel button#ovBackBtn {
+      position: sticky; bottom: -4px; margin-top: 16px;
+      background: rgba(5, 12, 18, .96);
+      border-color: rgba(0, 255, 200, .5);
+    }
 
     @media (max-width: 560px) {
       .big { font-size: 26px; }
@@ -207,31 +251,51 @@
 
   <div id="overlay">
     <div id="panel">
-      <h1>ARKANOID 3D</h1>
-      <p>Odrážej kouli pálkou, rozbij všechny cihly a chytej bonusy.<br>Zaměřovač se houpe – vypusť kouli ve chvíli, kdy míří tam, kam chceš.</p>
-      <div class="legend">
+      <div class="kicker">NEONOVÁ ARÉNA</div>
+      <h1 class="logo">ARKANOID 3D</h1>
+      <p class="tag">Rozbij zeď, chytej bonusy, přežij Strážce.</p>
+      <div class="best" id="menuBest"></div>
+      <button id="ovBtn" class="primary">▶&nbsp; HRÁT</button>
+      <button id="ovFsBtn" class="ghost">📱 Na celou obrazovku</button>
+      <button id="ovHelpBtn" class="ghost">Nápověda a ovládání</button>
+    </div>
+  </div>
+
+  <template id="helpTpl">
+    <h2>Jak na to</h2>
+    <div class="help">
+      <h3>Ovládání</h3>
+      <div class="rows">
+        <div><b>prst</b><span>táhni kdekoliv po ploše, pálka jede s tebou</span></div>
+        <div><b>myš</b><span>pálka jde přesně pod kurzor</span></div>
+        <div><b>← →</b><span>ovládání z klávesnice</span></div>
+        <div><b>klik / mezerník</b><span>vypustí kouli podle zaměřovače, pak střílí laserem</span></div>
+        <div><b>P</b><span>pauza &nbsp;·&nbsp; <b>R</b> nová hra</span></div>
+      </div>
+
+      <h3>Bonusy</h3>
+      <div class="rows">
         <div><b>❤️</b><span>život navíc</span></div>
         <div><b>↔</b><span>širší pálka</span></div>
         <div><b>⋯</b><span>tři koule</span></div>
         <div><b>🐌</b><span>zpomalení koule</span></div>
-        <div><b>🔫</b><span>laser – střílej do cihel</span></div>
-        <div><b>🧲</b><span>lepkavá pálka – koule se chytí</span></div>
-        <div><b>🔥</b><span>pět cihel bez doteku pálky kouli zapálí –
-          na čtyři zásahy propaluje zeď skrz</span></div>
-        <div><b>🛸</b><span>rušiči od 3. kola: sestřel je koulí nebo laserem,
-          jinak ti u pálky vybuchnou</span></div>
-        <div><b>🔻</b><span>červené hroty = riziko: body navíc, ale užší pálka
-          nebo rychlejší koule – chytat, nebo uhnout?</span></div>
+        <div><b>🔫</b><span>laser</span></div>
+        <div><b>🧲</b><span>lepkavá pálka – koule se chytí a dá se znovu zamířit</span></div>
+        <div><b>🔻</b><span>červené hroty jsou riziko: body navíc za cenu užší pálky
+          nebo rychlejší koule</span></div>
       </div>
-      <div class="keys">
-        <code>myš</code> míří přímo, <code>prstem</code> táhni kdekoliv po ploše &nbsp;·&nbsp; <code>←</code> <code>→</code> klávesnice<br>
-        <code>mezerník</code> / <code>klik</code> vypustí kouli ve směru zaměřovače a střílí &nbsp;·&nbsp; <code>P</code> pauza · <code>R</code> nová hra
+
+      <h3>Co tě čeká</h3>
+      <div class="rows">
+        <div><b>🧱</b><span>cihly mají 1–3 zásahy, šedé jsou nerozbitné, červené vybuchnou</span></div>
+        <div><b>🔥</b><span>pět cihel bez doteku pálky kouli zapálí a ta propaluje zeď</span></div>
+        <div><b>🛸</b><span>rušiče od 3. kola sestřel koulí nebo laserem</span></div>
+        <div><b>👁️</b><span>každé desáté kolo hlídá Strážce</span></div>
+        <div><b>⏱️</b><span>když se dlouho nic nerozbije, zeď se přisune blíž</span></div>
       </div>
-      <div class="stats" id="menuBest"></div>
-      <button id="ovBtn">Hrát</button>
-      <button id="ovFsBtn" class="ghost">📱 Hrát na celou obrazovku</button>
     </div>
-  </div>
+    <button id="ovBackBtn">Zpět</button>
+  </template>
 
   <script type="importmap">
   {
@@ -2644,12 +2708,29 @@
     parseInt(new URLSearchParams(location.search).get('level') || '1', 10) || 1);
 
   const MENU_HTML = el.panel.innerHTML;
+  const HELP_HTML = document.getElementById('helpTpl').innerHTML;
+
   function bindMenu() {
+    document.getElementById('hud').classList.add('hidden');
+    el.buffs.classList.add('hidden');
     const best = loadScores();
     const box = document.getElementById('menuBest');
-    if (box) box.innerHTML = best.length ? 'Nejlepší <b>' + best[0].score.toLocaleString('cs-CZ') + '</b> bodů' : '';
+    if (box) box.textContent = best.length ? 'REKORD ' + best[0].score.toLocaleString('cs-CZ') : '';
     document.getElementById('ovBtn').onclick = () => { ensureAudio(); startGame(); };
     document.getElementById('ovFsBtn').onclick = goFullscreen;
+    const help = document.getElementById('ovHelpBtn');
+    if (help) help.onclick = () => { ensureAudio(); sfx.ui(); showHelp(); };
+  }
+
+  // Podrobnosti nepatří na úvodní obrazovku, ale sem.
+  function showHelp() {
+    showPanel(HELP_HTML);
+    el.panel.scrollTop = 0;
+    document.getElementById('ovBackBtn').onclick = () => {
+      sfx.ui();
+      showPanel(MENU_HTML);
+      bindMenu();
+    };
   }
   function showMenu() {
     skipIntro();
@@ -2662,6 +2743,8 @@
   }
 
   function startGame() {
+    document.getElementById('hud').classList.remove('hidden');
+    el.buffs.classList.remove('hidden');
     resetRun();
     noPauseUntil = performance.now() + 900;
     state.score = 0;
@@ -3051,6 +3134,18 @@
       camera.fov = CAM_FOV + (1 - e) * 11;
       camera.updateProjectionMatrix();
       if (k >= 1) skipIntro();
+    } else if (state.mode === 'menu') {
+      // úvodní obrazovka: pomalý oblet, ať scéna nestojí
+      const az = 0.7 + time * 0.08;
+      const elev = Math.asin(CAM_DIR.y) * 0.52;   // níž, ať je za arénou vidět město
+      const rad = camDist * 0.92;
+      const ce = Math.cos(elev);
+      camera.position.set(
+        CAM_TARGET.x + Math.sin(az) * ce * rad,
+        CAM_TARGET.y + Math.sin(elev) * rad,
+        CAM_TARGET.z + Math.cos(az) * ce * rad
+      );
+      camera.lookAt(CAM_TARGET);
     } else {
       camera.position.copy(CAM_TARGET).addScaledVector(CAM_DIR, camDist);
       if (shake > 0.001) {

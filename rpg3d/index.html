@@ -639,14 +639,20 @@
 
   // --- štít v levé ruce ---
   const shield = new THREE.Group();
-  const shieldFace = solid(new THREE.CylinderGeometry(0.4, 0.4, 0.07, 22), steelMat);
+  // vlastní, méně zrcadlový kov – jinak štít v přímém slunci vysvítí do bílé
+  const shieldMat = new THREE.MeshStandardMaterial({
+    color: 0x7f8794, roughness: 0.55, metalness: 0.45, envMapIntensity: 0.7
+  });
+  const shieldFace = solid(new THREE.CylinderGeometry(0.4, 0.4, 0.07, 22), shieldMat);
   shieldFace.rotation.x = Math.PI / 2; shieldFace.scale.set(1, 1, 1.2);
   const shieldRim = solid(new THREE.TorusGeometry(0.4, 0.035, 8, 24), goldMat);
   const shieldBoss = solid(new THREE.SphereGeometry(0.11, 12, 10), goldMat);
   shieldBoss.position.z = 0.06;
   shield.add(shieldFace, shieldRim, shieldBoss);
   shield.position.set(0, -0.06, 0.12);
-  shield.rotation.set(0.15, 0.25, 0);
+  // Paže je v gardě ohnutá zhruba o -1.65 rad; tohle to vyrovná,
+  // takže čelo štítu kryje směr dopředu, ne oblohu.
+  shield.rotation.set(1.5, 0.28, 0);
   armL.hand.add(shield);
 
   // --- meč v pravé ruce ---
@@ -664,8 +670,11 @@
     const guardTipR = solid(new THREE.SphereGeometry(0.05, 8, 8), goldMat); guardTipR.position.set(0.23, -0.21, 0); sword.add(guardTipR);
     const blade = box(0.13, 0.92, 0.045, bladeMat); blade.position.y = -0.72; sword.add(blade);
     const fuller = box(0.035, 0.88, 0.06, edgeMat); fuller.position.y = -0.72; sword.add(fuller);
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.26, 4), bladeMat);
-    tip.position.y = -1.3; tip.rotation.y = Math.PI / 4; tip.castShadow = true; sword.add(tip);
+    const tipGeo = new THREE.ConeGeometry(0.09, 0.26, 4);
+    tipGeo.rotateY(Math.PI / 4);
+    tipGeo.rotateX(Math.PI);   // vrchol kužele ven od jílce, ne k němu
+    const tip = new THREE.Mesh(tipGeo, bladeMat);
+    tip.position.y = -1.3; tip.castShadow = true; sword.add(tip);
   }
   sword.position.set(0, -0.04, 0.02);
   sword.rotation.x = -0.12;
@@ -1113,7 +1122,7 @@
   function heroIdlePose(dt, t) {
     const breathe = Math.sin(t * 1.6) * 0.5 + 0.5;   // 0..1
     pelvis.rotation.set(0, 0, 0);
-    pelvis.position.y = -0.02 - breathe * 0.012;
+    pelvis.position.y = HIP_Y - 0.02 - breathe * 0.012;
     spine.rotation.x = damp(spine.rotation.x, 0.05 + breathe * 0.02, 8, dt);
     spine.rotation.y = damp(spine.rotation.y, -0.12, 8, dt);
     spine.rotation.z = damp(spine.rotation.z, 0, 8, dt);
@@ -1142,7 +1151,7 @@
     pelvis.rotation.z = -sw * 0.06 * amp;
     pelvis.rotation.x = 0;
     const bob = -Math.abs(Math.sin(p)) * 0.07 * amp;
-    pelvis.position.y = bob;
+    pelvis.position.y = HIP_Y + bob;
     spine.position.y = HIP_Y + bob;
 
     // hrudník protisměrně + náklon vpřed podle rychlosti

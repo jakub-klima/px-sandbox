@@ -921,66 +921,226 @@
   }
 
   // ---------- Zvuky (procedurální, Web Audio – bez externích souborů) ----------
+  // Každá rána se skládá z několika vrstev (tělo nárazu, masitý střed, ostří)
+  // a má náhodnou výšku i hlasitost, aby se opakované seky neslévaly do jednoho
+  // strojového cvaknutí. Všechno prochází krátkým dozvukem arény.
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  let actx = null, masterGain = null;
+  let actx = null, masterGain = null, dryBus = null, wetBus = null, noiseBuf = null;
   let soundOn = localStorage.getItem('rpg3d_sound') !== 'off';
+  const sfxRnd = (a, b) => a + Math.random() * (b - a);
+
+  // Impulsní odezva dozvuku: šum s exponenciální doznívkou.
+  function makeImpulse(dur, decay) {
+    const rate = actx.sampleRate, n = Math.floor(rate * dur);
+    const buf = actx.createBuffer(2, n, rate);
+    for (let c = 0; c < 2; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, decay);
+    }
+    return buf;
+  }
+
   function initAudio() {
     if (actx || !AudioCtx) return;
     actx = new AudioCtx();
+
+    // Kompresor na výstupu: když padne několik ran naráz, signál se nepřebudí.
+    const comp = actx.createDynamicsCompressor();
+    comp.threshold.value = -6; comp.knee.value = 10; comp.ratio.value = 4;
+    comp.attack.value = 0.004; comp.release.value = 0.25;
     masterGain = actx.createGain();
-    masterGain.gain.value = 0.5;
-    masterGain.connect(actx.destination);
+    masterGain.gain.value = soundOn ? 0.85 : 0;
+    comp.connect(masterGain); masterGain.connect(actx.destination);
+
+    dryBus = actx.createGain(); dryBus.connect(comp);
+
+    // dozvuk kamenné arény – odrazy jsou tlumené, proto dolní propust
+    const conv = actx.createConvolver();
+    conv.buffer = makeImpulse(1.5, 2.8);
+    const wetTone = actx.createBiquadFilter();
+    wetTone.type = 'lowpass'; wetTone.frequency.value = 3200;
+    wetBus = actx.createGain(); wetBus.gain.value = 0.5;
+    wetBus.connect(conv); conv.connect(wetTone); wetTone.connect(comp);
+
+    // zásoba šumu – každý zvuk si z ní bere jiné místo, takže se neopakuje
+    const n = Math.floor(actx.sampleRate * 2.5);
+    noiseBuf = actx.createBuffer(1, n, actx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+
+    startWind();
   }
   function resumeAudio() { initAudio(); if (actx && actx.state === 'suspended') actx.resume(); }
 
-  // tón s obálkou
-  function tone({ freq = 440, freq2 = null, type = 'sine', dur = 0.2, vol = 0.3, attack = 0.005, delay = 0 }) {
-    if (!soundOn || !actx) return;
-    const t0 = actx.currentTime + delay;
-    const osc = actx.createOscillator();
-    const g = actx.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, t0);
-    if (freq2) osc.frequency.exponentialRampToValueAtTime(Math.max(1, freq2), t0 + dur);
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(vol, t0 + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    osc.connect(g); g.connect(masterGain);
-    osc.start(t0); osc.stop(t0 + dur + 0.02);
+  // vyústění vrstvy: naplno do sucha, částí do dozvuku
+  function sfxOut(node, send) {
+    node.connect(dryBus);
+    if (send > 0) { const s = actx.createGain(); s.gain.value = send; node.connect(s); s.connect(wetBus); }
   }
-  // šumový impulz (úder, švih) přes filtr
-  function noise({ dur = 0.2, vol = 0.3, filter = 'bandpass', freq = 1200, freq2 = null, q = 1, delay = 0 }) {
-    if (!soundOn || !actx) return;
-    const t0 = actx.currentTime + delay;
-    const n = Math.floor(actx.sampleRate * dur);
-    const buf = actx.createBuffer(1, n, actx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < n; i++) data[i] = Math.random() * 2 - 1;
-    const src = actx.createBufferSource(); src.buffer = buf;
-    const flt = actx.createBiquadFilter(); flt.type = filter; flt.frequency.setValueAtTime(freq, t0); flt.Q.value = q;
-    if (freq2) flt.frequency.exponentialRampToValueAtTime(Math.max(1, freq2), t0 + dur);
-    const g = actx.createGain();
-    g.gain.setValueAtTime(vol, t0);
+  function sfxNoiseSrc(t0, dur) {
+    const src = actx.createBufferSource();
+    src.buffer = noiseBuf; src.loop = true;
+    src.start(t0, sfxRnd(0, 2)); src.stop(t0 + dur + 0.05);
+    return src;
+  }
+  // obálka s ostrým náběhem a exponenciální doznívkou (bez lupnutí na začátku)
+  function sfxEnv(g, t0, peak, attack, dur) {
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(peak, t0 + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    src.connect(flt); flt.connect(g); g.connect(masterGain);
-    src.start(t0); src.stop(t0 + dur + 0.02);
+    g.gain.setValueAtTime(0, t0 + dur + 0.01);
+  }
+  // filtrovaný šumový úder s přejezdem filtru
+  function sfxBurst({ t0, dur, vol, type = 'lowpass', f0, f1 = null, q = 1, attack = 0.002, send = 0.2 }) {
+    const src = sfxNoiseSrc(t0, dur);
+    const flt = actx.createBiquadFilter();
+    flt.type = type; flt.Q.value = q;
+    flt.frequency.setValueAtTime(f0, t0);
+    if (f1) flt.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t0 + dur);
+    const g = actx.createGain(); sfxEnv(g, t0, vol, attack, dur);
+    src.connect(flt); flt.connect(g); sfxOut(g, send);
+  }
+  // tón s přejezdem výšky (tělo úderu, heknutí, fanfára)
+  function sfxTone({ t0, f0, f1 = null, type = 'sine', dur, vol, attack = 0.004, send = 0.2, lp = null }) {
+    const osc = actx.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f0, t0);
+    if (f1) osc.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t0 + dur);
+    const g = actx.createGain(); sfxEnv(g, t0, vol, attack, dur);
+    let node = osc;
+    if (lp) {
+      const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp;
+      osc.connect(f); node = f;
+    }
+    node.connect(g); sfxOut(g, send);
+    osc.start(t0); osc.stop(t0 + dur + 0.05);
+  }
+  // rozeznění čepele: neharmonické složky, každá s jinou doznívkou
+  function sfxRing({ t0, base, vol, dur, send = 0.45 }) {
+    for (const [mul, v, d] of [[1, 1, 1], [1.51, 0.6, 0.8], [2.07, 0.4, 0.6], [2.83, 0.25, 0.45]]) {
+      sfxTone({ t0, f0: base * mul, type: 'sine', dur: dur * d, vol: vol * v, attack: 0.001, send });
+    }
+  }
+  // tichý vítr v pozadí – mezi ranami není hluché ticho
+  function startWind() {
+    const src = actx.createBufferSource();
+    src.buffer = noiseBuf; src.loop = true;
+    const hp = actx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 60;
+    const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 340; lp.Q.value = 0.6;
+    const g = actx.createGain(); g.gain.value = 0.022;
+    // dvě pomalá vlnění: barva a síla poryvů
+    const lfo = actx.createOscillator(); lfo.frequency.value = 0.06;
+    const lfoG = actx.createGain(); lfoG.gain.value = 130;
+    lfo.connect(lfoG); lfoG.connect(lp.frequency);
+    const lfo2 = actx.createOscillator(); lfo2.frequency.value = 0.11;
+    const lfo2G = actx.createGain(); lfo2G.gain.value = 0.01;
+    lfo2.connect(lfo2G); lfo2G.connect(g.gain);
+    src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(dryBus);
+    src.start(); lfo.start(); lfo2.start();
   }
 
   const SFX = {
-    swing() { noise({ dur: 0.16, vol: 0.22, filter: 'bandpass', freq: 1600, freq2: 500, q: 1.2, delay: 0.12 }); },
-    step()  { noise({ dur: 0.07, vol: 0.09, filter: 'lowpass', freq: 420, q: 0.8 }); },
-    hit()   { noise({ dur: 0.12, vol: 0.3, filter: 'lowpass', freq: 2200, q: 1 });
-              tone({ freq: 180, freq2: 90, type: 'square', dur: 0.12, vol: 0.18 }); },
-    crit()  { noise({ dur: 0.16, vol: 0.34, filter: 'lowpass', freq: 3000, q: 1 });
-              tone({ freq: 320, freq2: 120, type: 'square', dur: 0.18, vol: 0.2 });
-              tone({ freq: 900, freq2: 1500, type: 'sine', dur: 0.16, vol: 0.12, delay: 0.02 }); },
-    kill()  { tone({ freq: 300, freq2: 70, type: 'sawtooth', dur: 0.35, vol: 0.22 });
-              noise({ dur: 0.3, vol: 0.2, filter: 'lowpass', freq: 1200, freq2: 300 }); },
-    thud()  { noise({ dur: 0.22, vol: 0.22, filter: 'lowpass', freq: 260, freq2: 90 }); },
-    growl() { tone({ freq: 120, freq2: 70, type: 'sawtooth', dur: 0.26, vol: 0.14 }); },
-    hurt()  { tone({ freq: 200, freq2: 80, type: 'sawtooth', dur: 0.22, vol: 0.25 }); },
-    over()  { [392, 330, 262, 196].forEach((f, i) => tone({ freq: f, type: 'triangle', dur: 0.5, vol: 0.22, delay: i * 0.16 })); },
-    start() { [440, 660].forEach((f, i) => tone({ freq: f, type: 'triangle', dur: 0.18, vol: 0.2, delay: i * 0.09 })); },
+    // švih meče: pásmový šum, jehož střed vyjede nahoru a zase klesne
+    swing() {
+      if (!soundOn || !actx) return;
+      const t0 = actx.currentTime + 0.06, dur = sfxRnd(0.2, 0.27), p = sfxRnd(0.88, 1.18);
+      const src = sfxNoiseSrc(t0, dur);
+      const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = sfxRnd(1.8, 3);
+      bp.frequency.setValueAtTime(380 * p, t0);
+      bp.frequency.exponentialRampToValueAtTime(2000 * p, t0 + dur * 0.55);
+      bp.frequency.exponentialRampToValueAtTime(650 * p, t0 + dur);
+      const g = actx.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(sfxRnd(0.42, 0.6), t0 + dur * 0.5); // vrchol uprostřed švihu
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      src.connect(bp); bp.connect(g); sfxOut(g, 0.22);
+    },
+    // krok: tupý dopad podrážky + zašustění trávy, pokaždé trochu jinak
+    step() {
+      if (!soundOn || !actx) return;
+      const t0 = actx.currentTime, v = sfxRnd(0.7, 1.1);
+      sfxBurst({ t0, dur: 0.07, vol: 0.42 * v, f0: sfxRnd(170, 240), f1: 90, q: 1.2, send: 0.1 });
+      sfxBurst({ t0: t0 + 0.008, dur: 0.09, vol: 0.2 * v, type: 'highpass', f0: sfxRnd(2200, 3400), q: 0.7, send: 0.12 });
+    },
+    // zásah: tělo rány + masitý střed + krátké cinknutí ostří
+    hit() {
+      if (!soundOn || !actx) return;
+      const t0 = actx.currentTime + sfxRnd(0, 0.012), p = sfxRnd(0.85, 1.2);
+      sfxTone({ t0, f0: 150 * p, f1: 62, type: 'sine', dur: 0.16, vol: 1.05, attack: 0.001, send: 0.15 });
+      sfxBurst({ t0, dur: 0.1, vol: 2.25, f0: 900 * p, f1: 180, q: 0.9, send: 0.2 });
+      sfxBurst({ t0, dur: 0.045, vol: 1.65, type: 'bandpass', f0: 2600 * p, q: 2.5, send: 0.3 });
+    },
+    // kritický zásah: hlubší náraz a rozeznělá čepel
+    crit() {
+      if (!soundOn || !actx) return;
+      const t0 = actx.currentTime + sfxRnd(0, 0.01), p = sfxRnd(0.92, 1.1);
+      sfxTone({ t0, f0: 120 * p, f1: 45, type: 'sine', dur: 0.28, vol: 1.2, attack: 0.001, send: 0.2 });
+      sfxBurst({ t0, dur: 0.14, vol: 2.4, f0: 1400 * p, f1: 200, q: 0.9, send: 0.25 });
+      sfxRing({ t0: t0 + 0.006, base: 1180 * p, vol: 0.22, dur: 0.55 });
+    },
+    // sek naprázdno / tlapa do země
+    thud() {
+      if (!soundOn || !actx) return;
+      const t0 = actx.currentTime;
+      sfxTone({ t0, f0: sfxRnd(95, 130), f1: 45, type: 'sine', dur: 0.2, vol: 0.45, attack: 0.002, send: 0.15 });
+      sfxBurst({ t0, dur: 0.18, vol: 0.9, f0: 420, f1: 110, q: 0.8, send: 0.18 });
+    },
+    // zavrčení: kolísavý bas protažený dvěma formanty + dech
+    growl() {
+      if (!soundOn || !actx) return;
+      const t0 = actx.currentTime, p = sfxRnd(0.8, 1.3), dur = sfxRnd(0.3, 0.42);
+      const osc = actx.createOscillator(); osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(105 * p, t0);
+      osc.frequency.exponentialRampToValueAtTime(72 * p, t0 + dur);
+      const vib = actx.createOscillator(); vib.frequency.value = sfxRnd(16, 26); // chvění hlasivek
+      const vibG = actx.createGain(); vibG.gain.value = 9 * p;
+      vib.connect(vibG); vibG.connect(osc.frequency);
+      const fA = actx.createBiquadFilter(); fA.type = 'bandpass'; fA.frequency.value = 420 * p; fA.Q.value = 3;
+      const fB = actx.createBiquadFilter(); fB.type = 'bandpass'; fB.frequency.value = 1100 * p; fB.Q.value = 4;
+      const mix = actx.createGain(); sfxEnv(mix, t0, 0.55, 0.05, dur);
+      osc.connect(fA); fA.connect(mix);
+      osc.connect(fB); fB.connect(mix);
+      sfxOut(mix, 0.3);
+      osc.start(t0); osc.stop(t0 + dur + 0.05);
+      vib.start(t0); vib.stop(t0 + dur + 0.05);
+      sfxBurst({ t0, dur, vol: 0.22, type: 'bandpass', f0: 700, q: 0.8, attack: 0.06, send: 0.2 });
+    },
+    // smrt příšery: klesající zavytí a po chvíli žuchnutí těla o zem
+    kill() {
+      if (!soundOn || !actx) return;
+      const t0 = actx.currentTime, p = sfxRnd(0.85, 1.2);
+      sfxTone({ t0, f0: 210 * p, f1: 58, type: 'sawtooth', dur: 0.45, vol: 0.36, attack: 0.01, lp: 900, send: 0.35 });
+      sfxBurst({ t0, dur: 0.4, vol: 0.47, f0: 1100, f1: 260, q: 0.7, send: 0.25 });
+      sfxTone({ t0: t0 + 0.42, f0: 90, f1: 42, type: 'sine', dur: 0.26, vol: 0.42, attack: 0.002, send: 0.25 });
+      sfxBurst({ t0: t0 + 0.42, dur: 0.24, vol: 0.64, f0: 500, f1: 120, q: 0.8, send: 0.25 });
+    },
+    // hrdina schytal ránu: náraz do zbroje + krátké heknutí
+    hurt() {
+      if (!soundOn || !actx) return;
+      const t0 = actx.currentTime;
+      sfxTone({ t0, f0: 165, f1: 70, type: 'sine', dur: 0.18, vol: 1.05, attack: 0.001, send: 0.15 });
+      sfxBurst({ t0, dur: 0.12, vol: 2.05, f0: 1800, f1: 400, q: 1.2, send: 0.25 });
+      sfxTone({ t0: t0 + 0.03, f0: sfxRnd(190, 240), f1: 120, type: 'sawtooth', dur: 0.2, vol: 0.5, attack: 0.012, lp: 700, send: 0.25 });
+    },
+    // konec hry: klesající molová kadence nad tichým dronem
+    over() {
+      if (!soundOn || !actx) return;
+      const t0 = actx.currentTime;
+      sfxTone({ t0, f0: 98, type: 'sine', dur: 2.2, vol: 0.2, attack: 0.06, send: 0.5 });
+      [392, 349.2, 293.7, 261.6].forEach((f, i) => {
+        sfxTone({ t0: t0 + i * 0.34, f0: f, type: 'triangle', dur: 0.9, vol: 0.26, attack: 0.02, lp: 2200, send: 0.55 });
+        sfxTone({ t0: t0 + i * 0.34, f0: f / 2, type: 'sine', dur: 0.9, vol: 0.16, attack: 0.02, send: 0.5 });
+      });
+    },
+    // start hry: krátká fanfára
+    start() {
+      if (!soundOn || !actx) return;
+      const t0 = actx.currentTime;
+      [[392, 0], [523.3, 0.1], [659.3, 0.2]].forEach(([f, d]) => {
+        sfxTone({ t0: t0 + d, f0: f, type: 'sawtooth', dur: 0.32, vol: 0.26, attack: 0.015, lp: 2600, send: 0.4 });
+        sfxTone({ t0: t0 + d, f0: f / 2, type: 'triangle', dur: 0.3, vol: 0.17, attack: 0.015, send: 0.35 });
+      });
+    },
   };
 
   const soundBtn = document.getElementById('soundBtn');
@@ -990,7 +1150,9 @@
     soundOn = !soundOn;
     localStorage.setItem('rpg3d_sound', soundOn ? 'on' : 'off');
     updateSoundBtn();
-    if (soundOn) { resumeAudio(); SFX.start(); }
+    if (soundOn) resumeAudio();
+    if (actx && masterGain) masterGain.gain.setTargetAtTime(soundOn ? 0.85 : 0, actx.currentTime, 0.04);
+    if (soundOn) SFX.start();
   });
 
   // ---------- Ovládání ----------

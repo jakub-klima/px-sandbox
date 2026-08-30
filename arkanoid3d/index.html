@@ -2571,7 +2571,9 @@
   // Myš míří absolutně (kurzor = pálka), prst táhne relativně –
   // hráč tak pálku neschovává pod dlaní a nemusí sahat na její pozici.
   let dragId = null, dragX = 0;
-  const touchSens = () => (ARENA_W * 1.4) / Math.max(1, innerWidth);
+  // Citlivost se odvozuje od kratší strany displeje, ne od šířky okna:
+  // jinak by na šířku byla proti výšce poloviční a pálka by se sotva hnula.
+  const touchSens = () => (ARENA_W * 1.4) / Math.max(1, Math.min(innerWidth, innerHeight));
 
   function onPointer(e) {
     if (e.target.closest && e.target.closest('button')) return;

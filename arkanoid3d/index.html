@@ -33,7 +33,7 @@
     .small { font-size: 12px; opacity: .75; }
     #lives { font-size: 15px; letter-spacing: 2px; }
     /* kolik bodů chybí do nejbližší příčky v tabulce */
-    #chase { font-size: 12px; color: #ffd166; opacity: .95; }
+    #chase { font-size: 13px; color: #ffd166; opacity: .95; }
     #chase:empty { display: none; }
     #chase b { font-weight: 800; }
     #combo {
@@ -237,7 +237,6 @@
     <div class="box">
       <span class="small">SKÓRE</span>
       <span class="big" id="score">0</span>
-      <span class="small">rekord <span id="best">0</span></span>
       <span id="chase"></span>
       <span id="combo">KOMBO ×1</span>
     </div>
@@ -2504,7 +2503,6 @@
   // ---------- Skóre / životy ----------
   const el = {
     score: document.getElementById('score'),
-    best: document.getElementById('best'),
     level: document.getElementById('level'),
     lives: document.getElementById('lives'),
     chase: document.getElementById('chase'),
@@ -2539,7 +2537,6 @@
 
   function updateHud() {
     el.score.textContent = state.score.toLocaleString('cs-CZ');
-    el.best.textContent = state.best.toLocaleString('cs-CZ');
     el.level.textContent = state.level;
     el.lives.textContent = '❤️'.repeat(Math.max(0, state.lives));
     updateChase();

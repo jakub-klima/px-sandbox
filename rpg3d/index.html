@@ -1285,8 +1285,8 @@
   function heroDeathPose(dt) {
     const k = 1 - clamp01(heroDeath / 1.35);      // 0 → 1
     const fall = easeInCubic(clamp01(k * 1.5));
-    heroBob.rotation.x = fall * 1.45;
-    heroBob.position.y = -fall * 0.5;
+    heroBob.rotation.x = -fall * 1.45;
+    heroBob.position.y = damp(heroBob.position.y, fall * 0.18, 8, dt);
     spine.rotation.x = damp(spine.rotation.x, -0.35, 5, dt);
     neck.rotation.x = damp(neck.rotation.x, 0.5, 5, dt);
     legL.hip.rotation.x = damp(legL.hip.rotation.x, -0.9, 5, dt);
@@ -1361,13 +1361,21 @@
     e.legR.knee.rotation.x = damp(e.legR.knee.rotation.x, 0.25 + 0.2 * fwd, 16, dt);
   }
 
-  // Pád příšery – zapotácí se, přepadne dozadu a propadne se pod zem.
+  // Pád příšery: skácí se, chvíli zůstane ležet a teprve pak se propadne
+  // pod terén. e.dying je čas od zásahu, -1 znamená, že je příšera živá.
+  const DEATH_FALL = 0.75;   // pád na zem
+  const DEATH_LIE = 3.0;     // jak dlouho tělo leží
+  const DEATH_SINK = 1.2;    // propadnutí pod terén
+  const DEATH_TOTAL = DEATH_FALL + DEATH_LIE + DEATH_SINK;
   function enemyDeathPose(e, dt) {
-    const k = 1 - clamp01(e.dying / 1.1);
-    const fall = easeInCubic(clamp01(k * 1.6));
-    e.bob.rotation.x = fall * 1.6;
-    e.bob.position.y = -fall * 0.45;
-    e.group.position.y = -Math.max(0, k - 0.55) * 2.6;   // propadnutí pod terén
+    const fall = easeInCubic(clamp01(e.dying / DEATH_FALL));
+    // Rotace probíhá kolem osy u země, takže tělo samo klesne na úroveň
+    // terénu; drobné nadzvednutí ho položí na trávu místo do ní.
+    e.bob.rotation.x = -fall * 1.6;
+    e.bob.position.y = damp(e.bob.position.y, fall * 0.2, 8, dt);
+    const sink = clamp01((e.dying - DEATH_FALL - DEATH_LIE) / DEATH_SINK);
+    e.group.position.y = -sink * 2.6;
+    e.group.scale.setScalar(e.baseScale * (1 - sink * 0.25));
     e.spine.rotation.x = damp(e.spine.rotation.x, -0.4, 6, dt);
     e.neck.rotation.x = damp(e.neck.rotation.x, 0.6, 6, dt);
     e.jaw.rotation.x = damp(e.jaw.rotation.x, 0.5, 6, dt);
@@ -1512,9 +1520,9 @@
 
       // --- pád ---
       if (e.dying >= 0) {
-        e.dying -= dt;
+        e.dying += dt;
         enemyDeathPose(e, dt);
-        if (e.dying <= 0) { scene.remove(e.group); enemies.splice(i, 1); }
+        if (e.dying >= DEATH_TOTAL) { scene.remove(e.group); enemies.splice(i, 1); }
         continue;
       }
       if (frozen) { enemyWalkPose(e, dt, 0); continue; }
@@ -1727,7 +1735,7 @@
       e.group.position.x += fx * kb;
       e.group.position.z += fz * kb;
       if (e.hp <= 0) {
-        e.dying = 1.1;          // místo okamžitého zmizení se skácí
+        e.dying = 0;            // spustí pád; tělo pak chvíli leží
         e.flash = 0;
         for (const m of e.mats) m.emissive.setRGB(0, 0, 0);
         e.group.scale.setScalar(e.baseScale);

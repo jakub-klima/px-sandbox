@@ -23,6 +23,9 @@
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+  /* jinak by display z tříd (.stack, .players…) přebil skrývání */
+  [hidden] { display: none !important; }
+
   html, body {
     height: 100%;
     margin: 0;
@@ -121,10 +124,107 @@
 
   /* ---------- start ---------- */
 
+  #scr-start {
+    justify-content: center;
+    gap: clamp(0.7rem, 2.4vmin, 1.6rem);
+  }
+
   #scr-start .tagline {
-    font-size: clamp(0.95rem, 2vmin, 1.15rem);
-    max-width: 34ch;
+    margin: 0;
+    font-size: clamp(0.9rem, 2vmin, 1.2rem);
     line-height: 1.5;
+  }
+
+  .shapes {
+    display: flex;
+    gap: 0.55em;
+    font-size: clamp(1.1rem, 3.4vmin, 2.2rem);
+    line-height: 1;
+  }
+  .shapes span { animation: float 2.8s ease-in-out infinite; }
+  .shapes .sh0 { color: var(--a0); }
+  .shapes .sh1 { color: var(--a1); animation-delay: 0.18s; }
+  .shapes .sh2 { color: var(--a2); animation-delay: 0.36s; }
+  .shapes .sh3 { color: var(--a3); animation-delay: 0.54s; }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-0.3em); }
+  }
+
+  .cards {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: clamp(0.7rem, 2vmin, 1.3rem);
+    width: 100%;
+    max-width: 860px;
+    margin-top: clamp(0.3rem, 1.5vmin, 1rem);
+  }
+
+  .card {
+    flex: 1 1 280px;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.55rem;
+    padding: clamp(1rem, 2.8vmin, 1.9rem);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+  }
+  #card-tv {
+    border-color: rgba(124, 92, 255, 0.4);
+    background: rgba(124, 92, 255, 0.09);
+  }
+  .card .ico { font-size: clamp(1.7rem, 4.4vmin, 2.8rem); line-height: 1; }
+  .card h2 { margin: 0; font-size: clamp(1.05rem, 2.4vmin, 1.5rem); font-weight: 800; }
+  .card p {
+    margin: 0 0 0.3rem;
+    font-size: clamp(0.82rem, 1.9vmin, 1.05rem);
+    line-height: 1.45;
+    max-width: 32ch;
+  }
+  .card > .btn, .card > .joinrow { margin-top: auto; width: 100%; }
+
+  .joinrow { display: flex; gap: 0.5rem; }
+  .joinrow input {
+    /* flex-basis 0 + min-width 0, jinak by výchozí size=20 roztáhlo celou kartu */
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    letter-spacing: 0.28em;
+    padding-left: 1.28em;
+  }
+  .joinrow .btn { flex: 0 0 auto; }
+
+  .steps {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: clamp(0.5rem, 1.8vmin, 1.6rem);
+    color: var(--dim);
+    font-size: clamp(0.75rem, 1.7vmin, 1rem);
+    margin-top: clamp(0.3rem, 1.5vmin, 1rem);
+  }
+  .steps span { display: flex; align-items: center; gap: 0.45rem; }
+  .steps b {
+    display: grid;
+    place-items: center;
+    width: 1.6em;
+    height: 1.6em;
+    border-radius: 50%;
+    background: rgba(124, 92, 255, 0.18);
+    border: 1px solid rgba(124, 92, 255, 0.45);
+    color: #cfc2ff;
+    font-size: 0.92em;
+  }
+
+  /* na telefonu je pravděpodobnější, že se člověk připojuje */
+  @media (max-width: 560px) {
+    #card-tv { order: 2; }
+    .steps { display: none; }
   }
 
   /* ---------- lobby (TV) ---------- */
@@ -417,15 +517,34 @@
 
 <!-- ======== ÚVOD ======== -->
 <section class="screen center" id="scr-start" hidden>
-  <div class="brand">Px<span>Quiz</span></div>
-  <p class="tagline muted">Kvízová party hra. Otevři si tuhle stránku na televizi, ostatní se připojí telefonem.</p>
-  <div class="stack">
-    <button class="btn big" id="btn-host">📺 Spustit na TV</button>
-    <button class="btn ghost" id="btn-showjoin">📱 Připojit se jako hráč</button>
+  <div class="shapes" aria-hidden="true">
+    <span class="sh0">▲</span><span class="sh1">◆</span><span class="sh2">●</span><span class="sh3">■</span>
   </div>
-  <div class="stack" id="joinbox" hidden>
-    <input id="in-code" maxlength="4" placeholder="KÓD" autocomplete="off" autocapitalize="characters" spellcheck="false">
-    <button class="btn" id="btn-gojoin">Pokračovat</button>
+  <div class="brand">Px<span>Quiz</span></div>
+  <p class="tagline muted">Kvízová party hra pro 2–4 lidi.<br>Televize ukazuje otázky, hraje se na telefonech.</p>
+
+  <div class="cards">
+    <div class="card" id="card-tv">
+      <div class="ico">📺</div>
+      <h2>Jsem u televize</h2>
+      <p class="muted">Spustí novou hru a ukáže QR kód, kterým se ostatní připojí.</p>
+      <button class="btn big" id="btn-host">Spustit hru</button>
+    </div>
+    <div class="card">
+      <div class="ico">📱</div>
+      <h2>Připojuji se</h2>
+      <p class="muted">Zadej kód, který svítí na televizi.</p>
+      <div class="joinrow">
+        <input id="in-code" maxlength="4" size="4" placeholder="KÓD" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false">
+        <button class="btn" id="btn-gojoin">Hrát</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="steps">
+    <span><b>1</b> Spusť hru na televizi</span>
+    <span><b>2</b> Naskenuj QR foťákem</span>
+    <span><b>3</b> Odpovídej na telefonu</span>
   </div>
 </section>
 

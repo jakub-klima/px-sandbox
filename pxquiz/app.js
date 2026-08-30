@@ -682,11 +682,6 @@
 
   $('btn-host').addEventListener('click', () => { beep(600, 0.05, 0.03); hostStart(0); });
 
-  $('btn-showjoin').addEventListener('click', () => {
-    $('joinbox').hidden = false;
-    $('in-code').focus();
-  });
-
   function goJoin() {
     const code = $('in-code').value.trim().toUpperCase();
     if (!/^[A-Z0-9]{4}$/.test(code)) { toast('Zadej čtyřznakový kód z televize.'); return; }
@@ -695,6 +690,14 @@
   }
   $('btn-gojoin').addEventListener('click', goJoin);
   $('in-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') goJoin(); });
+
+  /* kód se sám převádí na velká písmena a po čtvrtém znaku rovnou pokračuje */
+  $('in-code').addEventListener('input', () => {
+    const f = $('in-code');
+    const v = f.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    if (v !== f.value) f.value = v;
+    if (v.length === 4) goJoin();
+  });
 
   $('btn-fs').addEventListener('click', () => {
     try {

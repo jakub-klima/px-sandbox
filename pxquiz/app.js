@@ -129,6 +129,7 @@
     endTimers: [],
     confettiRaf: 0,
     reader: '',
+    readPid: '',
     readSeq: 0,
     lastSec: -1
   };
@@ -263,12 +264,28 @@
   }
 
   function pickReader() {
-    if (readerPlayer()) { renderReader(); return; }
+    /* i když se předčítač nemění, nově připojený musí zjistit, kdo čte */
+    if (readerPlayer()) { announceReader(); return; }
     H.reader = '';
     H.players.forEach((p) => {
       if (!H.reader && p.online && p.tts) H.reader = p.pid;
     });
-    H.players.forEach((p) => send(p, { t: 'reader', me: p.pid === H.reader }));
+    announceReader();
+  }
+
+  /* kdokoli s českým hlasem si může čtení přetáhnout k sobě */
+  function hostClaim(p) {
+    if (!p.online || !p.tts || p.pid === H.reader) return;
+    H.reader = p.pid;
+    announceReader();
+    beep(700, 0.07, 0.04);
+  }
+
+  function announceReader() {
+    const r = readerPlayer();
+    H.players.forEach((p) => send(p, {
+      t: 'reader', me: p.pid === H.reader, name: r ? r.name : ''
+    }));
     renderReader();
     renderVoiceBtn();
   }
@@ -303,6 +320,7 @@
     H.speakCancel = () => finish(true);
     H.readDone = (gotId) => { if (gotId === id) finish(false); };
 
+    H.readPid = r.pid;
     send(r, { t: 'speak', text: text, id: id });
     /* kdyby telefon usnul nebo se odmlčel, kolo se rozjede podle odhadu */
     H.readTimer = setTimeout(() => finish(false),
@@ -310,7 +328,7 @@
   }
 
   function hostSpoke(p, id) {
-    if (p.pid !== H.reader) return;
+    if (p.pid !== H.readPid) return;
     if (H.readDone) H.readDone(id);
   }
 
@@ -396,6 +414,7 @@
     if (m.t === 'answer') hostAnswer(p, m.i);
     else if (m.t === 'spoke') hostSpoke(p, m.id);
     else if (m.t === 'caps') { p.tts = !!m.tts; pickReader(); renderVoiceBtn(); }
+    else if (m.t === 'claim') hostClaim(p);
     else if (m.t === 'start' && H.state === 'lobby') beginGame();
     else if (m.t === 'again' && H.state === 'end') backToLobby();
   }
@@ -939,7 +958,7 @@
   const P = {
     peer: null, conn: null, code: '', name: '', pid: '',
     score: 0, joined: false, tries: 0, retryTimer: 0, locked: false,
-    avatar: '🙂', color: '#7c5cff', reader: false, voice: null
+    avatar: '🙂', color: '#7c5cff', reader: false, readerName: '', voice: null
   };
 
   /* ------------------------------------------- předčítání otázek telefonem */
@@ -957,6 +976,7 @@
     /* hlasy se často načtou až po připojení — televizi to musím doohlásit */
     if (!had && P.voice && P.joined) {
       try { if (P.conn && P.conn.open) P.conn.send({ t: 'caps', tts: true }); } catch (e) {}
+      renderReaderNote();
     }
   }
 
@@ -970,6 +990,19 @@
     phonePickVoice();
     try { speechSynthesis.addEventListener('voiceschanged', phonePickVoice); } catch (e) {}
     [400, 1200, 3000].forEach((d) => setTimeout(phonePickVoice, d));
+  }
+
+  /* Pruh nahoře: buď čtu já, nebo si čtení můžu vzít. */
+  function renderReaderNote() {
+    const note = $('reader-note');
+    if (!note) return;
+    if (!P.joined || !phoneCanSpeak()) { note.hidden = true; return; }
+    note.hidden = false;
+    $('reader-text').textContent = P.reader
+      ? '📢 Tvůj telefon předčítá otázky'
+      : (P.readerName ? '📢 Čte telefon hráče ' + P.readerName : '📢 Otázky nikdo nečte');
+    $('btn-readtest').hidden = !P.reader;
+    $('btn-readclaim').hidden = P.reader;
   }
 
   function phoneSpeak(text, id) {
@@ -1080,6 +1113,7 @@
         P.joined = true;
         P.name = m.name;
         P.score = m.score;
+        renderReaderNote();
         P.avatar = m.avatar || P.avatar;
         P.color = m.color || P.color;
         $('p-name').textContent = P.avatar + ' ' + m.name;
@@ -1101,7 +1135,8 @@
 
       case 'reader':
         P.reader = !!m.me;
-        $('reader-note').hidden = !P.reader;
+        P.readerName = m.name || '';
+        renderReaderNote();
         break;
 
       case 'speak':
@@ -1256,6 +1291,12 @@
 
   $('btn-readtest').addEventListener('click', () => {
     phoneSpeak('Zkouška hlasu. Otázky budu číst já.', -1);
+  });
+
+  $('btn-readclaim').addEventListener('click', () => {
+    try { if (P.conn && P.conn.open) P.conn.send({ t: 'claim' }); } catch (e) {}
+    /* klepnutí zároveň odemkne zvuk, takže rovnou i zkouška */
+    phoneSpeak('Otázky teď čtu já.', -1);
   });
 
   $('btn-fs').addEventListener('click', () => {

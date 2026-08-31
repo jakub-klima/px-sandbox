@@ -132,7 +132,7 @@
 
   /* ---------------------------------------- předčítání otázky na televizi */
 
-  const SPEECH = { on: store('voice') !== '0', voice: null, count: 0, spoke: false, broken: false };
+  const SPEECH = { on: store('voice') !== '0', voice: null, count: 0, spoke: false, broken: false, probed: false };
 
   function speechAvailable() {
     return typeof window.speechSynthesis !== 'undefined'
@@ -157,6 +157,7 @@
     try { speechSynthesis.addEventListener('voiceschanged', pickVoice); } catch (e) {}
     /* voiceschanged některé prohlížeče nepošlou, tak se ještě párkrát podívám */
     [400, 1200, 3000].forEach((d) => setTimeout(pickVoice, d));
+    setTimeout(() => { SPEECH.probed = true; renderVoiceBtn(); }, 3200);
   }
 
   function voiceStatus() {
@@ -165,7 +166,8 @@
     if (SPEECH.broken) return 'Hlas se nerozjel — otázky se číst nebudou.';
     if (SPEECH.voice) return 'Čte hlasem ' + SPEECH.voice.name + ' (' + SPEECH.voice.lang + ').';
     if (SPEECH.count > 0) return 'Česká hlasová sada chybí — zkusí to výchozím hlasem.';
-    return 'Hlasy se zatím nenačetly.';
+    if (SPEECH.probed) return 'Prohlížeč téhle televize nenabízí žádný hlas — číst neumí.';
+    return 'Hlasy se zatím načítají…';
   }
 
   function stopSpeech() {
@@ -1096,7 +1098,7 @@
     const info = $('voice-info');
     if (!b || !info) return;
     b.textContent = SPEECH.on ? '🔊 Čte otázky' : '🔇 Nečte otázky';
-    b.classList.toggle('warn', speechAvailable() && SPEECH.on && !SPEECH.voice);
+    b.classList.toggle('warn', SPEECH.on && (!speechAvailable() || SPEECH.broken || (SPEECH.probed && !SPEECH.voice)));
     info.textContent = voiceStatus();
   }
   renderVoiceBtn();

@@ -269,6 +269,37 @@
 
   .vinfo { font-size: 0.85em; opacity: 0.75; }
 
+  .readerline {
+    width: 100%;
+    text-align: center;
+    margin-top: 0.6rem;
+    color: #cfc2ff;
+    font-weight: 700;
+    font-size: clamp(0.85rem, 2vmin, 1.25rem);
+  }
+
+  /* na telefonu předčítače visí nahoře, ať je to jasné i mimo kolo */
+  .readernote {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.5rem 0.8rem;
+    background: rgba(124, 92, 255, 0.22);
+    border-bottom: 1px solid rgba(124, 92, 255, 0.5);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-align: center;
+  }
+  .readernote .btn { padding: 0.3rem 0.7rem; font-size: 0.78rem; }
+  body.mode-phone:has(#reader-note:not([hidden])) .screen { padding-top: 4.2rem; }
+
   .url {
     font-size: clamp(0.9rem, 2vmin, 1.35rem);
     color: var(--dim);
@@ -740,6 +771,7 @@
       <div class="code" id="lobby-code">····</div>
     </div>
     <div class="players" id="lobby-players"></div>
+    <div class="readerline" id="lobby-reader" hidden></div>
   </div>
 
   <div class="tvfoot">
@@ -800,6 +832,11 @@
 </section>
 
 <!-- ======== TELEFON: ČEKÁNÍ ======== -->
+<div class="readernote" id="reader-note" hidden>
+  📢 Tvůj telefon předčítá otázky — polož ho na stůl a přidej hlasitost.
+  <button class="btn ghost" id="btn-readtest">Vyzkoušet hlas</button>
+</div>
+
 <section class="screen center" id="scr-wait" hidden>
   <div class="spinner" id="wait-spin"></div>
   <div style="font-size: 1.4rem; font-weight: 800;" id="wait-title">Připojuji…</div>

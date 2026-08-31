@@ -119,8 +119,78 @@
     deadline: 0,
     raf: 0,
     timer: 0,
-    lastBeep: -1
+    readTimer: 0,
+    lastSec: -1
   };
+
+  /* ---------------------------------------- předčítání otázky na televizi */
+
+  const SPEECH = { on: store('voice') !== '0', voice: null };
+
+  function speechAvailable() {
+    return typeof window.speechSynthesis !== 'undefined'
+      && typeof window.SpeechSynthesisUtterance === 'function';
+  }
+
+  function pickVoice() {
+    try {
+      const vs = speechSynthesis.getVoices() || [];
+      SPEECH.voice = vs.filter((v) => /^cs/i.test(v.lang))[0] || null;
+    } catch (e) {}
+  }
+
+  if (speechAvailable()) {
+    pickVoice();
+    try { speechSynthesis.addEventListener('voiceschanged', pickVoice); } catch (e) {}
+  }
+
+  function stopSpeech() {
+    clearTimeout(H.readTimer);
+    H.readTimer = 0;
+    try { if (speechAvailable()) speechSynthesis.cancel(); } catch (e) {}
+  }
+
+  /* Přečte text a zavolá done(). Když hlas chybí nebo se zasekne, pokračuje
+     se podle odhadu délky, ať hra nikdy nezůstane viset. */
+  function speak(text, done) {
+    let finished = false;
+    let guard = 0;
+    let startGuard = 0;
+    const estimate = Math.min(14000, Math.max(2000, 600 + text.length * 80));
+
+    const finish = (cancel) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(guard);
+      clearTimeout(startGuard);
+      if (cancel) { try { speechSynthesis.cancel(); } catch (e) {} }
+      done();
+    };
+
+    if (!SPEECH.on || !speechAvailable()) {
+      H.readTimer = setTimeout(finish, 250);
+      return;
+    }
+
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'cs-CZ';
+      if (SPEECH.voice) u.voice = SPEECH.voice;
+      u.rate = 0.97;
+      u.onend = () => finish(false);
+      u.onerror = () => finish(false);
+      u.onstart = () => { clearTimeout(startGuard); };
+      speechSynthesis.speak(u);
+      /* hlas se vůbec nerozjel (chybí česká hlasová sada) */
+      startGuard = setTimeout(() => finish(true), 1500);
+      /* hlas se rozjel, ale zasekl se */
+      guard = setTimeout(() => finish(true), estimate + 5000);
+      H.readTimer = guard;
+    } catch (e) {
+      H.readTimer = setTimeout(finish, 250);
+    }
+  }
 
   function hostStart(attempt) {
     document.body.classList.add('mode-tv');
@@ -233,6 +303,8 @@
   function syncPlayer(p) {
     if (H.state === 'lobby') {
       sendLobby();
+    } else if (H.state === 'reading') {
+      send(p, { t: 'reading', n: H.qi + 1, total: H.deck.length });
     } else if (H.state === 'question') {
       const q = H.deck[H.qi];
       send(p, {
@@ -262,6 +334,7 @@
   function clearTimers() {
     cancelAnimationFrame(H.raf);
     clearTimeout(H.timer);
+    stopSpeech();
     H.raf = 0;
     H.timer = 0;
   }
@@ -283,20 +356,38 @@
     sendLobby();
   }
 
+  /* Kolo má dvě fáze: televize otázku nejdřív přečte ('reading'),
+     teprve pak se odkryjí odpovědi a spustí čas ('question'). */
   function nextQuestion() {
     clearTimers();
     H.qi++;
     if (H.qi >= H.deck.length) return endGame();
 
     const q = H.deck[H.qi];
-    H.state = 'question';
-    H.lastBeep = -1;
+    H.state = 'reading';
+    H.lastSec = -1;
     H.players.forEach((p) => { p.ans = null; p.at = 0; p.gain = 0; });
-    H.deadline = performance.now() + Q_TIME;
 
-    broadcast({ t: 'question', n: H.qi + 1, total: H.deck.length, cat: q.c, q: q.q, a: q.a, ms: Q_TIME });
+    broadcast({ t: 'reading', n: H.qi + 1, total: H.deck.length });
     renderQuestion(q);
     show('scr-q');
+
+    speak(q.q, startAnswering);
+  }
+
+  function startAnswering() {
+    if (H.state !== 'reading') return;
+    stopSpeech();
+    H.state = 'question';
+    H.deadline = performance.now() + Q_TIME;
+
+    const q = H.deck[H.qi];
+    $('q-reading').hidden = true;
+    $('q-answers').hidden = false;
+    $('q-barwrap').hidden = false;
+    $('q-clock').hidden = false;
+
+    broadcast({ t: 'question', n: H.qi + 1, total: H.deck.length, cat: q.c, q: q.q, a: q.a, ms: Q_TIME });
 
     H.timer = setTimeout(finishQuestion, Q_TIME + 60);
     tick();
@@ -308,9 +399,13 @@
     $('q-bar').style.transform = 'scaleX(' + (left / Q_TIME) + ')';
 
     const secs = Math.ceil(left / 1000);
-    if (secs <= 5 && secs > 0 && secs !== H.lastBeep) {
-      H.lastBeep = secs;
-      beep(secs === 1 ? 520 : 420, 0.06, 0.035, 'square');
+    if (secs !== H.lastSec) {
+      H.lastSec = secs;
+      const c = $('q-clock');
+      c.textContent = secs;
+      c.classList.toggle('warn', secs <= 10 && secs > 5);
+      c.classList.toggle('hot', secs <= 5);
+      if (secs <= 5 && secs > 0) beep(secs === 1 ? 520 : 420, 0.06, 0.035, 'square');
     }
     if (left <= 0) return finishQuestion();
     H.raf = requestAnimationFrame(tick);
@@ -442,13 +537,31 @@
     return container.children;
   }
 
+  /* cur = kolikáté kolo je právě rozehrané (0 = první) */
+  function renderPips(wrap, cur) {
+    wrap.innerHTML = '';
+    for (let i = 0; i < H.deck.length; i++) {
+      wrap.appendChild(el('i', 'pip' + (i < cur ? ' done' : (i === cur ? ' now' : ''))));
+    }
+  }
+
   function renderQuestion(q) {
     $('q-cat').textContent = q.c;
     $('q-num').textContent = 'Otázka ' + (H.qi + 1) + '/' + H.deck.length;
     $('q-text').textContent = q.q;
     $('q-bar').style.transform = 'scaleX(1)';
+    $('q-clock').textContent = Math.round(Q_TIME / 1000);
+    $('q-clock').className = 'clock';
+    renderPips($('q-pips'), H.qi);
     answerNodes(q, $('q-answers'));
     renderAnswered();
+
+    /* dokud televize otázku nedočte, odpovědi ani čas nejsou vidět */
+    const reading = H.state === 'reading';
+    $('q-reading').hidden = !reading;
+    $('q-answers').hidden = reading;
+    $('q-barwrap').hidden = reading;
+    $('q-clock').hidden = reading;
   }
 
   function renderAnswered() {
@@ -464,6 +577,7 @@
     $('r-cat').textContent = q.c;
     $('r-num').textContent = 'Otázka ' + (H.qi + 1) + '/' + H.deck.length;
     $('r-text').textContent = q.q;
+    renderPips($('r-pips'), H.qi + 1);
     const nodes = answerNodes(q, $('r-answers'));
     for (let i = 0; i < nodes.length; i++) {
       nodes[i].classList.add(i === q.k ? 'win' : 'faded');
@@ -606,6 +720,11 @@
         break;
       }
 
+      case 'reading':
+        $('btn-pstart').hidden = true;
+        showWait('🔊 Otázka ' + m.n + ' z ' + m.total, 'Poslouchej zadání na televizi…', false);
+        break;
+
       case 'question':
         $('btn-pstart').hidden = true;
         renderPad(m);
@@ -699,6 +818,23 @@
     if (v.length === 4) goJoin();
   });
 
+  function renderVoiceBtn() {
+    const b = $('btn-voice');
+    if (!speechAvailable()) {
+      b.hidden = true;
+      return;
+    }
+    b.textContent = SPEECH.on ? '🔊 Čte otázky' : '🔇 Nečte otázky';
+  }
+  renderVoiceBtn();
+
+  $('btn-voice').addEventListener('click', () => {
+    SPEECH.on = !SPEECH.on;
+    store('voice', SPEECH.on ? '1' : '0');
+    if (!SPEECH.on) stopSpeech();
+    renderVoiceBtn();
+  });
+
   $('btn-fs').addEventListener('click', () => {
     try {
       if (document.fullscreenElement) document.exitFullscreen();
@@ -733,6 +869,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.key !== ' ' && e.key !== 'Enter') return;
     if (H.state === 'lobby' && !$('btn-start').disabled) { e.preventDefault(); beginGame(); }
+    else if (H.state === 'reading') { e.preventDefault(); startAnswering(); }
     else if (H.state === 'reveal') { e.preventDefault(); nextQuestion(); }
     else if (H.state === 'end') { e.preventDefault(); backToLobby(); }
   });

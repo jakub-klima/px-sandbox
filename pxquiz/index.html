@@ -313,12 +313,82 @@
   .qhead {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
+    gap: clamp(0.6rem, 2vmin, 1.5rem);
     font-size: clamp(0.85rem, 2vmin, 1.3rem);
     font-weight: 700;
     color: var(--dim);
     letter-spacing: 0.05em;
     text-transform: uppercase;
+  }
+  .qhead > span:first-child { flex: 1 1 0; min-width: 0; }
+
+  /* tečky ukazují, kolikáté kolo se hraje */
+  .pips {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: clamp(4px, 0.8vmin, 9px);
+  }
+  .pip {
+    width: clamp(7px, 1.3vmin, 13px);
+    height: clamp(7px, 1.3vmin, 13px);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    transition: background 0.3s ease, transform 0.3s ease;
+  }
+  .pip.done { background: var(--accent); }
+  .pip.now {
+    background: #fff;
+    transform: scale(1.35);
+    box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.35);
+  }
+
+  .clock {
+    flex: 0 0 auto;
+    font-size: clamp(1.8rem, 5.5vmin, 4rem);
+    font-weight: 800;
+    line-height: 1;
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
+    min-width: 1.8ch;
+    text-align: right;
+  }
+  .clock.warn { color: var(--a2); }
+  .clock.hot { color: #ff4d6d; animation: tickpulse 0.5s ease-in-out infinite; }
+
+  @keyframes tickpulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.16); }
+  }
+
+  /* než televize dočte otázku, místo odpovědí bliká tohle */
+  .reading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.7rem;
+    padding: clamp(0.8rem, 3vmin, 2rem) 0;
+    color: var(--dim);
+    font-size: clamp(0.9rem, 2.2vmin, 1.5rem);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  .wave { display: flex; align-items: flex-end; gap: 0.25em; height: 1.2em; }
+  .wave i {
+    width: 0.26em;
+    height: 100%;
+    border-radius: 99px;
+    background: var(--accent);
+    animation: wave 1s ease-in-out infinite;
+  }
+  .wave i:nth-child(2) { animation-delay: 0.15s; }
+  .wave i:nth-child(3) { animation-delay: 0.3s; }
+  .wave i:nth-child(4) { animation-delay: 0.45s; }
+
+  @keyframes wave {
+    0%, 100% { transform: scaleY(0.3); opacity: 0.5; }
+    50% { transform: scaleY(1); opacity: 1; }
   }
 
   .bar {
@@ -552,7 +622,10 @@
 <section class="screen" id="scr-lobby" hidden>
   <div class="row" style="justify-content: space-between;">
     <div class="brand">Px<span>Quiz</span></div>
-    <button class="btn ghost" id="btn-fs">⛶ Celá obrazovka</button>
+    <div class="row">
+      <button class="btn ghost" id="btn-voice">🔊 Čte otázky</button>
+      <button class="btn ghost" id="btn-fs">⛶ Celá obrazovka</button>
+    </div>
   </div>
 
   <div class="lobby-wrap">
@@ -577,10 +650,15 @@
 <section class="screen" id="scr-q" hidden>
   <div class="qhead">
     <span id="q-cat"></span>
+    <div class="pips" id="q-pips"></div>
     <span id="q-num"></span>
+    <span class="clock" id="q-clock" hidden>–</span>
   </div>
-  <div class="bar"><i id="q-bar"></i></div>
+  <div class="bar" id="q-barwrap" hidden><i id="q-bar"></i></div>
   <div class="qtext" id="q-text"></div>
+  <div class="reading" id="q-reading" hidden>
+    <span class="wave"><i></i><i></i><i></i><i></i></span> Poslouchej otázku…
+  </div>
   <div class="answers" id="q-answers"></div>
   <div class="players" id="q-players" style="min-height: 0;"></div>
 </section>
@@ -589,6 +667,7 @@
 <section class="screen" id="scr-reveal" hidden>
   <div class="qhead">
     <span id="r-cat"></span>
+    <div class="pips" id="r-pips"></div>
     <span id="r-num"></span>
   </div>
   <div class="qtext" id="r-text" style="flex: 0; font-size: clamp(1.1rem, 3vmin, 2.2rem);"></div>

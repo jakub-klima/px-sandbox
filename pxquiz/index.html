@@ -92,6 +92,7 @@
     color: var(--dim);
     font-weight: 600;
   }
+  .btn.ghost.warn { border-color: rgba(245, 166, 35, 0.6); color: #ffd79a; }
   .btn.big {
     padding: 1.15rem 2rem;
     font-size: clamp(1.1rem, 3vmin, 1.6rem);
@@ -246,7 +247,7 @@
   }
 
   #qr {
-    width: clamp(160px, 30vmin, 340px);
+    width: clamp(210px, 44vmin, 520px);
     aspect-ratio: 1;
     background: #fff;
     border-radius: 16px;
@@ -265,6 +266,8 @@
     text-shadow: 0 0 30px rgba(124, 92, 255, 0.7);
     padding-left: 0.14em;
   }
+
+  .vinfo { font-size: 0.85em; opacity: 0.75; }
 
   .url {
     font-size: clamp(0.9rem, 2vmin, 1.35rem);
@@ -740,7 +743,10 @@
   </div>
 
   <div class="tvfoot">
-    <span id="lobby-hint" class="muted">Naskenuj QR kód mobilem a připoj se.</span>
+    <span class="muted">
+      <span id="lobby-hint">Naskenuj QR kód mobilem a připoj se.</span><br>
+      <span id="voice-info" class="vinfo"></span>
+    </span>
     <button class="btn" id="btn-start" disabled>▶ Spustit hru</button>
   </div>
 </section>

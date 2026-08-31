@@ -124,6 +124,7 @@
     raf: 0,
     timer: 0,
     readTimer: 0,
+    speakCancel: null,
     endTimers: [],
     confettiRaf: 0,
     lastSec: -1
@@ -131,28 +132,46 @@
 
   /* ---------------------------------------- předčítání otázky na televizi */
 
-  const SPEECH = { on: store('voice') !== '0', voice: null };
+  const SPEECH = { on: store('voice') !== '0', voice: null, count: 0, spoke: false, broken: false };
 
   function speechAvailable() {
     return typeof window.speechSynthesis !== 'undefined'
       && typeof window.SpeechSynthesisUtterance === 'function';
   }
 
+  /* Česky, jinak slovensky (výslovnost je blízká), jinak výchozí hlas
+     prohlížeče — radši trochu divná výslovnost než ticho. */
   function pickVoice() {
     try {
       const vs = speechSynthesis.getVoices() || [];
-      SPEECH.voice = vs.filter((v) => /^cs/i.test(v.lang))[0] || null;
+      SPEECH.count = vs.length;
+      SPEECH.voice = vs.filter((v) => /^cs/i.test(v.lang))[0]
+        || vs.filter((v) => /^sk/i.test(v.lang))[0]
+        || null;
     } catch (e) {}
+    renderVoiceBtn();
   }
 
   if (speechAvailable()) {
     pickVoice();
     try { speechSynthesis.addEventListener('voiceschanged', pickVoice); } catch (e) {}
+    /* voiceschanged některé prohlížeče nepošlou, tak se ještě párkrát podívám */
+    [400, 1200, 3000].forEach((d) => setTimeout(pickVoice, d));
+  }
+
+  function voiceStatus() {
+    if (!speechAvailable()) return 'Tenhle prohlížeč neumí číst nahlas.';
+    if (!SPEECH.on) return 'Čtení otázek je vypnuté.';
+    if (SPEECH.broken) return 'Hlas se nerozjel — otázky se číst nebudou.';
+    if (SPEECH.voice) return 'Čte hlasem ' + SPEECH.voice.name + ' (' + SPEECH.voice.lang + ').';
+    if (SPEECH.count > 0) return 'Česká hlasová sada chybí — zkusí to výchozím hlasem.';
+    return 'Hlasy se zatím nenačetly.';
   }
 
   function stopSpeech() {
     clearTimeout(H.readTimer);
     H.readTimer = 0;
+    if (H.speakCancel) { H.speakCancel(); H.speakCancel = null; }
     try { if (speechAvailable()) speechSynthesis.cancel(); } catch (e) {}
   }
 
@@ -162,37 +181,64 @@
     let finished = false;
     let guard = 0;
     let startGuard = 0;
+    let waited = 0;
     const estimate = Math.min(14000, Math.max(2000, 600 + text.length * 80));
 
-    const finish = (cancel) => {
+    const finish = (cancel, silent) => {
       if (finished) return;
       finished = true;
       clearTimeout(guard);
       clearTimeout(startGuard);
       if (cancel) { try { speechSynthesis.cancel(); } catch (e) {} }
-      done();
+      if (!silent) done();
     };
+    /* stopSpeech umlčí i hlídače, jinak by doběhly až do dalšího kola */
+    H.speakCancel = () => finish(false, true);
 
-    if (!SPEECH.on || !speechAvailable()) {
+    /* jednou zjištěné ticho se už nezkouší, jinak by se čekalo před každou otázkou */
+    if (!SPEECH.on || !speechAvailable() || SPEECH.broken) {
       H.readTimer = setTimeout(finish, 250);
       return;
     }
 
+    const busy = () => {
+      try { return !!(speechSynthesis.speaking || speechSynthesis.pending); } catch (e) { return false; }
+    };
+
+    /* Hlídač čeká, jestli se řeč vůbec rozjela. Nesmí ji utnout jen proto,
+       že se engine rozehřívá pomalu — proto se ptá i na speaking/pending. */
+    const checkStart = () => {
+      if (finished) return;
+      if (busy()) return;
+      waited += 700;
+      if (waited >= 4200) {
+        if (!SPEECH.spoke) { SPEECH.broken = true; renderVoiceBtn(); }
+        finish(true);
+        return;
+      }
+      startGuard = setTimeout(checkStart, 700);
+    };
+
     try {
       speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'cs-CZ';
+      u.lang = SPEECH.voice ? SPEECH.voice.lang : 'cs-CZ';
       if (SPEECH.voice) u.voice = SPEECH.voice;
-      u.rate = 0.97;
+      u.onstart = () => {
+        SPEECH.spoke = true;
+        SPEECH.broken = false;
+        clearTimeout(startGuard);
+      };
       u.onend = () => finish(false);
       u.onerror = () => finish(false);
-      u.onstart = () => { clearTimeout(startGuard); };
-      speechSynthesis.speak(u);
-      /* hlas se vůbec nerozjel (chybí česká hlasová sada) */
-      startGuard = setTimeout(() => finish(true), 1500);
-      /* hlas se rozjel, ale zasekl se */
-      guard = setTimeout(() => finish(true), estimate + 5000);
-      H.readTimer = guard;
+
+      /* cancel() a speak() těsně za sebou umí Chrome utterance zahodit */
+      H.readTimer = setTimeout(() => {
+        if (finished) return;
+        try { speechSynthesis.speak(u); } catch (e) { finish(false); return; }
+        startGuard = setTimeout(checkStart, 700);
+        guard = setTimeout(() => finish(true), estimate + 6000);
+      }, 80);
     } catch (e) {
       H.readTimer = setTimeout(finish, 250);
     }
@@ -1047,19 +1093,24 @@
 
   function renderVoiceBtn() {
     const b = $('btn-voice');
-    if (!speechAvailable()) {
-      b.hidden = true;
-      return;
-    }
+    const info = $('voice-info');
+    if (!b || !info) return;
     b.textContent = SPEECH.on ? '🔊 Čte otázky' : '🔇 Nečte otázky';
+    b.classList.toggle('warn', speechAvailable() && SPEECH.on && !SPEECH.voice);
+    info.textContent = voiceStatus();
   }
   renderVoiceBtn();
 
   $('btn-voice').addEventListener('click', () => {
     SPEECH.on = !SPEECH.on;
     store('voice', SPEECH.on ? '1' : '0');
-    if (!SPEECH.on) stopSpeech();
+    stopSpeech();
     renderVoiceBtn();
+    /* po zapnutí rovnou zkouška, ať je slyšet, jestli to na téhle TV funguje */
+    if (SPEECH.on) {
+      SPEECH.broken = false;
+      speak('Zkouška hlasu. Můžeme hrát.', renderVoiceBtn);
+    }
   });
 
   $('btn-fs').addEventListener('click', () => {

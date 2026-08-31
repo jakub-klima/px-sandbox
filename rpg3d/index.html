@@ -583,15 +583,25 @@
   const buckle = solid(new THREE.BoxGeometry(0.13, 0.11, 0.05), goldMat);
   buckle.position.set(0, 0.05, 0.27); spine.add(buckle);
 
-  // plášť – tři pruhy na kloubu, aby se za chůze vlnil
+  // Plášť – tři pruhy na kloubu, aby se za chůze vlnil. Kotva musí být
+  // za zády: trup sahá do z -0.264 a opasek až do -0.288, takže bližší
+  // uchycení by plášť protahovalo skrz tělo.
   const capeRoot = new THREE.Group();
-  capeRoot.position.set(0, 0.6, -0.24); spine.add(capeRoot);
+  capeRoot.position.set(0, 0.62, -0.3); spine.add(capeRoot);
+  capeRoot.rotation.x = 0.12;   // kladná rotace = díl se odklání dozadu
   const capeSegs = [];
   {
+    // límec překrývá mezeru mezi rameny a plátem pláště
+    const yoke = box(0.56, 0.16, 0.06, capeMat);
+    yoke.position.set(0, -0.04, 0.03); capeRoot.add(yoke);
+    for (const sx of [-1, 1]) {
+      const clasp = solid(new THREE.SphereGeometry(0.055, 10, 8), goldMat);
+      clasp.position.set(sx * 0.22, -0.02, 0.04); capeRoot.add(clasp);
+    }
     let parent = capeRoot;
     for (let i = 0; i < 3; i++) {
       const seg = new THREE.Group();
-      seg.position.y = i === 0 ? 0 : -0.38;
+      seg.position.y = i === 0 ? -0.08 : -0.38;
       parent.add(seg);
       const w = 0.62 - i * 0.05;
       const panel = box(w, 0.4, 0.035, capeMat);
@@ -599,7 +609,6 @@
       capeSegs.push(seg);
       parent = seg;
     }
-    capeRoot.rotation.x = 0.1;
   }
 
   // --- krk a hlava ---
@@ -1435,7 +1444,9 @@
   function updateCape(dt, speed, t) {
     capeVel = damp(capeVel, speed, 6, dt);
     for (let i = 0; i < capeSegs.length; i++) {
-      const target = -0.05 - capeVel * 0.075 - i * 0.04
+      // Kladná rotace odklání plášť dozadu; se zápornou se za běhu
+      // překlopil dopředu a prošel hrdinovi hrudí.
+      const target = 0.06 + capeVel * 0.05 + i * 0.04
         + Math.sin(t * 3.4 - i * 0.8) * (0.03 + capeVel * 0.012);
       capeSegs[i].rotation.x = damp(capeSegs[i].rotation.x, target, 9 - i * 1.5, dt);
       capeSegs[i].rotation.z = damp(capeSegs[i].rotation.z,

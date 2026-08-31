@@ -13,6 +13,10 @@
   const SHAPES = ['▲', '◆', '●', '■'];
   const PEER_OPTS = { debug: 1 };
 
+  /* každý hráč dostane svého zvířátka a barvu, ať je v tabulce k poznání */
+  const AVATARS = ['🦊', '🐸', '🐼', '🦉', '🐙', '🦄', '🐝', '🦖'];
+  const COLORS = ['#ff7ba8', '#5cc8ff', '#ffd166', '#6ee7a0', '#c39bff', '#ffa45c', '#5eead4', '#ff8f8f'];
+
   /* ---------------------------------------------------------- pomocné */
 
   const $ = (id) => document.getElementById(id);
@@ -120,6 +124,8 @@
     raf: 0,
     timer: 0,
     readTimer: 0,
+    endTimers: [],
+    confettiRaf: 0,
     lastSec: -1
   };
 
@@ -271,6 +277,14 @@
     else if (m.t === 'again' && H.state === 'end') backToLobby();
   }
 
+  /* nejnižší volné číslo zvířátka, ať se avataři neopakují */
+  function freeSlot() {
+    const used = [];
+    H.players.forEach((p) => used.push(p.idx));
+    for (let i = 0; i < AVATARS.length; i++) if (used.indexOf(i) < 0) return i;
+    return 0;
+  }
+
   function hostJoin(conn, m) {
     const pid = String(m.pid || '').slice(0, 64);
     if (!pid) return;
@@ -282,7 +296,10 @@
         try { conn.send({ t: 'denied', why: 'Hra je plná (max ' + MAX_PLAYERS + ' hráčů).' }); } catch (e) {}
         return;
       }
-      p = { pid: pid, name: uniqueName(name, pid), conn: conn, score: 0, online: true, ans: null, at: 0, gain: 0 };
+      p = {
+        pid: pid, name: uniqueName(name, pid), conn: conn, idx: freeSlot(),
+        score: 0, online: true, ans: null, at: 0, gain: 0, streak: 0, best: 0
+      };
       H.players.set(pid, p);
       beep(760, 0.09, 0.05);
       setTimeout(() => beep(1010, 0.09, 0.05), 90);
@@ -293,7 +310,7 @@
       p.name = uniqueName(name, pid);
     }
 
-    send(p, { t: 'welcome', name: p.name, score: p.score });
+    send(p, { t: 'welcome', name: p.name, score: p.score, avatar: AVATARS[p.idx], color: COLORS[p.idx] });
     renderPlayers();
     renderAnswered();
     syncPlayer(p);
@@ -304,20 +321,21 @@
     if (H.state === 'lobby') {
       sendLobby();
     } else if (H.state === 'reading') {
-      send(p, { t: 'reading', n: H.qi + 1, total: H.deck.length });
+      send(p, { t: 'reading', n: H.qi + 1, total: H.deck.length, cat: H.deck[H.qi].c, last: isLastRound() });
     } else if (H.state === 'question') {
       const q = H.deck[H.qi];
       send(p, {
         t: 'question', n: H.qi + 1, total: H.deck.length, cat: q.c, q: q.q, a: q.a,
-        ms: Math.max(0, H.deadline - performance.now())
+        ms: Math.max(0, H.deadline - performance.now()), last: isLastRound()
       });
       if (p.ans !== null) send(p, { t: 'locked', i: p.ans });
     } else if (H.state === 'reveal') {
       const q = H.deck[H.qi];
       const board = ranking();
       send(p, {
-        t: 'reveal', k: q.k, mine: p.ans, gain: p.gain, score: p.score,
-        rank: rankOf(board, p.pid), of: board.length
+        t: 'reveal', k: q.k, mine: p.ans, gain: p.gain, bonus: p.bonus, streak: p.streak,
+        score: p.score, mult: isLastRound() ? 2 : 1,
+        rank: rankOf(board, p.pid), of: board.length, moved: 0, fastest: false
       });
     } else if (H.state === 'end') {
       const board = ranking();
@@ -333,16 +351,21 @@
 
   function clearTimers() {
     cancelAnimationFrame(H.raf);
+    cancelAnimationFrame(H.confettiRaf);
     clearTimeout(H.timer);
+    H.endTimers.forEach(clearTimeout);
+    H.endTimers = [];
     stopSpeech();
+    $('confetti').hidden = true;
     H.raf = 0;
     H.timer = 0;
+    H.confettiRaf = 0;
   }
 
   function beginGame() {
     H.deck = shuffle(QUESTIONS.slice()).slice(0, ROUNDS);
     H.qi = -1;
-    H.players.forEach((p) => { p.score = 0; p.gain = 0; p.ans = null; });
+    H.players.forEach((p) => { p.score = 0; p.gain = 0; p.ans = null; p.streak = 0; p.best = 0; });
     nextQuestion();
   }
 
@@ -350,7 +373,7 @@
     clearTimers();
     H.state = 'lobby';
     H.qi = -1;
-    H.players.forEach((p) => { p.score = 0; p.gain = 0; p.ans = null; });
+    H.players.forEach((p) => { p.score = 0; p.gain = 0; p.ans = null; p.streak = 0; p.best = 0; });
     renderPlayers();
     show('scr-lobby');
     sendLobby();
@@ -368,11 +391,11 @@
     H.lastSec = -1;
     H.players.forEach((p) => { p.ans = null; p.at = 0; p.gain = 0; });
 
-    broadcast({ t: 'reading', n: H.qi + 1, total: H.deck.length });
+    broadcast({ t: 'reading', n: H.qi + 1, total: H.deck.length, cat: q.c, last: isLastRound() });
     renderQuestion(q);
     show('scr-q');
 
-    speak(q.q, startAnswering);
+    speak((isLastRound() ? 'Poslední otázka, za dvojnásobek bodů. ' : '') + q.c + '. ' + q.q, startAnswering);
   }
 
   function startAnswering() {
@@ -387,7 +410,12 @@
     $('q-barwrap').hidden = false;
     $('q-clock').hidden = false;
 
-    broadcast({ t: 'question', n: H.qi + 1, total: H.deck.length, cat: q.c, q: q.q, a: q.a, ms: Q_TIME });
+    broadcast({
+      t: 'question', n: H.qi + 1, total: H.deck.length, cat: q.c, q: q.q, a: q.a,
+      ms: Q_TIME, last: isLastRound()
+    });
+    beep(520, 0.07, 0.04);
+    setTimeout(() => beep(780, 0.09, 0.04), 70);
 
     H.timer = setTimeout(finishQuestion, Q_TIME + 60);
     tick();
@@ -425,27 +453,53 @@
     if (active.length && active.every((x) => x.ans !== null)) finishQuestion();
   }
 
+  function isLastRound() {
+    return H.qi === H.deck.length - 1;
+  }
+
   function finishQuestion() {
     if (H.state !== 'question') return;
     clearTimers();
     H.state = 'reveal';
 
     const q = H.deck[H.qi];
+    const mult = isLastRound() ? 2 : 1;
+    const before = ranking();
+
     H.players.forEach((p) => {
       p.gain = 0;
+      p.bonus = 0;
+      p.broke = 0;
       if (p.ans === q.k) {
-        p.gain = 500 + Math.round(500 * Math.max(0, 1 - p.at / Q_TIME));
+        p.streak++;
+        p.best = Math.max(p.best, p.streak);
+        /* série se vyplácí až od druhé správné v řadě, strop je +400 */
+        p.bonus = p.streak > 1 ? Math.min(4, p.streak - 1) * 100 : 0;
+        p.gain = (500 + Math.round(500 * Math.max(0, 1 - p.at / Q_TIME)) + p.bonus) * mult;
         p.score += p.gain;
+      } else {
+        /* ať telefon ví, jestli je co litovat */
+        p.broke = p.streak > 1 ? p.streak : 0;
+        p.streak = 0;
       }
     });
 
     const board = ranking();
+
+    /* kdo z těch správných byl nejrychlejší */
+    let fastest = null;
+    board.forEach((p) => {
+      if (p.ans === q.k && (!fastest || p.at < fastest.at)) fastest = p;
+    });
+
     H.players.forEach((p) => send(p, {
-      t: 'reveal', k: q.k, mine: p.ans, gain: p.gain, score: p.score,
-      rank: rankOf(board, p.pid), of: board.length
+      t: 'reveal', k: q.k, mine: p.ans, gain: p.gain, bonus: p.bonus, streak: p.streak,
+      broke: p.broke, score: p.score, mult: mult, rank: rankOf(board, p.pid), of: board.length,
+      moved: rankOf(before, p.pid) - rankOf(board, p.pid),
+      fastest: !!(fastest && fastest.pid === p.pid)
     }));
 
-    renderReveal(q, board);
+    renderReveal(q, board, before, fastest, mult);
     show('scr-reveal');
     beep(660, 0.12, 0.05);
     setTimeout(() => beep(990, 0.18, 0.05), 120);
@@ -478,7 +532,9 @@
   }
 
   function boardLite(board) {
-    return board.map((p) => ({ name: p.name, score: p.score }));
+    return board.map((p) => ({
+      name: p.name, score: p.score, avatar: AVATARS[p.idx], color: COLORS[p.idx], best: p.best
+    }));
   }
 
   /* ------------------------------------------------- vykreslení na TV */
@@ -507,6 +563,14 @@
 
   const seenChips = new Set();
 
+  function chipFor(p, extra) {
+    const c = el('div', 'chip' + (p.online ? '' : ' off') + (extra || ''));
+    c.style.borderColor = COLORS[p.idx];
+    c.appendChild(el('span', 'av', AVATARS[p.idx]));
+    c.appendChild(el('span', null, p.name));
+    return c;
+  }
+
   function renderPlayers() {
     const wrap = $('lobby-players');
     wrap.innerHTML = '';
@@ -514,7 +578,7 @@
     list.forEach((p) => {
       const fresh = !seenChips.has(p.pid);
       seenChips.add(p.pid);
-      wrap.appendChild(el('div', 'chip' + (p.online ? '' : ' off') + (fresh ? ' fresh' : ''), p.name));
+      wrap.appendChild(chipFor(p, fresh ? ' fresh' : ''));
     });
 
     const n = list.filter((p) => p.online).length;
@@ -556,6 +620,8 @@
     answerNodes(q, $('q-answers'));
     renderAnswered();
 
+    $('q-double').hidden = !isLastRound();
+
     /* dokud televize otázku nedočte, odpovědi ani čas nejsou vidět */
     const reading = H.state === 'reading';
     $('q-reading').hidden = !reading;
@@ -569,18 +635,58 @@
     wrap.innerHTML = '';
     H.players.forEach((p) => {
       if (!p.online) return;
-      wrap.appendChild(el('div', 'chip' + (p.ans !== null ? ' done' : ''), p.name));
+      wrap.appendChild(chipFor(p, p.ans !== null ? ' done' : ''));
     });
   }
 
-  function renderReveal(q, board) {
+  /* číslo se dopočítá nahoru, ať skóre naskakuje a ne přeskakuje */
+  function countUp(node, from, to) {
+    if (from === to) { node.textContent = String(to); return; }
+    const t0 = performance.now();
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / 800);
+      const eased = 1 - Math.pow(1 - k, 3);
+      node.textContent = String(Math.round(from + (to - from) * eased));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+    /* rAF se ve skryté záložce zastaví — konečné číslo musí sednout tak jako tak */
+    setTimeout(() => { node.textContent = String(to); }, 900);
+  }
+
+  function movedNode(moved) {
+    if (moved > 0) return el('span', 'moved up', '▲' + moved);
+    if (moved < 0) return el('span', 'moved down', '▼' + (-moved));
+    return el('span', 'moved flat', '·');
+  }
+
+  function renderReveal(q, board, before, fastest, mult) {
     $('r-cat').textContent = q.c;
     $('r-num').textContent = 'Otázka ' + (H.qi + 1) + '/' + H.deck.length;
     $('r-text').textContent = q.q;
     renderPips($('r-pips'), H.qi + 1);
+
+    /* kdo si co vybral — avataři sedí na kartičce své odpovědi */
+    const picks = [[], [], [], []];
+    H.players.forEach((p) => { if (p.ans !== null) picks[p.ans].push(p); });
+
     const nodes = answerNodes(q, $('r-answers'));
     for (let i = 0; i < nodes.length; i++) {
       nodes[i].classList.add(i === q.k ? 'win' : 'faded');
+      const who = el('span', 'picks');
+      picks[i].forEach((p) => who.appendChild(el('span', 'av', AVATARS[p.idx])));
+      if (picks[i].length) who.appendChild(el('span', 'cnt', String(picks[i].length) + '×'));
+      nodes[i].appendChild(who);
+    }
+
+    const note = $('r-note');
+    if (fastest) {
+      note.textContent = '⚡ Nejrychleji ' + fastest.name + ' za ' + (fastest.at / 1000).toFixed(1) + ' s'
+        + (mult > 1 ? ' · dvojnásobné body!' : '');
+      note.hidden = false;
+    } else {
+      note.textContent = 'Správně nikdo. 🙈';
+      note.hidden = board.length === 0;
     }
 
     const wrap = $('r-board');
@@ -588,32 +694,127 @@
     board.forEach((p, i) => {
       const row = el('div', 'brow' + (i === 0 && p.score > 0 ? ' top' : ''));
       row.appendChild(el('span', 'pos', (i + 1) + '.'));
-      row.appendChild(el('span', null, p.name + (p.online ? '' : ' (odpojen)')));
-      row.appendChild(el('span', 'gain' + (p.gain ? '' : ' zero'), p.gain ? '+' + p.gain : (p.ans === null ? '—' : '+0')));
-      row.appendChild(el('span', 'sc', String(p.score)));
+
+      const who = el('span', 'who');
+      who.appendChild(el('span', 'av', AVATARS[p.idx]));
+      who.appendChild(el('span', 'nm', p.name + (p.online ? '' : ' (odpojen)')));
+      if (p.streak > 1) who.appendChild(el('span', 'flame', '🔥' + p.streak));
+      row.appendChild(who);
+
+      row.appendChild(movedNode(rankOf(before, p.pid) - (i + 1)));
+      row.appendChild(el('span', 'gain' + (p.gain ? '' : ' zero'),
+        p.gain ? '+' + p.gain : (p.ans === null ? '—' : '+0')));
+
+      const sc = el('span', 'sc');
+      row.appendChild(sc);
+      countUp(sc, p.score - p.gain, p.score);
+
       wrap.appendChild(row);
     });
   }
 
+  /* Finále se odkrývá od posledního místa nahoru, ať to má šťávu. */
   function renderEnd(board) {
     const medals = ['🥇', '🥈', '🥉'];
     const wrap = $('e-board');
     wrap.innerHTML = '';
-    board.forEach((p, i) => {
-      const row = el('div', 'brow' + (i === 0 ? ' top' : ''));
+    $('e-title').textContent = 'Konečné pořadí';
+    $('btn-again').hidden = true;
+
+    const rows = board.map((p, i) => {
+      const row = el('div', 'brow reveal-row' + (i === 0 ? ' top' : ''));
       row.appendChild(el('span', 'pos', medals[i] || (i + 1) + '.'));
-      row.appendChild(el('span', null, p.name));
+
+      const who = el('span', 'who');
+      who.appendChild(el('span', 'av', AVATARS[p.idx]));
+      who.appendChild(el('span', 'nm', p.name));
+      if (p.best > 1) who.appendChild(el('span', 'flame', '🔥' + p.best));
+      row.appendChild(who);
+
       row.appendChild(el('span', 'gain zero', ''));
       row.appendChild(el('span', 'sc', String(p.score)));
+      row.hidden = true;
       wrap.appendChild(row);
+      return row;
     });
+
+    /* od posledního k prvnímu */
+    let delay = 400;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const row = rows[i];
+      const winner = i === 0;
+      H.endTimers.push(setTimeout(() => {
+        row.hidden = false;
+        beep(winner ? 880 : 420 + (rows.length - i) * 60, winner ? 0.3 : 0.09, 0.05);
+        if (winner) {
+          $('e-title').textContent = '🏆 Vyhrává ' + board[0].name + '!';
+          confetti();
+          [0, 150, 300, 520].forEach((d, j) => setTimeout(() => beep([523, 659, 784, 1047][j], 0.25, 0.06), d));
+        }
+      }, delay));
+      delay += winner ? 1100 : 750;
+    }
+    H.endTimers.push(setTimeout(() => { $('btn-again').hidden = false; }, delay));
+  }
+
+  /* Konfety — malé plátno přes celou obrazovku, žádná knihovna. */
+  function confetti() {
+    const cv = $('confetti');
+    const ctx = cv.getContext('2d');
+    if (!ctx) return;
+    /* rozměr se dá změřit až po odkrytí, jinak je plátno 0×0 */
+    cv.hidden = false;
+    cv.width = cv.clientWidth || window.innerWidth;
+    cv.height = cv.clientHeight || window.innerHeight;
+
+    const bits = [];
+    for (let i = 0; i < 140; i++) {
+      bits.push({
+        x: Math.random() * cv.width,
+        y: -20 - Math.random() * cv.height * 0.6,
+        vx: (Math.random() - 0.5) * 1.6,
+        vy: 2 + Math.random() * 3.5,
+        w: 6 + Math.random() * 7,
+        h: 9 + Math.random() * 9,
+        rot: Math.random() * Math.PI,
+        vr: (Math.random() - 0.5) * 0.25,
+        c: COLORS[Math.floor(Math.random() * COLORS.length)]
+      });
+    }
+
+    const t0 = performance.now();
+    const draw = (now) => {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      let live = 0;
+      bits.forEach((b) => {
+        b.x += b.vx;
+        b.y += b.vy;
+        b.rot += b.vr;
+        if (b.y < cv.height + 40) live++;
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(b.rot);
+        ctx.fillStyle = b.c;
+        ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h);
+        ctx.restore();
+      });
+      if (live && now - t0 < 7000) {
+        H.confettiRaf = requestAnimationFrame(draw);
+      } else {
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        cv.hidden = true;
+      }
+    };
+    cancelAnimationFrame(H.confettiRaf);
+    H.confettiRaf = requestAnimationFrame(draw);
   }
 
   /* ======================================================= TELEFON / HRÁČ */
 
   const P = {
     peer: null, conn: null, code: '', name: '', pid: '',
-    score: 0, joined: false, tries: 0, retryTimer: 0, locked: false
+    score: 0, joined: false, tries: 0, retryTimer: 0, locked: false,
+    avatar: '🙂', color: '#7c5cff'
   };
 
   function myPid() {
@@ -704,8 +905,11 @@
         P.joined = true;
         P.name = m.name;
         P.score = m.score;
-        $('p-name').textContent = m.name;
+        P.avatar = m.avatar || P.avatar;
+        P.color = m.color || P.color;
+        $('p-name').textContent = P.avatar + ' ' + m.name;
         $('p-score').textContent = m.score;
+        document.documentElement.style.setProperty('--me', P.color);
         break;
 
       case 'denied':
@@ -722,7 +926,10 @@
 
       case 'reading':
         $('btn-pstart').hidden = true;
-        showWait('🔊 Otázka ' + m.n + ' z ' + m.total, 'Poslouchej zadání na televizi…', false);
+        showWait(
+          (m.last ? '🔥 Poslední otázka!' : '🔊 Otázka ' + m.n + ' z ' + m.total),
+          m.last ? 'Dvojnásobné body — poslouchej televizi' : (m.cat || '') + ' · poslouchej televizi…',
+          false);
         break;
 
       case 'question':
@@ -784,17 +991,37 @@
     const ok = m.mine === m.k;
     $('res-icon').textContent = none ? '⏳' : (ok ? '✅' : '❌');
     $('res-gain').textContent = none ? 'Nestihl jsi odpovědět' : (ok ? '+' + m.gain : 'Špatně');
+
+    /* co se povedlo navíc — série, nejrychlejší odpověď, dvojnásobek */
+    const extras = [];
+    if (ok && m.fastest) extras.push('⚡ Nejrychlejší!');
+    if (ok && m.streak > 1) extras.push('🔥 ' + m.streak + ' v řadě' + (m.bonus ? ' (+' + m.bonus + ')' : ''));
+    if (ok && m.mult > 1) extras.push('✌️ Dvojnásobek');
+    if (m.broke > 1) extras.push('💔 Série ' + m.broke + ' přetržená');
+    const badges = $('res-badges');
+    badges.innerHTML = '';
+    extras.forEach((txt) => badges.appendChild(el('span', 'badge', txt)));
+
+    const moved = $('res-moved');
+    if (m.moved > 0) { moved.className = 'moved up'; moved.textContent = '▲ o ' + m.moved + ' nahoru'; }
+    else if (m.moved < 0) { moved.className = 'moved down'; moved.textContent = '▼ o ' + (-m.moved) + ' dolů'; }
+    else { moved.className = 'moved flat'; moved.textContent = 'Beze změny pořadí'; }
+
     $('res-rank').textContent = m.rank + '. místo z ' + m.of + ' · ' + m.score + ' bodů';
+    $('scr-result').classList.toggle('good', ok);
     vibrate(ok ? [30, 60, 30] : 120);
     show('scr-result');
   }
 
   function renderPlayerEnd(m) {
+    const won = m.rank === 1;
     $('pe-icon').textContent = ['🥇', '🥈', '🥉'][m.rank - 1] || '🏁';
-    $('pe-place').textContent = m.rank + '. místo z ' + m.of;
-    $('pe-score').textContent = m.score + ' bodů';
+    $('pe-place').textContent = won ? 'Vyhrál jsi!' : m.rank + '. místo z ' + m.of;
+    const best = (m.board || []).filter((x) => x.name === P.name)[0];
+    $('pe-score').textContent = m.score + ' bodů'
+      + (best && best.best > 1 ? ' · nejdelší série 🔥' + best.best : '');
     show('scr-pend');
-    vibrate([40, 80, 40, 80, 120]);
+    vibrate(won ? [60, 60, 60, 60, 200] : [40, 80, 40]);
   }
 
   /* ============================================================== ovládání */

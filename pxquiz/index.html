@@ -441,7 +441,14 @@
     transition: opacity 0.25s ease, transform 0.25s ease;
   }
   .ans .sh { font-size: 1.15em; line-height: 1; opacity: 0.9; }
-  .ans.faded { opacity: 0.22; transform: scale(0.97); }
+  /* ztlumení přes barvy, ne přes průhlednost — avataři musí zůstat čitelní */
+  .ans.faded {
+    background: rgba(255, 255, 255, 0.045);
+    color: var(--dim);
+    transform: scale(0.97);
+    box-shadow: inset 6px 0 0 var(--c);
+  }
+  .ans.faded .sh { opacity: 0.45; }
   .ans.win { animation: win 0.6s ease; box-shadow: inset 0 -4px 0 rgba(0,0,0,.25), 0 0 0 4px #fff; }
 
   @keyframes win {
@@ -544,8 +551,8 @@
     font-weight: 800;
   }
 
-  /* žlutá potřebuje tmavý text, jinak není čitelná */
-  .ans.a2, .pbtn.a2 { color: #2a1c00; }
+  /* žlutá potřebuje tmavý text, jinak není čitelná — ale ne když je ztlumená */
+  .ans.a2:not(.faded), .pbtn.a2 { color: #2a1c00; }
 
   .toast {
     position: fixed;
@@ -572,6 +579,98 @@
 
   .pulse { animation: pulse 1.6s ease-in-out infinite; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+  /* ---------- šťáva ---------- */
+
+  .chip .av { font-size: 1.2em; margin-right: 0.35em; }
+
+  .double {
+    align-self: center;
+    padding: 0.4rem 1.2rem;
+    border-radius: 999px;
+    background: rgba(245, 166, 35, 0.16);
+    border: 1px solid rgba(245, 166, 35, 0.6);
+    color: #ffd79a;
+    font-weight: 800;
+    font-size: clamp(0.85rem, 2.1vmin, 1.35rem);
+    letter-spacing: 0.03em;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+
+  /* avataři těch, kdo tuhle odpověď zvolili */
+  .picks {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.2em;
+    flex: 0 0 auto;
+    font-size: 0.95em;
+  }
+  .picks .av { font-size: 1.15em; }
+  .picks .cnt {
+    margin-left: 0.35em;
+    font-size: 0.8em;
+    opacity: 0.85;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .note {
+    text-align: center;
+    color: var(--dim);
+    font-weight: 700;
+    font-size: clamp(0.85rem, 2.1vmin, 1.3rem);
+  }
+
+  .brow .who { display: flex; align-items: center; gap: 0.5em; min-width: 0; }
+  .brow .who .av { font-size: 1.25em; }
+  .brow .who .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .brow .flame {
+    flex: 0 0 auto;
+    font-size: 0.8em;
+    padding: 0.1em 0.5em;
+    border-radius: 999px;
+    background: rgba(255, 140, 40, 0.18);
+    border: 1px solid rgba(255, 140, 40, 0.5);
+    color: #ffc48a;
+  }
+
+  .moved { font-size: 0.85em; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .moved.up { color: #4ade80; }
+  .moved.down { color: #ff7a90; }
+  .moved.flat { color: #4a4f70; }
+
+  /* vyhodnocení má navíc sloupec s posunem v pořadí */
+  #r-board .brow { grid-template-columns: 2.6rem 1fr auto auto auto; }
+
+  .reveal-row { animation: rowin 0.45s cubic-bezier(0.2, 1.2, 0.4, 1); }
+  @keyframes rowin {
+    from { transform: translateY(18px) scale(0.96); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+
+  #confetti {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* telefon: odměna za povedené kolo */
+  body.mode-phone #scr-result.good {
+    background: radial-gradient(circle at 50% 38%, rgba(23, 185, 120, 0.22), transparent 60%);
+  }
+  .badges { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; }
+  .badge {
+    padding: 0.35rem 0.8rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--line);
+    font-size: 0.85rem;
+    font-weight: 700;
+    animation: pop 0.35s ease;
+  }
 
   .tvfoot {
     display: flex;
@@ -655,6 +754,7 @@
     <span class="clock" id="q-clock" hidden>–</span>
   </div>
   <div class="bar" id="q-barwrap" hidden><i id="q-bar"></i></div>
+  <div class="double" id="q-double" hidden>🔥 Poslední otázka · dvojnásobné body</div>
   <div class="qtext" id="q-text"></div>
   <div class="reading" id="q-reading" hidden>
     <span class="wave"><i></i><i></i><i></i><i></i></span> Poslouchej otázku…
@@ -672,14 +772,15 @@
   </div>
   <div class="qtext" id="r-text" style="flex: 0; font-size: clamp(1.1rem, 3vmin, 2.2rem);"></div>
   <div class="answers" id="r-answers"></div>
+  <div class="note" id="r-note" hidden></div>
   <div class="board" id="r-board" style="flex: 1; justify-content: center;"></div>
 </section>
 
 <!-- ======== TV: KONEC ======== -->
 <section class="screen center" id="scr-end" hidden>
-  <div class="brand" style="font-size: clamp(1.6rem, 5vmin, 3rem);">🏆 Konec hry</div>
+  <div class="brand" id="e-title" style="font-size: clamp(1.6rem, 5vmin, 3rem);">Konečné pořadí</div>
   <div class="board" id="e-board"></div>
-  <button class="btn big" id="btn-again">↻ Hrát znovu</button>
+  <button class="btn big" id="btn-again" hidden>↻ Hrát znovu</button>
 </section>
 
 <!-- ======== TELEFON: JMÉNO ======== -->
@@ -715,6 +816,8 @@
 <section class="screen center" id="scr-result" hidden>
   <div class="verdict" id="res-icon"></div>
   <div class="gain" id="res-gain"></div>
+  <div class="badges" id="res-badges"></div>
+  <div class="moved flat" id="res-moved"></div>
   <div class="muted" id="res-rank"></div>
 </section>
 
@@ -733,6 +836,7 @@
   <button class="btn" onclick="location.reload()">Zkusit znovu</button>
 </section>
 
+<canvas id="confetti" hidden></canvas>
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>

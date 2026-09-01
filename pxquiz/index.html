@@ -342,6 +342,40 @@
     to { transform: scale(1); opacity: 1; }
   }
 
+  /* ---------- předěl mezi koly ---------- */
+
+  #scr-intro { gap: clamp(0.8rem, 2.6vmin, 2rem); }
+
+  .introno {
+    font-size: clamp(2.2rem, 9vmin, 7rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    animation: introin 0.5s cubic-bezier(0.2, 1.3, 0.4, 1);
+  }
+  .introno b { color: var(--accent); }
+
+  .introcat {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    padding: 0.5rem 1.6rem;
+    border-radius: 999px;
+    background: rgba(124, 92, 255, 0.14);
+    border: 1px solid rgba(124, 92, 255, 0.45);
+    font-size: clamp(1.1rem, 3.6vmin, 2.6rem);
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    animation: introin 0.5s 0.12s backwards cubic-bezier(0.2, 1.3, 0.4, 1);
+  }
+
+  @keyframes introin {
+    from { transform: translateY(26px) scale(0.9); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+
+  #i-pips { animation: introin 0.4s backwards ease; }
+
   /* ---------- otázka ---------- */
 
   .qhead {
@@ -781,6 +815,14 @@
     </span>
     <button class="btn" id="btn-start" disabled>▶ Spustit hru</button>
   </div>
+</section>
+
+<!-- ======== TV: PŘEDĚL MEZI KOLY ======== -->
+<section class="screen center" id="scr-intro" hidden>
+  <div class="pips" id="i-pips"></div>
+  <div class="introno" id="i-num"></div>
+  <div class="introcat" id="i-cat"></div>
+  <div class="double" id="i-double" hidden>🔥 Poslední otázka · dvojnásobné body</div>
 </section>
 
 <!-- ======== TV: OTÁZKA ======== -->

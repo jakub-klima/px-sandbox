@@ -9,9 +9,17 @@
   const ROUNDS = 10;
   const Q_TIME = 20000;
   const REVEAL_MS = 6000;
+  const INTRO_MS = 2400;
   const MAX_PLAYERS = 8;
   const SHAPES = ['▲', '◆', '●', '■'];
   const PEER_OPTS = { debug: 1 };
+
+  /* ikonka ke každé kategorii, ať má předěl mezi koly tvář */
+  const CAT_ICONS = {
+    'Zeměpis': '🌍', 'Česko': '🇨🇿', 'Věda': '🔬', 'Tělo': '🫀', 'Příroda': '🦁',
+    'Kultura': '🎭', 'Historie': '🏛️', 'Sport': '⚽', 'Čísla': '🔢',
+    'Technika': '💻', 'Jídlo': '🍕'
+  };
 
   /* každý hráč dostane svého zvířátka a barvu, ať je v tabulce k poznání */
   const AVATARS = ['🦊', '🐸', '🐼', '🦉', '🐙', '🦄', '🐝', '🦖'];
@@ -464,6 +472,9 @@
   function syncPlayer(p) {
     if (H.state === 'lobby') {
       sendLobby();
+    } else if (H.state === 'intro') {
+      const q = H.deck[H.qi];
+      send(p, { t: 'intro', n: H.qi + 1, total: H.deck.length, cat: q.c, last: isLastRound() });
     } else if (H.state === 'reading') {
       send(p, { t: 'reading', n: H.qi + 1, total: H.deck.length, cat: H.deck[H.qi].c, last: isLastRound() });
     } else if (H.state === 'question') {
@@ -531,10 +542,25 @@
     if (H.qi >= H.deck.length) return endGame();
 
     const q = H.deck[H.qi];
-    H.state = 'reading';
+    H.state = 'intro';
     H.lastSec = -1;
     H.players.forEach((p) => { p.ans = null; p.at = 0; p.gain = 0; });
 
+    broadcast({ t: 'intro', n: H.qi + 1, total: H.deck.length, cat: q.c, last: isLastRound() });
+    renderIntro(q);
+    show('scr-intro');
+    beep(500, 0.09, 0.045);
+    setTimeout(() => beep(750, 0.13, 0.045), 130);
+
+    H.timer = setTimeout(beginReading, INTRO_MS);
+  }
+
+  function beginReading() {
+    if (H.state !== 'intro') return;
+    clearTimers();
+    H.state = 'reading';
+
+    const q = H.deck[H.qi];
     broadcast({ t: 'reading', n: H.qi + 1, total: H.deck.length, cat: q.c, last: isLastRound() });
     renderQuestion(q);
     show('scr-q');
@@ -751,6 +777,22 @@
     for (let i = 0; i < H.deck.length; i++) {
       wrap.appendChild(el('i', 'pip' + (i < cur ? ' done' : (i === cur ? ' now' : ''))));
     }
+  }
+
+  function renderIntro(q) {
+    renderPips($('i-pips'), H.qi);
+    const num = $('i-num');
+    num.innerHTML = '';
+    num.appendChild(document.createTextNode('Otázka '));
+    num.appendChild(el('b', null, String(H.qi + 1)));
+    num.appendChild(document.createTextNode(' z ' + H.deck.length));
+
+    const cat = $('i-cat');
+    cat.innerHTML = '';
+    cat.appendChild(el('span', null, CAT_ICONS[q.c] || '❓'));
+    cat.appendChild(el('span', null, q.c));
+
+    $('i-double').hidden = !isLastRound();
   }
 
   function renderQuestion(q) {
@@ -1143,6 +1185,15 @@
         phoneSpeak(m.text, m.id);
         break;
 
+      case 'intro':
+        $('btn-pstart').hidden = true;
+        showWait(
+          m.last ? '🔥 Poslední otázka!' : 'Otázka ' + m.n + ' z ' + m.total,
+          m.last ? 'Za dvojnásobné body' : (m.cat || ''),
+          false);
+        vibrate(20);
+        break;
+
       case 'reading':
         $('btn-pstart').hidden = true;
         showWait(
@@ -1333,6 +1384,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.key !== ' ' && e.key !== 'Enter') return;
     if (H.state === 'lobby' && !$('btn-start').disabled) { e.preventDefault(); beginGame(); }
+    else if (H.state === 'intro') { e.preventDefault(); beginReading(); }
     else if (H.state === 'reading') { e.preventDefault(); startAnswering(); }
     else if (H.state === 'reveal') { e.preventDefault(); nextQuestion(); }
     else if (H.state === 'end') { e.preventDefault(); backToLobby(); }

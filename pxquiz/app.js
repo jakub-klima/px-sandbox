@@ -1198,7 +1198,7 @@
         $('btn-pstart').hidden = true;
         showWait(
           (m.last ? '🔥 Poslední otázka!' : '🔊 Otázka ' + m.n + ' z ' + m.total),
-          m.last ? 'Dvojnásobné body — poslouchej televizi' : (m.cat || '') + ' · poslouchej televizi…',
+          m.last ? 'Dvojnásobné body — poslouchej otázku' : (m.cat || '') + ' · poslouchej otázku…',
           false);
         break;
 

@@ -863,7 +863,7 @@
     let loadingPois = false;
     // automatické přenačtení míst: když se hráč vzdálí od kotvy posledního
     // načtení, nebo když jsou data po návratu z pozadí stará
-    const POI_RELOAD_DIST_M = 500;   // menší než poloměr načítání (1 km) → oblasti se překrývají
+    const POI_RELOAD_DIST_M = 500;   // menší než poloměr načítání (800 m) → oblasti se překrývají
     const POI_STALE_MS = 900000;     // stáří dat, po kterém se po návratu z pozadí načítá znovu (15 min)
     const POI_RETRY_MS = 30000;      // minimální rozestup automatických pokusů (šetrnost k Overpass)
     const POI_PRUNE_M = 2000;        // stará místa dál než tohle od středu načtení se zahodí
@@ -879,7 +879,7 @@
     // jeden dotaz na Overpass s daným poloměrem (fallback přes zrcadla)
     // výsledek = { list: použitelná místa, raw: kolik elementů poslal server }; null = nezdar
     const POI_LIMIT = 120;               // limit míst na jeden dotaz (out center …)
-    const POI_RADII = [1000, 500, 250];  // hustá oblast ořízne výsledek na limit → doplň menším poloměrem
+    const POI_RADII = [800, 400, 200];   // hustá oblast ořízne výsledek na limit → doplň menším poloměrem
     const POI_FETCH_TIMEOUT_MS = 8000;   // na váznoucí server se nečeká – po 8 s se pokus ruší
     const POI_HEDGE_MS = 2500;           // když hlavní server do té doby neodpoví, přidá se souběžně zrcadlo
     // jeden dotaz na konkrétní server; při chybě/timeoutu vyhazuje výjimku

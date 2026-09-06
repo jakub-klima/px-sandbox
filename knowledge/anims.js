@@ -1846,3 +1846,296 @@ ANIMS.domeny = root => {
 
   return () => { stop(); cv.stop(); };
 };
+
+/* ==================================================================
+   22) Žebřík řádů: 10⁻³⁵ až 10²⁷ m  (lekce 06)
+   Logaritmická osa přes 62 řádů; pásma = metoda, kterou se
+   v daném rozsahu délka skutečně měří.
+================================================================== */
+ANIMS.meritka = root => {
+  const E_LO = -35, E_HI = 27;
+  const LY = 9.4607e15, AU = 1.495979e11;
+
+  function fmtLen(m) {
+    if (m < 1e-12) return m.toExponential(1) + " m";
+    if (m < 1e-9) return (m * 1e12).toFixed(1) + " pm";
+    if (m < 1e-6) return (m * 1e9).toFixed(2) + " nm";
+    if (m < 1e-3) return (m * 1e6).toFixed(2) + " µm";
+    if (m < 1) return (m * 1e3).toFixed(1) + " mm";
+    if (m < 1e3) return m.toFixed(2) + " m";
+    if (m < 1e7) return (m / 1e3).toFixed(m < 1e5 ? 1 : 0) + " km";
+    if (m < 1e10) return (m / 1e3).toExponential(1) + " km";
+    if (m < 1e15) return (m / AU).toFixed(1) + " AU";
+    if (m < 1e19) return (m / LY).toFixed(2) + " sv. roku";
+    if (m < 1e22) return (m / LY / 1e3).toFixed(1) + " tis. sv. let";
+    if (m < 1e25) return (m / LY / 1e6).toFixed(1) + " mil. sv. let";
+    return (m / LY / 1e9).toFixed(1) + " mld. sv. let";
+  }
+
+  /* pásma měřicích metod: [od, do, název, barva, věta do výpisu] */
+  const BANDS = [
+    [-35, -19, "mimo dosah", C.metal,
+      "nijak. Planckova délka jen vypadne z ħ, G a c; prozkoumat ji by chtělo 10¹⁵× víc energie, než dává LHC."],
+    [-19, -14, "srážky částic", "#b46cff",
+      "srážkami částic. Rozlišení = vlnová délka sondy (λ = h/p), takže vyšší energie = ostřejší pohled. Rozměr se čte z úhlů rozptylu, ne z obrázku."],
+    [-14, -9, "difrakce", "#7cc4ff",
+      "difrakcí. Rentgen (λ ≈ 0,1 nm) nebo elektrony na krystalu; z úhlů maxim plyne rozestup přes 2d·sinθ = nλ."],
+    [-9, -4, "mikroskopie", "#00ffc8",
+      "mikroskopem. Optika končí na ~200 nm, elektronový mikroskop rozliší ~0,05 nm, hrot AFM/STM povrch přímo ohmatá."],
+    [-4, 7, "přímo, přes čas", C.fg,
+      "přímo — a metr je definován rychlostí světla, takže přesná délka je vlastně čas. Interferometr zachytí i posun 10⁻¹⁸ m (LIGO)."],
+    [7, 13, "radar a laser", C.warn,
+      "časem letu signálu: radar na Venuši, laserové echo od odražečů na Měsíci (přesnost milimetry), telemetrie sond."],
+    [13, 20.5, "paralaxa", "#00ffc8",
+      "trigonometrickou paralaxou: za půl roku se Země posune o 2 AU a blízká hvězda se posune proti pozadí. d [pc] = 1/p [″]."],
+    [20.5, 26, "standardní svíčky", C.warn,
+      "standardními svíčkami: cefeidy, TRGB, supernovy Ia. Známá svítivost + změřená jasnost = vzdálenost. Každá příčka žebříku se kalibruje tou předchozí."],
+    [26, 27, "rudý posuv + model", C.bad,
+      "rudým posuvem a modelem. z se na metry převede jen přes ΛCDM — obzor o poloměru 46 mld. sv. let není změřený, je dopočítaný."]
+  ];
+
+  const MARKS = [
+    { e: -35, n: "Planckova délka" }, { e: -19, n: "dosah LHC" },
+    { e: -15, n: "proton" }, { e: -10, n: "atom" },
+    { e: -5, n: "buňka" }, { e: 0, n: "člověk" },
+    { e: 7.1, n: "Země" }, { e: 9.14, n: "Slunce" },
+    { e: 11.17, n: "AU" }, { e: 15.98, n: "sv. rok" },
+    { e: 20.98, n: "Galaxie" }, { e: 26.94, n: "obzor" }
+  ];
+
+  /* co se v daném řádu nachází (bere se poslední položka pod hodnotou) */
+  const WHAT = [
+    [-35, "Planckova délka"], [-34, "pod Planckovou škálou — bez fyzikálního významu"],
+    [-19, "mez rozlišení LHC"], [-18, "horní mez velikosti elektronu a kvarku"],
+    [-15, "proton (0,84 fm)"], [-14, "atomové jádro"],
+    [-13, "mezi jádrem a atomem — prázdno"], [-10, "atom"],
+    [-9, "molekula DNA"], [-8, "protein, tranzistor"],
+    [-7, "vlnová délka světla, virus"], [-6, "bakterie"],
+    [-5, "lidská buňka"], [-4, "vlas"],
+    [-3, "milimetr"], [-2, "prst"], [0, "člověk"],
+    [2, "budova"], [3, "kilometr"], [4, "Everest"], [5, "město"],
+    [6, "velká země"], [7, "Země (1,27·10⁷ m)"], [8, "dráha Měsíce"],
+    [9, "Slunce"], [10, "obří hvězda"], [11, "AU — Země–Slunce"],
+    [12, "vnější planety"], [13, "heliopauza"], [15, "světelný rok"],
+    [16, "nejbližší hvězdy, Oortův oblak"], [17, "blízké okolí Slunce"],
+    [18, "hvězdokupa"], [19, "rameno Galaxie"], [20, "tloušťka disku Galaxie"],
+    [21, "Mléčná dráha"], [22, "Andromeda"], [23, "Místní skupina"],
+    [24, "nadkupa Laniakea"], [25, "mez homogenity — konec struktur"],
+    [26, "hluboký vesmír"], [26.94, "průměr pozorovatelného vesmíru"]
+  ];
+
+  const cv = canvasIn(root, 250);
+  const out = readout(root);
+  const s = slider(root, {
+    label: "délka", min: E_LO, max: E_HI, step: 0.1, value: 0,
+    format: v => fmtLen(10 ** v)
+  });
+  buttons(root, [
+    { label: "Planckova délka", e: -35 }, { label: "proton", e: -15 },
+    { label: "atom", e: -10 }, { label: "člověk", e: 0 },
+    { label: "sv. rok", e: 15.98 }, { label: "obzor", e: 26.94 }
+  ], it => { s.value = it.e; });
+
+  const bandAt = e => BANDS.find(b => e < b[1]) || BANDS[BANDS.length - 1];
+  const whatAt = e => {
+    let r = WHAT[0][1];
+    WHAT.forEach(x => { if (e >= x[0] - 0.5) r = x[1]; });
+    return r;
+  };
+
+  const stop = loop(t => {
+    const { ctx } = cv, w = cv.size.w, h = cv.size.h;
+    const e = s.value, m = 10 ** e;
+    const L = 24, R = w - 24, AY = 150;
+    const X = v => L + (v - E_LO) / (E_HI - E_LO) * (R - L);
+
+    ctx.clearRect(0, 0, w, h);
+
+    // pásmo metod
+    BANDS.forEach(b => {
+      const x0 = X(b[0]), x1 = X(b[1]);
+      ctx.fillStyle = b[3];
+      ctx.globalAlpha = 0.28;
+      ctx.fillRect(x0, AY, x1 - x0, 16);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "rgba(0,0,0,0.35)";
+      ctx.beginPath(); ctx.moveTo(x1, AY); ctx.lineTo(x1, AY + 16); ctx.stroke();
+    });
+    ctx.strokeStyle = "rgba(216,244,238,0.25)"; ctx.lineWidth = 1;
+    ctx.strokeRect(L, AY, R - L, 16);
+
+    // popisky řádů
+    ctx.fillStyle = C.dim; ctx.font = "10px system-ui"; ctx.textAlign = "center";
+    for (let ex = -30; ex <= 20; ex += 10) {
+      const x = X(ex);
+      ctx.strokeStyle = "rgba(216,244,238,0.2)";
+      ctx.beginPath(); ctx.moveTo(x, AY + 16); ctx.lineTo(x, AY + 21); ctx.stroke();
+      const dig = String(Math.abs(ex)).split("").map(d => SUP[+d]).join("");
+      ctx.fillText("10" + (ex < 0 ? "⁻" : "") + dig + " m", x, AY + 33);
+    }
+
+    // orientační body
+    const rows = [-40, -22, 30, 48];
+    MARKS.forEach((mk, i) => {
+      const x = X(mk.e), dy = rows[i % 4];
+      ctx.strokeStyle = "rgba(216,244,238,0.14)";
+      ctx.beginPath();
+      ctx.moveTo(x, dy < 0 ? AY : AY + 16);
+      ctx.lineTo(x, AY + (dy < 0 ? dy + 8 : dy + 8));
+      ctx.stroke();
+      ctx.fillStyle = C.dim; ctx.font = "10px system-ui";
+      const half = ctx.measureText(mk.n).width / 2 + 4;
+      ctx.fillText(mk.n, Math.max(half, Math.min(w - half, x)), AY + dy + (dy < 0 ? 0 : 20));
+    });
+    ctx.textAlign = "left";
+
+    // ukazatel
+    const b = bandAt(e), px = X(e);
+    ctx.strokeStyle = C.accent; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(px, AY - 6); ctx.lineTo(px, AY + 22); ctx.stroke();
+    ctx.fillStyle = C.accent;
+    ctx.beginPath(); ctx.arc(px, AY + 8, 5 + Math.sin(t * 4) * 1.2, 0, 7); ctx.fill();
+
+    // hlavička
+    const ex = Math.round(e);
+    const dig = String(Math.abs(ex)).split("").map(d => SUP[+d]).join("");
+    ctx.fillStyle = C.fg; ctx.font = "600 22px system-ui";
+    ctx.fillText("~10" + (ex < 0 ? "⁻" : "") + dig + " m", 24, 42);
+    ctx.fillStyle = C.accent; ctx.font = "15px system-ui";
+    ctx.fillText(whatAt(e), 24, 68);
+    ctx.fillStyle = C.dim; ctx.font = "12px system-ui";
+    ctx.fillText("= " + fmtLen(m), 24, 92);
+    ctx.textAlign = "right";
+    ctx.fillStyle = b[3]; ctx.font = "600 13px system-ui";
+    ctx.fillText(b[2], w - 24, 42);
+    ctx.fillStyle = C.dim; ctx.font = "11px system-ui";
+    ctx.fillText("62 řádů, logaritmicky", w - 24, 68);
+    ctx.textAlign = "left";
+
+    out.innerHTML = "<b>" + fmtLen(m) + "</b> — " + whatAt(e) +
+      ". Měří se " + b[4] +
+      (Math.abs(e) < 0.6 ? " <i>Odsud je to 35 řádů dolů a 27 nahoru — člověk je zhruba uprostřed škály.</i>" : "");
+  });
+
+  return () => { stop(); cv.stop(); };
+};
+
+/* ==================================================================
+   23) Trigonometrická paralaxa  (lekce 06)
+   Pole hvězd je kresleno ve skutečném úhlovém měřítku, které se
+   s výběrem vzdálenosti přizpůsobuje; šířka zorného pole je popsána.
+================================================================== */
+ANIMS.paralaxa = root => {
+  const SIG = 25e-6;                                 // přesnost Gaia v úhlových vteřinách
+  const cv = canvasIn(root, 300);
+  const out = readout(root);
+  const s = slider(root, {
+    label: "vzdálenost hvězdy", min: -0.3, max: 4.5, step: 0.02, value: 0.3,
+    format: v => {
+      const d = 10 ** v;
+      return d < 1000
+        ? d.toFixed(d < 10 ? 2 : 0) + " pc · " + (d * 3.262).toFixed(1) + " sv. let"
+        : (d / 1000).toFixed(2) + " kpc · " + (d * 3.262e-3).toFixed(1) + " tis. sv. let";
+    }
+  });
+
+  function fmtAng(a) {                               // úhel: ″ / mas / µas
+    if (a >= 0.05) return a.toFixed(3) + "″";
+    if (a >= 5e-5) return (a * 1e3).toFixed(2) + " mas";
+    return (a * 1e6).toFixed(1) + " µas";
+  }
+
+  // pozadí: pevné hvězdy v relativních souřadnicích pole
+  const bg = [];
+  for (let i = 0; i < 60; i++) bg.push({ x: Math.random(), y: Math.random(), r: Math.random() * 1.2 + 0.4 });
+
+  const stop = loop(t => {
+    const { ctx } = cv, w = cv.size.w, h = cv.size.h;
+    const d = 10 ** s.value;                         // parseky
+    const p = 1 / d;                                 // paralaxa v úhlových vteřinách
+    const phase = t * 0.6;                           // rok = 2π/0,6 ≈ 10 s
+
+    ctx.clearRect(0, 0, w, h);
+
+    /* --- horní schéma: Slunce, dráha Země, směr k hvězdě --- */
+    const SY = 52, SX = 78;
+    ctx.fillStyle = C.dim; ctx.font = "11px system-ui";
+    ctx.textAlign = "right";
+    ctx.fillText("nahoře schéma, není v měřítku", w - 24, 20);
+    ctx.textAlign = "left";
+    ctx.strokeStyle = "rgba(216,244,238,0.25)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.ellipse(SX, SY, 34, 12, 0, 0, 7); ctx.stroke();
+    ctx.fillStyle = C.warn;
+    ctx.beginPath(); ctx.arc(SX, SY, 7, 0, 7); ctx.fill();
+    const ex = SX + Math.cos(phase) * 34, ey = SY + Math.sin(phase) * 12;
+    ctx.fillStyle = "#7cc4ff";
+    ctx.beginPath(); ctx.arc(ex, ey, 4, 0, 7); ctx.fill();
+
+    const starX = w - 40, starY = 52;
+    ctx.strokeStyle = "rgba(0,255,200,0.35)";
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(SX - 34, SY); ctx.lineTo(starX, starY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(SX + 34, SY); ctx.lineTo(starX, starY); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = C.accent; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(starX, starY); ctx.stroke();
+    ctx.fillStyle = C.accent;
+    ctx.beginPath(); ctx.arc(starX, starY, 5, 0, 7); ctx.fill();
+    ctx.fillStyle = C.dim; ctx.font = "10px system-ui";
+    ctx.fillText("Slunce", SX - 18, SY + 30);
+    ctx.fillText("základna 2 AU", SX - 30, SY - 24);
+    ctx.textAlign = "right";
+    ctx.fillText("hvězda", starX - 10, starY - 10);
+    ctx.textAlign = "left";
+
+    /* --- dolní panel: pohled na oblohu ve skutečném úhlovém měřítku --- */
+    const PX = 24, PY = 108, PW = w - 48, PH = h - PY - 28;
+    ctx.fillStyle = "rgba(8,20,24,0.6)";
+    ctx.fillRect(PX, PY, PW, PH);
+    ctx.strokeStyle = "rgba(216,244,238,0.2)";
+    ctx.strokeRect(PX, PY, PW, PH);
+
+    const halfField = Math.max(p * 3, SIG * 3);      // půlšířka pole v úhlových vteřinách
+    const perAs = (PW / 2) / halfField;              // pixelů na úhlovou vteřinu
+
+    ctx.fillStyle = "rgba(216,244,238,0.45)";
+    bg.forEach(b => {
+      ctx.beginPath();
+      ctx.arc(PX + b.x * PW, PY + b.y * PH, b.r, 0, 7);
+      ctx.fill();
+    });
+
+    const cx = PX + PW / 2, cy = PY + PH / 2;
+    const off = Math.cos(phase) * p * perAs;         // výchylka = paralaxa
+
+    // dráha zdánlivého posunu
+    ctx.strokeStyle = "rgba(0,255,200,0.3)";
+    ctx.beginPath(); ctx.moveTo(cx - p * perAs, cy); ctx.lineTo(cx + p * perAs, cy); ctx.stroke();
+
+    // chyba měření Gaia
+    const sigPx = SIG * perAs;
+    ctx.fillStyle = "rgba(255,143,143,0.28)";
+    ctx.beginPath(); ctx.arc(cx + off, cy, Math.max(1, sigPx), 0, 7); ctx.fill();
+
+    ctx.fillStyle = C.accent;
+    ctx.beginPath(); ctx.arc(cx + off, cy, 4, 0, 7); ctx.fill();
+
+    ctx.fillStyle = C.dim; ctx.font = "10px system-ui";
+    ctx.fillText("pohled na oblohu, šířka pole " + fmtAng(halfField * 2), PX, PY - 6);
+    ctx.fillStyle = "rgba(255,143,143,0.85)";
+    ctx.textAlign = "right";
+    ctx.fillText("červeně: přesnost Gaia " + fmtAng(SIG), PX + PW, PY - 6);
+    ctx.textAlign = "left";
+
+    const err = SIG / p * 100;
+    out.innerHTML = "Vzdálenost <b>" + (d < 1000 ? d.toFixed(d < 10 ? 2 : 0) + " pc" : (d / 1000).toFixed(2) + " kpc") +
+      "</b> → paralaxa <b>" + fmtAng(p) + "</b> (d [pc] = 1/p [″]). " +
+      (err < 1
+        ? "Posun je proti přesnosti Gaia obrovský — vzdálenost je změřená čistě geometricky, s chybou " + err.toPrecision(2) + " %."
+        : err < 10
+          ? "Chyba vzdálenosti je <b>" + err.toFixed(1) + " %</b>. Tady ještě paralaxa funguje — a právě tímhle pásmem se kalibrují cefeidy."
+          : "Zdánlivý posun se ztrácí v chybě měření (" + err.toFixed(0) + " %). <b>Konec geometrie</b> — dál už jen standardní svíčky.");
+  });
+
+  return () => { stop(); cv.stop(); };
+};

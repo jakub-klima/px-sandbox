@@ -76,6 +76,8 @@ Hotové animace (klíč → co ukazuje):
 | `pauli` | zaplňování orbitalů podle Pauliho a Hunda |
 | `vazba` | H₂: singlet váže, triplet odpuzuje |
 | `domeny` | Isingův model: domény a Curieho teplota |
+| `meritka` | žebřík 62 řádů délky a metoda měření v každém pásmu |
+| `paralaxa` | zdánlivý posun hvězdy vs. přesnost Gaia, d = 1/p |
 
 Pravidla pro animace:
 - **Ilustrují jeden konkrétní jev** z textu, nenahrazují ho.

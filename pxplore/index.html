@@ -1200,10 +1200,20 @@
       ctx.stroke();
     }
 
+    // pořadí vrstev značek: navštívená místa dospod, nenavštívená navrch;
+    // v rámci skupiny odshora dolů, takže níž položená značka překrývá vyšší.
+    // Po navštívení tak místo „zapadne“ pod ostatní a odkryje další nenavštívené.
+    function poisInDrawOrder() {
+      return pois
+        .map(p => ({ p, v: isVisited(p) ? 0 : 1, y: -p.lat }))
+        .sort((a, b) => (a.v - b.v) || (a.y - b.y))
+        .map(o => o.p);
+    }
+
     function render() {
       if (!view) return;
       drawTiles();
-      pois.forEach(drawPoi);
+      poisInDrawOrder().forEach(drawPoi);
       pins.forEach(drawPin);
       if (player) drawPlayer();
     }
@@ -1576,15 +1586,25 @@
       updatePoiButtons();
     });
 
-    // klik / tap na mapu – najdi nejbližší místo nebo špendlík v dosahu
+    // klik / tap na mapu – vezmi značku, která je pod prstem nejvýš (tu, co je
+    // vidět navrch); když prst žádnou netrefí, nejbližší místo nebo špendlík v dosahu
     function pickAt(clientX, clientY) {
       const px = clientX * DPR;
       const py = clientY * DPR;
       let best = null, bestPin = null, bestD = 30 * DPR;
-      for (const p of pois) {
-        const s = worldToScreen(p);
-        const d = Math.hypot(s.x - px, s.y - py);
-        if (d < bestD) { bestD = d; best = p; }
+      const order = poisInDrawOrder();
+      const hitR = 16 * DPR + 3 * DPR;   // poloměr kolečka značky + okraj
+      for (let i = order.length - 1; i >= 0; i--) {
+        const s = worldToScreen(order[i]);
+        const d = Math.hypot(s.x - px, s.y - 16 * DPR * .2 - py);
+        if (d <= hitR) { best = order[i]; bestD = Math.min(bestD, Math.hypot(s.x - px, s.y - py)); break; }
+      }
+      if (!best) {
+        for (const p of pois) {
+          const s = worldToScreen(p);
+          const d = Math.hypot(s.x - px, s.y - py);
+          if (d < bestD) { bestD = d; best = p; }
+        }
       }
       for (const p of pins) {
         const s = worldToScreen(p);

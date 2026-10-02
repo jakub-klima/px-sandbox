@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lajnidž II – Kronika nekonečného grindu</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐲</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="status" class="win">
+    <div class="st-head"><span id="stName"></span><span id="stLv"></span></div>
+    <div id="stTitle"></div>
+    <div class="bar hp"><i></i><span></span></div>
+    <div class="bar mp"><i></i><span></span></div>
+    <div class="bar xp"><i></i><span></span></div>
+    <div id="buffs"></div>
+  </div>
+
+  <div id="target" class="win hidden">
+    <div id="tgName"></div>
+    <div class="bar hp"><i></i><span></span></div>
+  </div>
+
+  <div id="topright">
+    <div class="win info">
+      <div id="zoneName"></div>
+      <div id="online"></div>
+      <div id="adena"></div>
+    </div>
+    <div class="menu">
+      <button data-act="inv" title="Inventář (I)">🎒</button>
+      <button data-act="char" title="Postava (C)">📜</button>
+      <button data-act="auto" id="autoBtn" title="Auto-farm (B) – porušuje ToS">🤖</button>
+      <button data-act="help" title="Nápověda (H)">❓</button>
+    </div>
+  </div>
+
+  <div id="chat" class="win">
+    <div id="log"></div>
+    <input id="chatIn" maxlength="120" placeholder="Enter = psát do chatu…" autocomplete="off">
+  </div>
+
+  <div id="castbar" class="hidden"><i></i><span></span></div>
+  <div id="hotbar"></div>
+  <div id="banner"></div>
+</div>
+
+<div id="dlg" class="hidden">
+  <div class="box">
+    <button class="x" id="dlgX">✕</button>
+    <h2 id="dlgTitle"></h2>
+    <div id="dlgBody"></div>
+    <div id="dlgBtns"></div>
+  </div>
+</div>
+
+<div id="jail" class="hidden">
+  <div class="jailbox">
+    <div class="bars"></div>
+    <h2>🔒 GM vězení</h2>
+    <p>Byl jsi uvězněn za podezření z botování.<br>Sdílíš celu s dalšími 37 boty. Jeden z nich ti nabízí adenu.</p>
+    <div id="jailT"></div>
+  </div>
+</div>
+
+<div id="create">
+  <div class="cbox">
+    <h1>Lajnidž <span>II</span></h1>
+    <div class="sub">Kronika nekonečného grindu · single player server · online: ty a 3 400 botů</div>
+    <div id="cContinue" class="hidden">
+      <button id="btnContinue" class="big"></button>
+      <div class="or">— nebo založ novou postavu (stará zmizí jako drop z raid bosse) —</div>
+    </div>
+    <label class="lbl">Jméno postavy</label>
+    <input id="cName" maxlength="16" placeholder="např. xXLegolasXx" autocomplete="off">
+    <label class="lbl">Rasa</label>
+    <div id="races"></div>
+    <button id="btnStart" class="big">⚔️ Vstoupit do světa Aden</button>
+    <div class="fine">Ovládání: klikni na zem = jdi, klikni na moba = útoč. Klávesy 1–6 dovednosti, Q lektvar, E soulshoty, X sednout.</div>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>

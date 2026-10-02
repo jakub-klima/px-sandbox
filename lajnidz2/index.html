@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Lajnidž II – Kronika nekonečného grindu</title>
+<title>Lajnidž II – Interlude</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐲</text></svg>">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -14,6 +14,7 @@
   <div id="status" class="win">
     <div class="st-head"><span id="stName"></span><span id="stLv"></span></div>
     <div id="stTitle"></div>
+    <div class="bar cp"><i></i><span></span></div>
     <div class="bar hp"><i></i><span></span></div>
     <div class="bar mp"><i></i><span></span></div>
     <div class="bar xp"><i></i><span></span></div>
@@ -32,16 +33,16 @@
       <div id="adena"></div>
     </div>
     <div class="menu">
-      <button data-act="inv" title="Inventář (I)">🎒</button>
-      <button data-act="char" title="Postava (C)">📜</button>
-      <button data-act="auto" id="autoBtn" title="Auto-farm (B) – porušuje ToS">🤖</button>
+      <button data-act="inv" title="Inventář (I / Alt+V)">🎒</button>
+      <button data-act="char" title="Postava (C / Alt+T)">📜</button>
+      <button data-act="auto" id="autoBtn" title="L2Walker (B) – zakázáno pravidly serveru">🤖</button>
       <button data-act="help" title="Nápověda (H)">❓</button>
     </div>
   </div>
 
   <div id="chat" class="win">
     <div id="log"></div>
-    <input id="chatIn" maxlength="120" placeholder="Enter = psát do chatu…" autocomplete="off">
+    <input id="chatIn" maxlength="120" placeholder="Enter = chat · !shout · +trade · /příkaz · .online" autocomplete="off">
   </div>
 
   <div id="castbar" class="hidden"><i></i><span></span></div>
@@ -58,29 +59,69 @@
   </div>
 </div>
 
+<div id="loading" class="hidden">
+  <div class="lbox">
+    <div class="lzone" id="ldZone"></div>
+    <div class="ltip" id="ldTip"></div>
+    <div class="lbar"><i id="ldBar"></i></div>
+  </div>
+</div>
+
 <div id="jail" class="hidden">
   <div class="jailbox">
     <div class="bars"></div>
-    <h2>🔒 GM vězení</h2>
-    <p>Byl jsi uvězněn za podezření z botování.<br>Sdílíš celu s dalšími 37 boty. Jeden z nich ti nabízí adenu.</p>
+    <h2>🔒 GM Jail</h2>
+    <p>Byl jsi přistižen s L2Walkerem.<br>Sdílíš celu s dalšími 37 boty. Jeden z nich ti nabízí adenu za eura.</p>
     <div id="jailT"></div>
   </div>
 </div>
 
-<div id="create">
+<!-- přihlášení jako v klientu -->
+<div id="login" class="screen">
+  <div class="lgbox">
+    <h1 class="logo">Lajnidž <span>II</span><small>Interlude</small></h1>
+    <div class="lgform">
+      <label>Účet</label><input value="admin" disabled>
+      <label>Heslo</label><input value="**********" disabled>
+    </div>
+    <div class="eula" id="eula">
+      <b>Licenční ujednání (zkrácené)</b>
+      <p>1. Souhlasíš, že budeš grindit. Hodně.</p>
+      <p>2. Zaklínání nad +3 je na vlastní nebezpečí. Ztracené zbraně se nevrací, ani když napíšeš petici.</p>
+      <p>3. L2Walker, L2Net, packet hacky a jiné „nástroje" jsou zakázány. GM to pozná. GM vždycky všechno pozná.</p>
+      <p>4. Donate neznamená pay-to-win. Jen trochu.</p>
+      <p>5. Server může být kdykoliv wipnut, protože majitel dostal nápad.</p>
+      <p>6. Hra není nijak spojena s NCsoft. NCsoft o ní naštěstí neví.</p>
+    </div>
+    <div class="lgbtns">
+      <button id="btnDisagree" class="btn">Nesouhlasím</button>
+      <button id="btnAgree" class="btn green">Souhlasím</button>
+    </div>
+  </div>
+</div>
+
+<div id="servers" class="screen hidden">
+  <div class="lgbox">
+    <h1 class="logo small">Výběr serveru</h1>
+    <table id="srvList"></table>
+    <div class="srvMsg" id="srvMsg">Vyber server. Ten s nejmenší frontou je ten náš.</div>
+  </div>
+</div>
+
+<div id="create" class="screen hidden">
   <div class="cbox">
-    <h1>Lajnidž <span>II</span></h1>
-    <div class="sub">Kronika nekonečného grindu · single player server · online: ty a 3 400 botů</div>
+    <h1 class="logo">Lajnidž <span>II</span><small>Interlude</small></h1>
+    <div class="sub">PxSandbox x50 · XP ×50 · SP ×50 · Adena ×30 · Drop ×1 · Spoil ×1 · Enchant retail</div>
     <div id="cContinue" class="hidden">
       <button id="btnContinue" class="big"></button>
-      <div class="or">— nebo založ novou postavu (stará zmizí jako drop z raid bosse) —</div>
+      <div class="or">— nebo založ novou postavu (stará zmizí jako po wipu) —</div>
     </div>
     <label class="lbl">Jméno postavy</label>
     <input id="cName" maxlength="16" placeholder="např. xXLegolasXx" autocomplete="off">
-    <label class="lbl">Rasa</label>
+    <label class="lbl">Rasa (všichni jsou bojovníci, mágové na x50 stejně jen buffují)</label>
     <div id="races"></div>
-    <button id="btnStart" class="big">⚔️ Vstoupit do světa Aden</button>
-    <div class="fine">Ovládání: klikni na zem = jdi, klikni na moba = útoč. Klávesy 1–6 dovednosti, Q lektvar, E soulshoty, X sednout.</div>
+    <button id="btnStart" class="big">⚔️ Vstoupit do hry</button>
+    <div class="fine">Klik na zem = jdi · klik na moba = útok · Shift+klik = drop list · F1–F7 skilly · Q lektvar · E soulshoty · X sednout</div>
   </div>
 </div>
 

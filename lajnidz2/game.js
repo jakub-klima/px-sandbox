@@ -347,7 +347,9 @@ function mobColor(lv) {
 // ============================================================
 const logEl = $('#log');
 const CH_PRE = { trade: '+', shout: '!', party: '#', clan: '@', hero: '%' };
+const CH_SND = { loot: 'item', whisper: 'whisper', gm: 'gm', ann: 'ann' };
 function chat(text, cls = 'sys', who = null) {
+  if (CH_SND[cls]) Snd.play(CH_SND[cls], .3);
   const d = document.createElement('div');
   d.className = cls;
   const pre = CH_PRE[cls] || '';
@@ -547,6 +549,8 @@ function enterZone(id, pos) {
 function teleport(id) {
   enterZone(id);
   const z = ZONES[id];
+  Snd.play('teleport');
+  Snd.setZone(id, z);
   $('#ldZone').textContent = z.name;
   $('#ldTip').textContent = 'Tip: ' + pick(TIPS);
   const bar = $('#ldBar');
@@ -606,6 +610,7 @@ function useSoulshot() {
     return false;
   }
   S.inv.ss--;
+  Snd.play('ss', .05);
   fx.push({ type: 'ss', x: pl.x, y: pl.y, t0: T, dur: .35 });
   return true;
 }
@@ -618,11 +623,12 @@ function hitMob(m, mult = 1, opts = {}) {
   if (crit) dmg *= st.critDmg;
   if (opts.lethal && Math.random() < .08) {
     if (m.boss) float(m.x, m.y - m.size * .6 - 14, 'imunní vůči lethal', '#aaa');
-    else { dmg = m.hp; float(m.x, m.y - m.size * .6 - 14, 'Lethal Strike!', '#ff4d4d', true); }
+    else { dmg = m.hp; float(m.x, m.y - m.size * .6 - 14, 'Lethal Strike!', '#ff4d4d', true); Snd.play('lethal'); }
   }
   dmg = Math.round(dmg);
   m.hp -= dmg; m.playerDmg += dmg; m.hitT = T;
   float(m.x, m.y - m.size * .6, (crit ? 'Kritický zásah! ' : '') + dmg, crit ? '#ffd75e' : '#fff', crit);
+  Snd.play(crit ? 'crit' : 'hit', .03);
   if (m.flee) { m.fleeUntil = T + 3; m.aggro = false; }
   else m.aggro = true;
   if (m.mimic && !m.revealed) {
@@ -636,6 +642,7 @@ function killMob(m, by) {
   m.dead = true; m.hp = 0;
   m.respawnAt = T + (m.nurse ? 25 : rand(8, 14));
   fx.push({ type: 'die', x: m.x, y: m.y, e: m.e, size: m.size, t0: T, dur: .6 });
+  Snd.play('mobDie', .05);
   const mine = by === 'player' || m.playerDmg >= m.maxHp * .5;
   if (pl.target === m) { pl.target = null; pl.attacking = false; pl.queued = null; }
   if (!mine) return;
@@ -659,6 +666,7 @@ function killMob(m, by) {
   const ad = Math.max(1, Math.round(6 * Math.pow(m.lv, 2.2) * rand(.6, 1.4) * m.adena * RACES[S.race].adena));
   S.adena += ad;
   float(m.x, m.y - 10, `+${fmt(ad)} a`, '#ffe27a');
+  Snd.play('coin', .05);
   const jv = Math.max(1, Math.round(1.2 * Math.pow(m.lv, 2.2)));
   if (!m.nurse && Z.junk && Math.random() < .35) addJunk(pick(Z.junk), jv);
   if (m.spoiled && Z.junk) {
@@ -712,6 +720,7 @@ function gainXp(x) {
   }
   if (S.level >= 80 && S.xp > xpNeed(80)) S.xp = xpNeed(80);
   if (up) {
+    Snd.play('levelUp');
     const st = stats();
     S.hp = st.maxHp; S.mp = st.maxMp; S.cp = st.maxCp;
     S.st.best = Math.max(S.st.best, S.level);
@@ -736,6 +745,7 @@ function damagePlayer(raw, src) {
     float(pl.x, pl.y - 46, '-' + a + ' CP', '#f2c94c');
   }
   S.hp -= dmg; pl.hitT = T;
+  Snd.play('hurt', .12);
   if (dmg > 0) float(pl.x, pl.y - 40, '-' + dmg, '#ff6b6b');
   if (pl.sitting) { pl.sitting = false; sysOnce('sitHit', 'Vstal jsi, protože tě někdo mlátí. Rozumné.'); }
   if (pl.cast && pl.cast.breakable) { pl.cast = null; sys('Sesílání přerušeno.'); }
@@ -745,6 +755,7 @@ function damagePlayer(raw, src) {
 function die(src) {
   S.hp = 0; pl.dead = true; pl.attacking = false; pl.target = null; pl.moveTo = null; pl.cast = null;
   S.st.deaths++;
+  Snd.play('death');
   const loss = Math.round(xpNeed(S.level) * .04);
   const lost = Math.min(S.xp, loss);
   S.xp -= lost;
@@ -790,6 +801,7 @@ function bossDefeated(m) {
   S.st.boss++;
   S.bossDead[m.boss] = Date.now();
   const first = !S.rings[b.ring];
+  setTimeout(() => Snd.play('victory'), 600);
   S.rings[b.ring] = true;
   S.adena += b.adena;
   gainXp(mobXp(b.lv) * b.xpMul);
@@ -841,6 +853,7 @@ function execSkill(i, m) {
   S.mp -= sk.mp(S.level);
   cds[sk.id] = T + sk.cd;
   pl.sitting = false;
+  Snd.play({ hit: 'skill', triple: 'skill', spoil: 'spoil', buff: 'buff', ud: 'ud', aoe: 'whirl' }[sk.type]);
   if (sk.type === 'hit') {
     pl.swing = T;
     fx.push({ type: 'slash', x: m.x, y: m.y, t0: T, dur: .3, big: sk.lethal });
@@ -879,6 +892,7 @@ function usePotion() {
   if (S.inv.pot <= 0) return sysOnce('nopot', 'Došly ti Greater Healing Potiony. Grocer v Giranu jich má plnou bednu.', 3);
   const st = stats();
   S.inv.pot--;
+  Snd.play('potion');
   cds.pot = T + 5;
   const h = Math.round(st.maxHp * .4);
   S.hp = Math.min(st.maxHp, S.hp + h);
@@ -892,6 +906,7 @@ function useManaPotion() {
   if (S.inv.mpot <= 0) return sysOnce('nompot', 'Nemáš Mana Potion. Na retailu neexistoval, tady je u Grocera.', 3);
   const st = stats();
   S.inv.mpot--;
+  Snd.play('potion');
   cds.mpot = T + 8;
   S.mp = Math.min(st.maxMp, S.mp + st.maxMp * .3);
   float(pl.x, pl.y - 44, '+MP', '#7fb6ff');
@@ -906,6 +921,7 @@ function toggleSS() {
 function toggleSit() {
   if (pl.dead || pl.buffs.ud > T) return;
   pl.sitting = !pl.sitting;
+  Snd.play('sit');
   if (pl.sitting) { pl.moveTo = null; pl.attacking = false; pl.cast = null; sysOnce('sit', 'Sedíš. Regeneruješ 3× rychleji. Mobové to berou jako pozvánku.', 30); }
 }
 
@@ -1032,6 +1048,7 @@ function jail() {
   gm = null;
   setAuto(false);
   S.st.jails++;
+  Snd.play('jail');
   pl.jailUntil = T + 30;
   pl.target = null; pl.attacking = false; pl.moveTo = null; pl.cast = null;
   closeDialog();
@@ -1060,6 +1077,7 @@ function dialog(title, html, btns = [], modal = false) {
     bb.appendChild(el);
   });
   $('#dlgX').classList.toggle('hidden', modal);
+  if ($('#dlg').classList.contains('hidden')) Snd.play('page', .2);
   $('#dlg').classList.remove('hidden');
 }
 function closeDialog() { $('#dlg').classList.add('hidden'); dlgModal = false; dlgRefresh = null; }
@@ -1073,8 +1091,9 @@ $('#dlgBody').addEventListener('click', e => {
   const b = e.target.closest('[data-a]');
   if (!b || b.disabled) return;
   const fn = ACTIONS[b.dataset.a];
-  const r = dlgRefresh;
+  const r = dlgRefresh, ad0 = S.adena;
   if (fn) fn(b.dataset.i);
+  Snd.play(S.adena < ad0 ? 'coin' : 'click');
   if (r && dlgRefresh === r) panel(r);
 });
 
@@ -1223,6 +1242,7 @@ function openBuffer() {
     ]);
 }
 function giveBuffs(list, dur) {
+  Snd.play('buff');
   list.forEach(k => pl.buffs[k] = T + dur);
   fx.push({ type: 'heal', x: pl.x, y: pl.y, t0: T, dur: 1 });
   const st = stats();
@@ -1374,14 +1394,17 @@ function enchant(k) {
   const safe = isW ? SAFE_W : SAFE_A;
   if (slot.e < safe || Math.random() < ENCH_RATE) {
     slot.e++;
+    Snd.play('enchOk');
     enchMsg = { cls: 'ok', t: `Zaklínání proběhlo úspěšně: +${slot.e} ${it.name}.${isW && slot.e === 4 ? ' Zbraň začala svítit!' : ''}` };
     if (slot.e >= 7) chat(`gz k +${slot.e} ${it.name}! kolik scrollů to stálo?`, 'shout', pick(FAKE_NAMES));
   } else if (blessed) {
     S.st.fails++;
+    Snd.play('enchBless');
     enchMsg = { cls: 'bad', t: `Zaklínání selhalo. Blessed scroll tě zachránil: ${it.name} je teď +0. Stejně to bolí.` };
     slot.e = 0;
   } else {
     S.st.fails++;
+    Snd.play('enchFail');
     const n = Math.max(1, Math.round(it.price / 2000));
     addJunk(`Crystal: ${GRADES[it.g]}-Grade`, Math.round(it.price * .15 / n), true);
     S.junk[`Crystal: ${GRADES[it.g]}-Grade`].q += n - 1;
@@ -1437,6 +1460,7 @@ function openHelp() {
       <span>Shift + klik na moba</span><span>drop list (custom)</span>
       <span>F1–F7 nebo 1–7</span><span>skilly</span>
       <span>Q / G</span><span>Healing / Mana Potion</span>
+      <span>M</span><span>zvuk: vše → jen efekty → ticho</span>
       <span>E</span><span>soulshoty auto on/off</span>
       <span>X</span><span>sednout (3× regenerace)</span>
       <span>R</span><span>SoE do města</span>
@@ -1553,6 +1577,7 @@ const ACTIONS = {
 
 function changeProf() {
   S.prof++;
+  Snd.play('prof');
   const st = stats();
   S.hp = st.maxHp; S.mp = st.maxMp;
   fx.push({ type: 'lvl', x: pl.x, y: pl.y, t0: T, dur: 1.6 });
@@ -1680,6 +1705,7 @@ addEventListener('keydown', e => {
   else if (k === 'i') openInventory();
   else if (k === 'c') openChar();
   else if (k === 'h') openHelp();
+  else if (k === 'm') toggleSound();
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
 });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; shift = e.shiftKey; });
@@ -1735,8 +1761,22 @@ document.querySelector('.menu').addEventListener('click', e => {
   else if (a === 'char') openChar();
   else if (a === 'auto') setAuto(!pl.auto);
   else if (a === 'help') openHelp();
+  else if (a === 'snd') toggleSound();
   b.blur();
 });
+
+const SND_ICON = { all: ['🔊', 'Zvuk: efekty + hudba'], sfx: ['🔉', 'Zvuk: jen efekty'], off: ['🔇', 'Zvuk: vypnuto'] };
+function showSound() {
+  const [i, t] = SND_ICON[Snd.state()];
+  $('#sndBtn').textContent = i;
+  $('#sndBtn').title = t + ' (M)';
+}
+function toggleSound() {
+  Snd.init();
+  Snd.cycle();
+  showSound();
+  sys(SND_ICON[Snd.state()][1] + '.');
+}
 
 // ============================================================
 //  Hotbar
@@ -1960,7 +2000,7 @@ function updateMobs(dt) {
     if (!m.aggro && m.agr && canSee && dP < (m.pk ? 600 : 150) && !fakeBusy(m)) {
       m.aggro = true;
       if (m.mimic && !m.revealed) { m.revealed = true; float(m.x, m.y - 50, 'Treasure Chest byl mimik!', '#ffb35c'); }
-      if (m.rare) chat('T-REX!!! UTÍKEJTE!!!', 'shout', pick(FAKE_NAMES));
+      if (m.rare) { chat('T-REX!!! UTÍKEJTE!!!', 'shout', pick(FAKE_NAMES)); Snd.play('roar'); }
     }
     if (m.aggro && canSee) {
       if (!m.pk && Math.hypot(m.x - m.hx, m.y - m.hy) > 650) {
@@ -2000,6 +2040,7 @@ function updateBoss(m, dP, dt) {
   const ant = m.boss === 'antharas';
   if (!m.aggro && dP < 520) {
     m.aggro = true;
+    Snd.play('roar');
     if (ant) chat('ROOOAAAR! (překlad: „Další sólista? Vážně?")', 'shout', 'Antharas');
     else chat('Kšššš! (překlad: „Nursky, k noze!")', 'shout', 'Queen Ant');
     m.breathAt = T + 5; m.quakeAt = T + 12;
@@ -2023,11 +2064,13 @@ function updateBoss(m, dP, dt) {
   if (T > m.breathAt) {
     m.breathAt = T + (enr ? 5.5 : 8);
     tele.push({ x: pl.x, y: pl.y, r: 115, t0: T, dur: 1.7, dmg: .32, src: m });
+    Snd.play('breath');
     float(m.x, m.y - 90, 'nadechuje se…', '#ffb35c', true);
   }
   if (T > m.quakeAt) {
     m.quakeAt = T + 15;
     fx.push({ type: 'quake', x: m.x, y: m.y, t0: T, dur: .8 });
+    Snd.play('quake');
     const st = stats();
     damagePlayer(st.pdef * .5 + st.maxHp * .08, m);
     sysOnce('quake', 'Antharas dupl. Celý lair se třese. Tvoje kolena taky.', 30);
@@ -2039,6 +2082,7 @@ function updateTele() {
     if (T - t.t0 >= t.dur && !t.done) {
       t.done = true;
       fx.push({ type: 'boom', x: t.x, y: t.y, r: t.r, t0: T, dur: .6 });
+      Snd.play('boom');
       if (!pl.dead && Math.hypot(pl.x - t.x, pl.y - t.y) < t.r) {
         const st = stats();
         damagePlayer(st.maxHp * t.dmg + st.pdef * .5, t.src);
@@ -2105,6 +2149,7 @@ function updatePk() {
   const pk = makeMob([name, '🥷', lv, { hp: 3, atk: 1.1, agr: 1 }], clamp(pl.x + Math.cos(a) * 500, 40, Z.w - 40), clamp(pl.y + Math.sin(a) * 500, 40, Z.h - 40));
   Object.assign(pk, { pk: true, aggro: true, spd: 75, size: 32, r: 15 });
   mobs.push(pk);
+  Snd.play('pk');
   chat(pick(['hehe 🔪', 'čau, máš hezký věci', 'nic osobního, jen karma', 'tvůj drop je můj drop', 'flagni se, nebo umři']), 'pk', name);
   sys(`⚠️ Blíží se ${name} s rudým jménem (karma). CP tě chrání jen proti hráčům, tak ho máš teď využít.`);
 }
@@ -2459,7 +2504,10 @@ const SERVERS = [
   { name: 'PxSandbox Interlude x50', st: 'normal', label: 'Normální', n: '3 412/5 000', ours: true },
 ];
 function buildLogin() {
-  $('#btnAgree').onclick = () => { $('#login').classList.add('hidden'); $('#servers').classList.remove('hidden'); };
+  $('#btnAgree').onclick = () => {
+    Snd.init(); Snd.setZone('login'); Snd.play('chime');
+    $('#login').classList.add('hidden'); $('#servers').classList.remove('hidden');
+  };
   $('#btnDisagree').onclick = () => {
     $('#eula').insertAdjacentHTML('beforeend', '<p style="color:#ff7b6b"><b>Bez souhlasu to nepůjde. Jako u každého EULA, které nikdo nečte.</b></p>');
     $('#eula').scrollTop = 1e6;
@@ -2470,7 +2518,8 @@ function buildLogin() {
     const tr = e.target.closest('tr.srv');
     if (!tr) return;
     const s = SERVERS[+tr.dataset.i];
-    if (!s.ours) { $('#srvMsg').textContent = s.msg; return; }
+    if (!s.ours) { $('#srvMsg').textContent = s.msg; Snd.play('gm'); return; }
+    Snd.play('chime');
     $('#servers').classList.add('hidden');
     $('#create').classList.remove('hidden');
   };
@@ -2521,6 +2570,7 @@ function start(save0) {
   $('#create').classList.add('hidden');
   $('#hud').classList.remove('hidden');
   buildHotbar();
+  showSound();
   running = true;
   const z = S.zone && ZONES[S.zone] && !ZONES[S.zone].boss ? S.zone : 'town';
   teleport(z);

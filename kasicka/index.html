@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kasička – hra o penězích na celý život</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐷</text></svg>">
+<style>
+:root{
+  --bg:#fff6ee; --card:#ffffff; --ink:#2b2236; --muted:#7c7088; --line:#efe2d6; --soft:#fbf1e8;
+  --pink:#ff5f9e; --pink-soft:#ffe0ec; --green:#17a46b; --red:#e04848; --blue:#3a78f2; --orange:#ee8a00; --gray:#9b94a5; --gold:#e9a800;
+  --shadow:0 3px 0 rgba(43,34,54,.07),0 12px 30px rgba(43,34,54,.06);
+  --radius:18px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#18131f; --card:#241d2e; --ink:#f5eefb; --muted:#a99db8; --line:#382f45; --soft:#2c2438;
+    --pink-soft:#4a2539; --gray:#8a8296; --shadow:0 3px 0 rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  line-height:1.4; -webkit-tap-highlight-color:transparent;
+}
+button{font:inherit;color:inherit;cursor:pointer}
+.wrap{max-width:1040px;margin:0 auto;padding:14px 16px 60px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+header h1{font-size:1.5rem;margin:0;letter-spacing:-.01em}
+header h1 span{display:inline-block;animation:wob 3s ease-in-out infinite}
+@keyframes wob{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
+.age{margin-left:auto;font-weight:700;background:var(--card);padding:6px 12px;border-radius:999px;box-shadow:var(--shadow);white-space:nowrap}
+.life{height:10px;border-radius:99px;background:var(--line);overflow:hidden;margin-bottom:14px;position:relative}
+.life i{display:block;height:100%;background:linear-gradient(90deg,var(--pink),var(--gold));transition:width .3s}
+.grid{display:grid;grid-template-columns:1fr;gap:14px}
+@media (min-width:860px){.grid{grid-template-columns:1.05fr .95fr}}
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px}
+.card h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
+.nw{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.nw b{font-size:2rem;letter-spacing:-.02em}
+.nw small{color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}
+@media (min-width:520px){.stats{grid-template-columns:repeat(3,1fr)}}
+.stat{background:var(--soft);border-radius:12px;padding:8px 10px;min-width:0}
+.stat .k{font-size:.78rem;color:var(--muted)}
+.stat .v{font-weight:700;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat .n{font-size:.74rem;color:var(--muted)}
+.stat.bad .v{color:var(--red)}
+.pohoda{margin-top:10px}
+.bar{height:12px;border-radius:99px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;transition:width .4s,background .4s}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:.88rem}
+
+/* event */
+.event{border:3px solid var(--pink);animation:pop .35s cubic-bezier(.3,1.6,.6,1)}
+@keyframes pop{from{transform:scale(.94);opacity:0}to{transform:none;opacity:1}}
+.event .em{font-size:2.4rem;line-height:1}
+.event h3{margin:6px 0 4px;font-size:1.2rem}
+.event p{margin:0 0 12px}
+.choices{display:grid;gap:8px}
+.choice{text-align:left;background:var(--soft);border:2px solid var(--line);border-radius:14px;padding:10px 12px;transition:transform .1s,border-color .15s}
+.choice:hover{border-color:var(--pink);transform:translateY(-1px)}
+.choice:active{transform:translateY(1px)}
+.choice small{display:block;color:var(--muted);font-size:.8rem}
+.result{background:var(--soft);border-radius:14px;padding:10px 12px;margin-bottom:10px}
+.lessonTag{display:inline-block;margin-top:8px;font-size:.8rem;background:var(--pink-soft);padding:3px 10px;border-radius:99px}
+
+/* controls */
+.ctl{margin:12px 0}
+.ctl label{display:flex;justify-content:space-between;gap:8px;font-weight:600;font-size:.92rem}
+.ctl .hint{font-size:.8rem;color:var(--muted);margin-top:2px}
+input[type=range]{width:100%;accent-color:var(--pink);margin:6px 0 0;height:28px}
+.split{display:flex;height:14px;border-radius:99px;overflow:hidden;margin-top:6px;background:var(--line)}
+.split i{display:block;height:100%;transition:width .2s}
+.legendRow{display:flex;gap:12px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin-top:4px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin:10px 0;cursor:pointer}
+.check input{margin-top:3px;accent-color:var(--pink);width:18px;height:18px}
+.mini{display:flex;gap:6px;flex-wrap:wrap}
+.mini button{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:.82rem}
+.mini button:disabled{opacity:.4;cursor:default}
+.go{display:flex;gap:8px;margin-top:14px}
+.btn{flex:1;border:0;border-radius:14px;padding:13px 14px;font-weight:800;font-size:1.02rem;background:var(--pink);color:#fff;box-shadow:0 4px 0 #c93d76;transition:transform .08s,box-shadow .08s}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 #c93d76}
+.btn.alt{background:var(--card);color:var(--ink);box-shadow:0 4px 0 var(--line);border:2px solid var(--line)}
+.btn:disabled{opacity:.45;cursor:default}
+
+/* chart */
+canvas{width:100%;height:240px;display:block}
+.chartLegend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.78rem;color:var(--muted);margin-top:6px}
+.chartLegend .me{color:var(--ink);font-weight:700}
+.log{max-height:230px;overflow:auto;font-size:.84rem;margin:0;padding:0;list-style:none}
+.log li{padding:6px 0;border-bottom:1px dashed var(--line)}
+.up{color:var(--green);font-weight:600}.down{color:var(--red);font-weight:600}
+.wis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.w{background:var(--soft);border-radius:12px;padding:8px;font-size:.8rem;cursor:pointer}
+.w b{display:block;font-size:.86rem}
+.w.locked{opacity:.45;cursor:default}
+.w.new{outline:2px solid var(--gold)}
+
+/* overlay */
+.ov{position:fixed;inset:0;background:rgba(24,19,31,.55);display:flex;align-items:flex-start;justify-content:center;padding:20px 12px;z-index:20;overflow:auto;backdrop-filter:blur(3px)}
+.ov[hidden]{display:none}
+.panel{background:var(--card);border-radius:22px;max-width:620px;width:100%;padding:20px 18px;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:pop .4s cubic-bezier(.3,1.5,.6,1)}
+.panel h2{margin:0 0 6px;font-size:1.5rem}
+.panel p{margin:8px 0}
+.assets{display:grid;gap:8px;margin:12px 0}
+.asset{display:flex;gap:10px;background:var(--soft);border-radius:12px;padding:8px 10px;font-size:.9rem}
+.asset .e{font-size:1.5rem}
+.big{font-size:2.6rem;text-align:center;margin:4px 0}
+.score{font-size:3rem;font-weight:900;text-align:center;letter-spacing:-.03em}
+table{width:100%;border-collapse:collapse;font-size:.88rem;margin:10px 0}
+td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
+td.r,th.r{text-align:right;white-space:nowrap}
+tr.me td{font-weight:800}
+.toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(120px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:14px;font-size:.9rem;z-index:30;transition:transform .35s cubic-bezier(.3,1.4,.6,1);max-width:min(92vw,460px);box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.muted{color:var(--muted)}
+.coin{position:fixed;pointer-events:none;font-size:1.4rem;z-index:25;animation:fly 1s ease-out forwards}
+@keyframes fly{to{transform:translateY(-120px) rotate(360deg);opacity:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span>🐷</span> Kasička</h1>
+    <div class="age" id="ageBadge">Věk 25</div>
+  </header>
+  <div class="life"><i id="lifeBar" style="width:0"></i></div>
+
+  <div class="grid">
+    <div>
+      <section class="card">
+        <h2>Tvoje jmění v dnešních penězích</h2>
+        <div class="nw"><b id="nwReal">0 Kč</b><small id="nwNom"></small></div>
+        <div class="stats" id="stats"></div>
+        <div class="pohoda">
+          <div class="row"><span>😊 Pohoda</span><span id="pohodaTxt" class="muted"></span></div>
+          <div class="bar"><i id="pohodaBar"></i></div>
+        </div>
+      </section>
+
+      <section class="card event" id="eventCard" hidden style="margin-top:14px"></section>
+
+      <section class="card" style="margin-top:14px" id="controls">
+        <h2>Tvoje rozhodnutí na tento rok</h2>
+        <div class="ctl">
+          <label><span>💰 Kolik z platu odložíš</span><span id="sVal"></span></label>
+          <input type="range" id="sRange" min="0" max="60" step="1">
+          <div class="hint" id="sHint"></div>
+        </div>
+        <div class="ctl">
+          <label><span>📊 Z úspor do indexového ETF</span><span id="eVal"></span></label>
+          <input type="range" id="eRange" min="0" max="100" step="5">
+        </div>
+        <div class="ctl">
+          <label><span>🎲 Z úspor do spekulací</span><span id="xVal"></span></label>
+          <input type="range" id="xRange" min="0" max="100" step="5">
+          <div class="split" id="split"></div>
+          <div class="legendRow">
+            <span><i class="dot" style="background:var(--blue)"></i>Spořák</span>
+            <span><i class="dot" style="background:var(--green)"></i>ETF</span>
+            <span><i class="dot" style="background:var(--orange)"></i>Spekulace</span>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="rfCheck"><span>🛟 Úspory nejdřív doplní rezervu na 6 měsíců výdajů (pak teprve jdou do investic)</span></label>
+        <div class="mini">
+          <button id="bMove">Přebytek rezervy → ETF</button>
+          <button id="bSellSpec">Prodat spekulace</button>
+          <button id="bPayDebt">Splatit dluh z rezervy</button>
+        </div>
+        <div class="go">
+          <button class="btn" id="bNext">▶ Prožít další rok</button>
+          <button class="btn alt" id="bFast" title="Žít roky za sebou, dokud se něco nestane">⏩ Dál</button>
+        </div>
+      </section>
+    </div>
+
+    <div>
+      <section class="card">
+        <h2>Tvůj život vs. sousedé (v dnešních penězích)</h2>
+        <canvas id="chart"></canvas>
+        <div class="chartLegend" id="chartLegend"></div>
+      </section>
+      <section class="card" style="margin-top:14px">
+        <h2>Deník</h2>
+        <ul class="log" id="log"></ul>
+      </section>
+      <section class="card" style="margin-top:14px">
+        <h2 id="wisTitle">Moudra</h2>
+        <div class="wis" id="wis"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="ov" id="intro">
+  <div class="panel">
+    <div class="big">🐷💸</div>
+    <h2>Je ti 25 a máš první pořádnou výplatu.</h2>
+    <p>Čeká tě 40 let života. Každý rok se rozhodneš, <b>kolik odložíš</b> a <b>kam to dáš</b>. Do toho ti život hodí rozbité auto, krach na burze, kamaráda s „jistým“ krypto tipem i dědictví po tetě.</p>
+    <div class="assets">
+      <div class="asset"><span class="e">🏦</span><div><b>Spořák (rezerva)</b><br><span class="muted">Bezpečný, ale úrok bývá těsně pod inflací – peníze pomalu tají.</span></div></div>
+      <div class="asset"><span class="e">📊</span><div><b>Indexový ETF</b><br><span class="muted">Tisíce firem z celého světa v jednom. Dlouhodobě roste, ale občas spadne o třetinu.</span></div></div>
+      <div class="asset"><span class="e">🎲</span><div><b>Spekulace</b><br><span class="muted">Krypto a horké tipy. Může se zněkolikanásobit. Častěji ale spadne k nule.</span></div></div>
+      <div class="asset"><span class="e">⛓️</span><div><b>Dluh</b><br><span class="muted">Když nemáš na nečekaný výdaj, banka ráda půjčí. Za 18–22 % ročně.</span></div></div>
+    </div>
+    <p><b>Cíl:</b> v 65 mít co největší „rentu“ z majetku – a přitom cestou nežít jen o chlebu a vodě. Hodnotí se obojí: 💰 peníze i 😊 pohoda.</p>
+    <p class="muted">Vedle tebe žijí sousedé se stejnou výplatou a stejnou burzou – Líná Lucie, Pozdní Petr, Opatrná Olga a Utrácivý Ulrich. Uvidíš, kdo dopadne jak.</p>
+    <div class="go"><button class="btn" id="bStartM">Začít žít 🙋‍♂️</button><button class="btn" id="bStartF">Začít žít 🙋‍♀️</button></div>
+    <p class="muted" id="bestTxt" style="text-align:center;font-size:.85rem"></p>
+  </div>
+</div>
+
+<div class="ov" id="endOv" hidden><div class="panel" id="endPanel"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+const START = 25, END = 65, YEARS = END - START;
+const $ = s => document.querySelector(s);
+const R = Math.random;
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const pick = a => a[Math.floor(R() * a.length)];
+function gauss() { let u = 0, v = 0; while (!u) u = R(); while (!v) v = R(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+
+function fmt(n) {
+  const neg = n < 0; n = Math.abs(n);
+  let s;
+  if (n >= 1e6) s = (n / 1e6).toLocaleString('cs-CZ', { maximumFractionDigits: n >= 1e8 ? 0 : 1 }) + ' mil.';
+  else s = Math.round(n).toLocaleString('cs-CZ');
+  return (neg ? '−' : '') + s + ' Kč';
+}
+const pct = (x, d = 1) => (x >= 0 ? '+' : '−') + Math.abs(x * 100).toLocaleString('cs-CZ', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' %';
+const pp = (x, d = 1) => (x * 100).toLocaleString('cs-CZ', { maximumFractionDigits: d }) + ' %';
+
+/* ---------- trh ---------- */
+function genMarket() {
+  for (;;) {
+    const ys = []; let rec = 0, infl = 0.025, spike = 0, crashes = 0;
+    for (let i = 0; i < YEARS; i++) {
+      let r;
+      if (rec > 0) { r = 0.12 + R() * 0.18; rec--; }
+      else if (i >= 3 && R() < 0.09) { r = -(0.2 + R() * 0.22); rec = R() < 0.5 ? 1 : 2; crashes++; }
+      else r = clamp(0.11 + gauss() * 0.13, -0.18, 0.42);
+      if (spike > 0) { infl = infl * 0.55 + 0.025 * 0.45; spike--; }
+      else if (i >= 2 && R() < 0.06) { infl = 0.07 + R() * 0.07; spike = 2; }
+      else infl = clamp(0.025 + gauss() * 0.01, 0.003, 0.05);
+      const sav = clamp(0.6 * infl + 0.004, 0.002, 0.07);
+      let spec; const q = R();
+      if (q < 0.07) spec = 1 + R() * 2.5;
+      else if (q < 0.19) spec = -0.9;
+      else spec = clamp(-0.1 + gauss() * 0.35, -0.8, 1);
+      ys.push({ r, infl, sav, spec });
+    }
+    if (crashes >= 1 && crashes <= 4) return ys;
+  }
+}
+function career(age) { return age < 35 ? 0.03 : age < 45 ? 0.02 : age < 55 ? 0.008 : 0; }
+
+/* ---------- moudra ---------- */
+const LESSONS = {
+  rezerva: ['🛟', 'Rezerva', 'Mít 3–6 měsíců výdajů na spořáku znamená, že tě rozbité auto ani výpověď nedonutí brát drahou půjčku nebo prodávat investice ve špatnou chvíli.'],
+  dluh: ['⛓️', 'Drahý dluh', 'Spotřebitelský úvěr s 15–25 % úrokem pracuje proti tobě stejně silně, jako investice pro tebe. Splatit ho je „investice“ s jistým výnosem.'],
+  slozene: ['❄️', 'Složené úročení', 'Výnosy vydělávají další výnosy. Jednou přijde rok, kdy ti investice vydělají víc, než kolik do nich za rok vložíš. Čím dřív začneš, tím dřív to přijde.'],
+  drz: ['🧘', 'Drž kurz', 'Krachy přicházejí zhruba jednou za 7–10 let a trhy se z nich historicky vždy zvedly. Kdo v krizi dál pravidelně investuje, nakupuje levně.'],
+  panika: ['😱', 'Panický prodej', 'Prodej po propadu promění dočasnou ztrátu v trvalou. A nejlepší roky trhu často přijdou hned po těch nejhorších.'],
+  poplatky: ['🧾', 'Poplatky', '2 % ročně zní jako drobnost, ale za 30 let ti sežerou zhruba třetinu majetku. Levný indexový ETF (0,1–0,3 %) skoro vždy vyhraje.'],
+  inflace: ['🔥', 'Inflace', 'Peníze ležící na účtu každý rok potichu ztrácejí kupní sílu. Dlouhodobě ji spolehlivě poráží hlavně akcie.'],
+  lifestyle: ['🎈', 'Inflace životního stylu', 'Když s každým přidáním vzroste i útrata, nikdy nezbohatneš. Uložit aspoň polovinu přidání nebolí – ty peníze předtím stejně nebyly.'],
+  spekulace: ['🎰', 'Spekulace', 'Horké tipy občas vyjdou, ale většinou ne. Hraj si jen s penězi, které klidně oželíš – pár procent majetku, ne víc.'],
+  zadarmo: ['🎁', 'Peníze zdarma', 'Příspěvek zaměstnavatele nebo státu je okamžitý 100% výnos. Nenechávej ho ležet na stole.'],
+  vzdelani: ['🎓', 'Investice do sebe', 'Na začátku kariéry je tvůj největší majetek schopnost vydělávat. Kurz, který zvedne plat o 15 %, se ti vrátí mnohokrát.'],
+  pohoda: ['🌿', 'Žij taky teď', 'Spořit všechno a nežít není výhra. Zdravá míra spoření je zhruba 10–25 % – a zbytek si užij bez výčitek.'],
+  timing: ['⏱️', 'Načasování trhu', 'Nikdo spolehlivě neví, kdy přijde pokles. Čas strávený na trhu poráží snahu trh načasovat.'],
+  loterie: ['🎟️', 'Loterie', 'Loterie je daň z naděje – vsazeným vrací jen zhruba polovinu peněz.'],
+  levne: ['💡', 'Levnější varianta', 'Ojeté auto, skromnější svatba, starý telefon… každá stovka ušetřená v mládí se do důchodu může několikrát znásobit.'],
+  start: ['🌱', 'Začni brzy', 'Deset let náskoku často znamená dvojnásobný majetek. Nejlepší čas začít investovat byl včera, druhý nejlepší je dnes.'],
+};
+
+/* ---------- sousedé ---------- */
+const GHOSTS = [
+  { id: 'lucie', name: 'Líná Lucie', color: '--green', desc: 'od 25 spoří 15 % do levného ETF a nic neřeší', type: 'etf', s: 0.15, start: 25 },
+  { id: 'petr', name: 'Pozdní Petr', color: '--orange', desc: 'do 35 utrácí všechno, pak to samé co Lucie', type: 'etf', s: 0.15, start: 35 },
+  { id: 'olga', name: 'Opatrná Olga', color: '--blue', desc: 'spoří 15 %, ale jen na spořák', type: 'sav', s: 0.15, start: 25 },
+  { id: 'ulrich', name: 'Utrácivý Ulrich', color: '--gray', desc: 'odloží 3 % na běžný účet', type: 'cash', s: 0.03, start: 25 },
+];
+function ghostStep(gd, g, m, S, age) {
+  const s = age >= gd.start ? gd.s : 0;
+  const save = s * S * 12;
+  if (gd.type === 'etf') {
+    g.rez *= 1 + m.sav; g.etf *= 1 + m.r - 0.002;
+    const top = Math.min(save, Math.max(0, 6 * (1 - s) * S - g.rez));
+    g.rez += top; g.etf += save - top;
+  } else if (gd.type === 'sav') { g.rez *= 1 + m.sav; g.rez += save; }
+  else g.rez += save;
+}
+
+/* ---------- stav ---------- */
+let G;
+let FEM = false;
+const x = (m, f) => FEM ? f : m;
+const a = () => FEM ? 'a' : '';
+function newGame() {
+  G = {
+    year: 0, age: START, baseS: 32000, salMult: 1, price: 1,
+    rez: 30000, etf: 0, spec: 0, debt: 0, debtRate: 0.18,
+    s: 0.10, aEtf: 0, aSpec: 0, reserveFirst: false,
+    fee: 0.002, feesPaid: 0, feeAge: null,
+    pohoda: 60, pohodaSum: 0, frugal: 0,
+    lottery: false, lottoSpent: 0, dip: false,
+    market: genMarket(), hist: [], lessons: [], newLessons: new Set(), used: {}, lastEvent: null,
+    event: null, pending: null, log: [], shadows: [], lastM: null, lastLoss: 0, idleYears: 0,
+    ghosts: Object.fromEntries(GHOSTS.map(g => [g.id, { rez: 30000, etf: 0 }])),
+  };
+  G.hist.push(snapshot());
+}
+const S = () => G.baseS * G.salMult;
+const monthlySpend = () => (1 - G.s) * S();
+const netWorth = () => G.rez + G.etf + G.spec - G.debt;
+const amt = x => Math.round(x * G.price / 1000) * 1000;
+const has = id => G.lessons.includes(id);
+function snapshot() {
+  const o = { age: G.age, me: netWorth() / G.price, g: {} };
+  for (const gd of GHOSTS) { const g = G.ghosts[gd.id]; o.g[gd.id] = (g.rez + g.etf) / G.price; }
+  return o;
+}
+function unlock(id, why) {
+  if (has(id)) return;
+  G.lessons.push(id); G.newLessons.add(id);
+  const L = LESSONS[id];
+  toast(`📜 Nové moudro: <b>${L[0]} ${L[1]}</b>${why ? '<br>' + why : ''}`);
+}
+function bump(x) { G.pohoda = clamp(G.pohoda + x, 0, 100); }
+function addDebt(a, rate) {
+  G.debtRate = (G.debt * G.debtRate + a * rate) / (G.debt + a);
+  G.debt += a;
+}
+// zaplatí z rezervy; co chybí, musí hráč vyřešit (prodej / půjčka)
+function pay(a) {
+  const f = Math.min(a, G.rez); G.rez -= f; a -= f;
+  if (a > 1) G.pending = { amount: a };
+}
+// během roku (záporný cashflow) se vše řeší automaticky
+function autoCover(a) {
+  let f = Math.min(a, G.rez); G.rez -= f; a -= f;
+  f = Math.min(a, G.etf); G.etf -= f; a -= f;
+  f = Math.min(a, G.spec); G.spec -= f; a -= f;
+  if (a > 1) addDebt(a, 0.19);
+}
+
+/* ---------- jeden rok ---------- */
+function liveYear() {
+  const m = G.market[G.year], P = G.price, sal = S();
+  const nw0 = netWorth() / P;
+  const notes = [];
+  G.feesPaid += G.etf * G.fee;
+  const etfGain = G.etf * (m.r - G.fee); G.etf += etfGain;
+  G.rez += G.rez * m.sav;
+  const specGain = G.spec * m.spec; G.spec += specGain;
+  G.debt += G.debt * G.debtRate;
+  G.lastLoss = Math.min(0, etfGain + specGain);
+  if (G.spec - specGain > 1000 && m.spec > 0.9) notes.push(`🚀 spekulace ${pct(m.spec, 0)}!`);
+  if (G.spec - specGain > 1000 && m.spec <= -0.85) notes.push('💥 spekulace se zhroutily');
+
+  let net = sal * 12 * G.s;
+  if (G.lottery) {
+    net -= 5200 * P; G.lottoSpent += 5200 * P;
+    if (R() < 0.003) { net += 500000 * P; notes.push('🎉 VÝHRA ve Sportce!'); }
+  }
+  let toEtf = 0;
+  if (net < 0) autoCover(-net);
+  else {
+    const rep = Math.min(net, G.debt);
+    if (rep > 0) { G.debt -= rep; net -= rep; notes.push(`splaceno ${fmt(rep)} dluhu`); }
+    if (G.reserveFirst) {
+      const top = Math.min(net, Math.max(0, 6 * monthlySpend() - G.rez));
+      G.rez += top; net -= top;
+    }
+    toEtf = net * G.aEtf;
+    G.etf += toEtf; G.spec += net * G.aSpec; G.rez += net * (1 - G.aEtf - G.aSpec);
+  }
+  if (G.dip) { G.etf += 12000 * P; toEtf += 12000 * P; }
+  if (G.debt < 1) G.debt = 0;
+
+  if (etfGain > Math.max(toEtf, 15000 * P)) unlock('slozene', 'Tvoje investice letos vydělaly víc, než kolik jsi do nich letos vložil${a()}!');
+  for (const sh of G.shadows) { sh.held *= 1 + m.r - 0.002; sh.sold *= 1 + m.sav; }
+  for (const gd of GHOSTS) ghostStep(gd, G.ghosts[gd.id], m, G.baseS, G.age);
+
+  const ms = monthlySpend();
+  let tgt = 40 + Math.max(-10, 30 - 60 * G.s) + Math.min(G.rez / ms, 6) / 6 * 20 - (G.debt > 0 ? 20 : 0);
+  if (netWorth() * 0.04 >= ms * 12) tgt += 10;
+  G.pohoda = clamp(G.pohoda * 0.7 + tgt * 0.3, 0, 100);
+  G.pohodaSum += G.pohoda;
+  G.frugal = G.s >= 0.45 ? G.frugal + 1 : 0;
+  G.idleYears = (G.rez > 12 * ms && G.aEtf === 0) ? G.idleYears + 1 : 0;
+
+  G.price *= 1 + m.infl;
+  G.baseS *= 1 + m.infl + career(G.age);
+  G.year++; G.age++;
+  G.lastM = m;
+  G.hist.push(snapshot());
+  const d = netWorth() / G.price - nw0;
+  if (G.idleYears === 3) notes.push('💤 na spořáku ti leží hromada peněz a inflace je ukusuje');
+  G.log.unshift({ age: G.age, m, d, notes });
+}
+
+/* ---------- události ---------- */
+const COINS = ['PxCoin', 'ŠnekToken', 'DogeKnedlík', 'MoonRohlík', 'BramborCoin'];
+const EVENTS = [
+  { id: 'auto_oprava', w: 3, max: 3, make() {
+    const c = amt(35000);
+    return { em: '🔧', title: 'Auto vypovědělo službu', text: `Převodovka. Mechanik chce ${fmt(c)} a bez auta se do práce nedostaneš.`,
+      choices: [
+        { label: `Zaplatit opravu (${fmt(c)})`, act() { pay(c); return { msg: G.pending ? 'Na rezervě nebylo dost…' : 'Zaplaceno z rezervy. Na tohle přesně rezerva je.' }; } },
+        { label: 'Prodat ho a jezdit MHD', sub: 'dostaneš za něj pár korun, ale bude to otrava', act() { G.rez += amt(25000); bump(-5); return { msg: `Za auto jsi dostal${a()} ${fmt(amt(25000))}. Ranní tramvaj tě úplně nenadchla.` }; } },
+      ] };
+  } },
+  { id: 'zubar', w: 2, max: 2, make() {
+    const c = amt(18000);
+    return { em: '🦷', title: 'Zub moudrosti', text: `Bolí to jak čert. Zubař chce ${fmt(c)} – bez výmluv.`,
+      choices: [{ label: `Au. Zaplatit (${fmt(c)})`, act() { pay(c); return { msg: G.pending ? 'Rezerva nestačí…' : 'Zub je venku, peníze taky. Ale rezerva to ustála.' }; } }] };
+  } },
+  { id: 'iphone', w: 2, max: 2, minAge: 25, make() {
+    const c = amt(40000);
+    return { em: '📱', title: 'Nový telefon!', text: `Nejnovější model za ${fmt(c)}. Obchod láká na „jen ${fmt(Math.round(c * 1.25 / 24 / 10) * 10)} měsíčně“ na 24 splátek. RPSN drobným písmem: 22 %.`,
+      choices: [
+        { label: 'Vzít na splátky', sub: 'teď nic nezaplatíš', act() { addDebt(c, 0.22); bump(4); return { msg: 'Telefon je super. Dluh s úrokem 22 % taky „super“ – úspory teď nejdřív půjdou na splátky.', lesson: 'dluh' }; } },
+        { label: `Koupit z úspor (${fmt(c)})`, act() { pay(c); bump(4); return { msg: G.pending ? 'Úspory nestačí…' : 'Zaplaceno hotově. Aspoň bez úroků.' }; } },
+        { label: 'Starý ještě slouží', act() { bump(-1); return { msg: 'Starý telefon jede dál. A těch pár desítek tisíc v investicích za 30 let může být klidně pětkrát víc.', lesson: 'levne' }; } },
+      ] };
+  } },
+  { id: 'tip', w: 2.2, max: 3, make() {
+    const coin = pick(COINS), big = amt(50000), small = amt(5000);
+    const bet = (x) => {
+      pay(x);
+      const q = R(); let mult, txt;
+      if (q < 0.12) { mult = 4; txt = `🚀 ${coin} vystřelil! Z ${fmt(x)} je ${fmt(x * mult)}. Teď to chce ale nezačít si myslet, že jsi ${x('génius', 'génius')}.`; }
+      else if (q < 0.3) { mult = 1.2; txt = `${coin} se trochu zvedl a pak usnul. Prodal${a()} jsi s malým ziskem: ${fmt(x * mult)}.`; }
+      else { mult = 0.08; txt = `📉 Zakladatel ${coin} „odjel na dovolenou“ i s penězi. Zbylo ti ${fmt(x * mult)}.`; }
+      G.rez += x * mult;
+      return { msg: (G.pending ? `Na sázku jsi neměl${a()} dost hotovosti… ` : '') + 'O rok později: ' + txt, lesson: 'spekulace' };
+    };
+    return { em: '🚀', title: 'Kámoš má jistý tip', text: `„${coin} letí na Měsíc! Dej tam aspoň ${fmt(big)}, za rok budeš v balíku. Fakt, já už mám trojnásobek!“`,
+      choices: [
+        { label: `Vsadit ${fmt(big)}`, act: () => bet(big) },
+        { label: `Dát tam ${fmt(small)} pro zábavu`, act: () => bet(small) },
+        { label: 'Díky, nechci', act() { return { msg: 'Kámoš tě nazval boomerem. Tvoje ETF to nijak nerozhodilo.', lesson: 'spekulace' }; } },
+      ] };
+  } },
+  { id: 'poradce', w: 2, once: true, maxAge: 45, make() {
+    return { em: '👔', title: 'Finanční poradce', text: 'Sympatický pán z banky nabízí „prémiový fond“: vstupní poplatek 5 % a správa 2,5 % ročně. „Odborníci se o všechno postarají.“ Levný indexový ETF stojí 0,2 % ročně.',
+      choices: [
+        { label: 'Podepsat, zní to profesionálně', act() { G.fee = 0.025; G.feeAge = G.age; G.etf *= 0.95; bump(2); return { msg: 'Máš krásnou složku s logem banky. Fond teď ze všech tvých ETF peněz strhává 2,5 % ročně.' }; } },
+        { label: 'Zůstat u levného ETF', act() { return { msg: 'Pán se zatvářil kysele. Ty sis ušetřil statisíce.', lesson: 'poplatky' }; } },
+      ] };
+  } },
+  { id: 'poplatky', w: 4, once: true, cond: () => G.fee > 0.01 && G.age - G.feeAge >= 5, make() {
+    return { em: '🔍', title: 'Kamarádka viděla tvůj výpis', text: `„Ty platíš 2,5 % ročně?! Za posledních ${G.age - G.feeAge} let jsi bance na poplatcích dal${a()} ${fmt(G.feesPaid)}.“`,
+      choices: [
+        { label: 'Přejít do levného ETF (0,2 %)', act() { G.fee = 0.002; return { msg: 'Hotovo. Ten rozdíl bude za pár desítek let obrovský.', lesson: 'poplatky' }; } },
+        { label: 'Nechat to být, je to otrava', act() { return { msg: 'Banka děkuje za věrnost.' }; } },
+      ] };
+  } },
+  { id: 'pridani', w: 3, max: 3, minAge: 26, make() {
+    return { em: '📈', title: 'Přidání!', text: `Šéf ti přidal 10 %. Plat teď bude ${fmt(S() * 1.1)} měsíčně.`,
+      choices: [
+        { label: 'Užít si to naplno', sub: 'spoříš stejné procento, zbytek jde na lepší život', act() { G.salMult *= 1.1; bump(3); return { msg: 'Lepší byt, lepší jídlo. Člověk si zvykne rychle – možná až moc rychle.', lesson: 'lifestyle' }; } },
+        { label: 'Polovinu přidání spořit navíc', sub: '+5 procentních bodů ke spoření', act() { G.salMult *= 1.1; G.s = clamp(G.s + 0.05, 0, 0.6); bump(1); return { msg: `Spoříš teď ${pp(G.s, 0)} platu a pořád žiješ líp než loni.`, lesson: 'lifestyle' }; } },
+      ] };
+  } },
+  { id: 'kurz', w: 2, once: true, maxAge: 50, make() {
+    const c = amt(30000);
+    return { em: '🎓', title: 'Večerní kurz', text: `Roční kurz (data, účetnictví, programování…) za ${fmt(c)}. Rok večerů nad učením, ale pak se ti otevřou lépe placené pozice.`,
+      choices: [
+        { label: `Jdu do toho (${fmt(c)})`, act() { pay(c); G.salMult *= 1.15; bump(-4); return { msg: 'Byl to záhul, ale zabralo to: plat +15 % natrvalo.', lesson: 'vzdelani' }; } },
+        { label: 'Radši večery na gauči', act() { bump(2); return { msg: 'Seriály byly skvělé.' }; } },
+      ] };
+  } },
+  { id: 'vyhazov', w: 1.5, max: 2, minAge: 27, maxAge: 62, make() {
+    const s = S();
+    return { em: '📦', title: 'Firma propouští', text: 'Krabice s věcmi ze stolu a „děkujeme za spolupráci“. Výdaje ale běží dál.',
+      choices: [
+        { label: 'Vzít rychle první nabídku', sub: '2 měsíce bez příjmu, nová práce o 10 % hůř placená', act() { pay(2 * s); G.salMult *= 0.9; bump(-6); return { msg: G.pending ? 'Rezerva nestačí na překlenutí…' : 'Rezerva tě podržela. Nová práce není snů, ale jede se.', lesson: 'rezerva' }; } },
+        { label: 'Hledat pořádně', sub: '5 měsíců bez příjmu, pak o 8 % lepší plat', act() { pay(5 * s); G.salMult *= 1.08; bump(-4); return { msg: G.pending ? 'Půl roku bez výplaty je dlouhá doba…' : `Díky rezervě jsi mohl${a()} vybírat. Nová práce je lepší!`, lesson: 'rezerva' }; } },
+      ] };
+  } },
+  { id: 'dedictvi', w: 1.5, once: true, minAge: 35, make() {
+    const c = amt(200000);
+    return { em: '📜', title: 'Dědictví po tetě', text: `Teta Věra ti odkázala ${fmt(c)}. A starou kredenc.`,
+      choices: [
+        { label: 'Dovolená snů a nové věci', act() { G.rez += c * 0.05; bump(12); return { msg: 'Bali byl nádherný. Peníze jsou pryč, vzpomínky zůstanou.' }; } },
+        { label: 'Půlku užít, půlku do ETF', act() { G.etf += c / 2; bump(7); return { msg: 'Rozumný kompromis: radost teď i později.' }; } },
+        { label: 'Všechno do ETF', act() { G.etf += c; return { msg: `${fmt(c)} začalo pracovat. Za 20 let to může být násobek.` }; } },
+      ] };
+  } },
+  { id: 'svatba', w: 2, once: true, minAge: 26, maxAge: 40, make() {
+    const big = amt(400000), mid = amt(120000), low = amt(30000);
+    return { em: '💍', title: 'Bude svatba!', text: 'Řekli jste si ano. Teď jen jak velkou svatbu?',
+      choices: [
+        { label: `Velkolepá za ${fmt(big)} na úvěr`, sub: 'zámek, 150 hostů, ohňostroj', act() { addDebt(big, 0.12); bump(7); return { msg: 'Byla to jízda! A úvěr na 12 % ti ji bude připomínat ještě roky.', lesson: 'dluh' }; } },
+        { label: `Hezká za ${fmt(mid)} z úspor`, act() { pay(mid); bump(7); return { msg: G.pending ? 'Úspory na to nestačily…' : 'Krásný den, žádné dluhy.' }; } },
+        { label: `Grilovačka na zahradě (${fmt(low)})`, act() { pay(low); bump(7); return { msg: 'Nejlepší svatba, na jaké kdo byl. Fakt.', lesson: 'levne' }; } },
+      ] };
+  } },
+  { id: 'auto', w: 2, once: true, minAge: 28, maxAge: 52, make() {
+    const nw = amt(700000), used = amt(180000);
+    return { em: '🚗', title: 'Potřebuješ auto', text: 'Rodina, výlety, nákupy… bez auta to začíná být složité.',
+      choices: [
+        { label: `Nové SUV za ${fmt(nw)} na leasing`, sub: 'úrok 9 %', act() { addDebt(nw, 0.09); bump(5); return { msg: 'Voní novotou! Jen ztratí 40 % hodnoty za 3 roky a splátky běží dál.', lesson: 'dluh' }; } },
+        { label: `Ojetinu za ${fmt(used)} z úspor`, act() { pay(used); bump(3); return { msg: G.pending ? 'Úspory nestačily…' : 'Spolehlivé ojeté auto. Rozdíl ti zůstal v kapse.', lesson: 'levne' }; } },
+        { label: 'Zvládnu to MHD a sdílenými auty', act() { bump(-2); return { msg: 'Trochu méně pohodlí, výrazně víc peněz.' }; } },
+      ] };
+  } },
+  { id: 'dip', w: 2.5, once: true, maxAge: 55, make() {
+    return { em: '🎁', title: 'Firma přispívá na DIP', text: `Když si budeš dávat ${fmt(amt(1000))} měsíčně do dlouhodobého investičního produktu, firma ti přidá dalších ${fmt(amt(1000))}. Je to jeden formulář.`,
+      choices: [
+        { label: 'Beru! Peníze zdarma', act() { G.dip = true; return { msg: 'Každý rok ti teď do investic přiteče 12 000 Kč (v dnešních penězích) od firmy navíc.', lesson: 'zadarmo' }; } },
+        { label: 'Nemám čas to řešit', act() { return { msg: 'Formulář zapadl pod hromadou papírů. Kolegové se smějí cestou do banky.' }; } },
+      ] };
+  } },
+  { id: 'sportka', w: 1.5, once: true, make() {
+    return { em: '🎰', title: 'Sázka každý týden?', text: `Kolegové v práci sázejí společně každý týden. ${fmt(amt(100))} týdně, „to je nic“.`,
+      choices: [
+        { label: 'Jasně, třeba to vyjde', act() { G.lottery = true; bump(1); return { msg: 'Každý týden trocha napětí. Statisticky ale vyhrává hlavně loterie.', lesson: 'loterie' }; } },
+        { label: 'Ne, díky', act() { return { msg: '5 200 Kč ročně navíc v kapse. Za 40 let s výnosem klidně přes milion.', lesson: 'loterie' }; } },
+      ] };
+  } },
+  { id: 'dovolena', w: 2, max: 3, make() {
+    const c = amt(35000);
+    return { em: '🏝️', title: 'Kamarádi jedou k moři', text: `Týden u moře s partou. Vyjde to na ${fmt(c)}.`,
+      choices: [
+        { label: 'Jedu!', act() { pay(c); bump(6); return { msg: G.pending ? `Na dovolenou jsi neměl${a()} našetřeno…` : 'Sluníčko, moře, smích. Tohle za to stálo.' }; } },
+        { label: 'Tentokrát ne', act() { bump(-3); return { msg: 'Fotky na Instagramu bolí. Ale peníze zůstaly.' }; } },
+      ] };
+  } },
+  { id: 'dite', w: 2, once: true, minAge: 27, maxAge: 42, make() {
+    const c = amt(150000);
+    return { em: '👶', title: 'Rodina se rozrůstá', text: `Narodilo se ti miminko! Výbavička a výpadek příjmu na rodičovské vyjdou zhruba na ${fmt(c)}.`,
+      choices: [{ label: 'Hurá! 🍼', act() { pay(c); bump(10); return { msg: G.pending ? 'Krásné, ale na rezervě to nebylo…' : 'Nejlepší „investice“ života. Rezerva to ustála.' }; } }] };
+  } },
+  { id: 'bonus', w: 2, max: 2, minAge: 28, make() {
+    const c = amt(60000);
+    const ch = [
+      { label: 'Utratit za radosti', act() { bump(5); return { msg: 'Nový gauč a skvělá večeře. Proč ne!' }; } },
+      { label: 'Investovat do ETF', act() { G.etf += c; return { msg: 'Bonus jde pracovat.' }; } },
+    ];
+    if (G.debt > 0) ch.push({ label: 'Splatit dluh', act() { const p = Math.min(c, G.debt); G.debt -= p; G.rez += c - p; return { msg: `Dluh menší o ${fmt(p)}. Jistý výnos ${pp(G.debtRate, 0)}!`, lesson: 'dluh' }; } });
+    return { em: '💼', title: 'Roční bonus', text: `Projekt se povedl a dostal${a()} jsi bonus ${fmt(c)}.`, choices: ch };
+  } },
+  { id: 'media', w: 3, max: 2, cond: () => G.etf > 50000 * G.price && G.year >= 2 && G.market[G.year - 1].r > 0.08 && G.market[G.year - 2].r > 0.08, make() {
+    return { em: '📰', title: '„Krach je za rohem!“', text: 'Akcie rostou už několik let. Zprávy i strejda u oběda tvrdí, že teď musí přijít velký pád.',
+      choices: [
+        { label: 'Prodat ETF a počkat na pokles', act() { G.shadows.push({ type: 'timing', age: G.age, held: G.etf, sold: G.etf }); G.rez += G.etf; G.etf = 0; G.aEtf = 0; return { msg: 'Všechno je na spořáku a nové úspory taky. Teď jen trefit, kdy nakoupit zpátky…', lesson: 'timing' }; } },
+        { label: 'Nechat to být', act() { return { msg: 'Krachy předpovídají každý rok. Jednou se trefí – ale kdy?', lesson: 'timing' }; } },
+      ] };
+  } },
+  { id: 'krize', forced: true, make() {
+    const m = G.lastM, ms = monthlySpend(), extra = Math.max(0, G.rez - 6 * ms);
+    const ch = [
+      { label: 'Prodat všechno, než to bude horší!', act() { const v = G.etf + G.spec; G.shadows.push({ type: 'panika', age: G.age, held: v, sold: v }); G.rez += v; G.etf = 0; G.spec = 0; G.aEtf = 0; G.aSpec = 0; bump(3); return { msg: 'Ulevilo se ti. Všechno je na spořáku. Jen kdy se vrátit?', lesson: 'panika' }; } },
+      { label: 'Nic nedělat, investovat dál', act() { bump(-3); return { msg: 'Nervy drásající. Ale nakupuješ teď ve výprodeji.', lesson: 'drz' }; } },
+    ];
+    if (extra > 1000) ch.push({ label: `Přikoupit: ${fmt(extra)} z přebytku rezervy do ETF`, act() { G.rez -= extra; G.etf += extra; bump(-4); return { msg: 'Odvážné! Kupuješ akcie o třetinu levněji.', lesson: 'drz' }; } });
+    return { em: '📉', title: 'Krach na burze!', text: `Akcie letos spadly o ${pp(-m.r, 0)}. Tvoje investice přišly o ${fmt(-G.lastLoss)}. Televize hlásí, že bude ještě hůř.`, choices: ch };
+  } },
+  { id: 'inflace', forced: true, make() {
+    const m = G.lastM;
+    return { em: '🔥', title: `Inflace ${pp(m.infl, 0)}!`, text: `Ceny letí nahoru. Spořák ti dal jen ${pp(m.sav)}, takže peníze na něm reálně ztratily asi ${pp(m.infl - m.sav, 0)} hodnoty.`,
+      choices: [
+        { label: 'Aha, to je nepříjemné', act() { return { msg: 'Peníze, které jen leží, nejsou v bezpečí – pomalu tají.', lesson: 'inflace' }; } },
+        { label: 'Poslat přebytek rezervy do ETF', act() { const e = moveExtra(); return { msg: e > 0 ? `Do ETF šlo ${fmt(e)}. Rezerva na 6 měsíců zůstala.` : 'Žádný přebytek nad 6měsíční rezervu nemáš.', lesson: 'inflace' }; } },
+      ] };
+  } },
+  { id: 'vyhoreni', forced: true, make() {
+    return { em: '🥀', title: x('Žiješ jako mnich', 'Žiješ jako jeptiška'), text: 'Topíš na 17 °C, nikam nechodíš a kamarádi tě přestali zvát. Je ti smutno.',
+      choices: [
+        { label: 'Ubrat spoření na 20 %', act() { G.s = 0.2; bump(4); G.frugal = 0; return { msg: 'Konečně zase pizza s kamarády. Pořád spoříš víc než většina lidí.', lesson: 'pohoda' }; } },
+        { label: 'Vydržím, cíl je cíl!', act() { bump(-10); G.frugal = 0; return { msg: 'Účet roste, ty ne.', lesson: 'pohoda' }; } },
+      ] };
+  } },
+];
+const EV = Object.fromEntries(EVENTS.map(e => [e.id, e]));
+
+function startEvent(def) {
+  G.used[def.id] = (G.used[def.id] || 0) + 1;
+  G.lastEvent = def.id;
+  G.event = { def, view: def.make(), phase: 'choose', result: null };
+}
+function maybeEvent() {
+  const m = G.lastM;
+  if (m.r < -0.15 && G.etf + G.spec > 10000 * G.price) return startEvent(EV.krize);
+  if (m.infl > 0.065 && !G.used.inflace) return startEvent(EV.inflace);
+  if (G.frugal >= 3) return startEvent(EV.vyhoreni);
+  if (R() > 0.5) return;
+  const pool = EVENTS.filter(e => !e.forced && e.id !== G.lastEvent
+    && !(e.once && G.used[e.id]) && !(e.max && (G.used[e.id] || 0) >= e.max)
+    && (!e.minAge || G.age >= e.minAge) && (!e.maxAge || G.age <= e.maxAge)
+    && (!e.cond || e.cond()));
+  if (!pool.length) return;
+  let t = pool.reduce((a, e) => a + e.w, 0) * R();
+  for (const e of pool) { t -= e.w; if (t <= 0) return startEvent(e); }
+  startEvent(pool[pool.length - 1]);
+}
+function choose(i) {
+  const c = G.event.view.choices[i];
+  const res = c.act() || {};
+  G.event.phase = 'result'; G.event.result = res;
+  if (G.pending) unlock('rezerva', `Neměl${a()} jsi dost peněz na rezervě.`);
+  if (res.lesson) unlock(res.lesson);
+  render();
+}
+function resolvePending(kind) {
+  const p = G.pending;
+  if (kind === 'etf') { const f = Math.min(p.amount, G.etf); G.etf -= f; p.amount -= f; G.event.result.msg += ` Prodal${a()} jsi ETF za ${fmt(f)}.`; }
+  else if (kind === 'spec') { const f = Math.min(p.amount, G.spec); G.spec -= f; p.amount -= f; G.event.result.msg += ` Prodal${a()} jsi spekulace za ${fmt(f)}.`; }
+  else { addDebt(p.amount, 0.19); G.event.result.msg += ` Vzal${a()} sis půjčku ${fmt(p.amount)} na 19 %.`; p.amount = 0; unlock('dluh'); }
+  if (p.amount <= 1) G.pending = null;
+  render();
+}
+function closeEvent() { G.event = null; render(); }
+
+/* ---------- akce ---------- */
+function moveExtra() {
+  const e = Math.max(0, G.rez - 6 * monthlySpend());
+  G.rez -= e; G.etf += e; return e;
+}
+function nextYear() {
+  if (G.event || G.year >= YEARS) return false;
+  G.newLessons.clear();
+  liveYear();
+  coins(G.log[0].d >= 0);
+  if (G.year >= YEARS) { render(); setTimeout(endGame, 500); return false; }
+  maybeEvent();
+  render();
+  return !G.event;
+}
+let fastTimer = null;
+function fast() {
+  if (fastTimer) { clearInterval(fastTimer); fastTimer = null; render(); return; }
+  fastTimer = setInterval(() => {
+    if (!nextYear()) { clearInterval(fastTimer); fastTimer = null; render(); }
+  }, 220);
+  render();
+}
+
+/* ---------- vykreslování ---------- */
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function render() {
+  const P = G.price, ms = monthlySpend();
+  $('#ageBadge').textContent = G.year >= YEARS ? '🎉 Důchod!' : `Věk ${G.age} · rok ${G.year + 1}/${YEARS}`;
+  $('#lifeBar').style.width = (G.year / YEARS * 100) + '%';
+  $('#nwReal').textContent = fmt(netWorth() / P);
+  $('#nwReal').style.color = netWorth() < 0 ? 'var(--red)' : '';
+  $('#nwNom').textContent = Math.abs(P - 1) > 0.01 ? `na účtech ${fmt(netWorth())} · ceny od začátku ${pct(P - 1, 0)}` : '';
+  const rm = G.rez / ms;
+  const stats = [
+    ['🏦 Rezerva', fmt(G.rez), `${rm.toLocaleString('cs-CZ', { maximumFractionDigits: 1 })} měs. výdajů`, rm < 3],
+    ['📊 ETF', fmt(G.etf), `poplatek ${pp(G.fee)} ročně`, G.fee > 0.01],
+    ['🎲 Spekulace', fmt(G.spec), G.spec > 0 ? `${pp(G.spec / Math.max(1, netWorth()), 0)} majetku` : 'nic', false],
+    ['⛓️ Dluh', fmt(G.debt), G.debt > 0 ? `úrok ${pp(G.debtRate, 0)} ročně` : 'žádný 🎉', G.debt > 0],
+    ['💼 Plat', fmt(S()), 'čistého měsíčně', false],
+    ['🛒 Utrácíš', fmt(ms), 'měsíčně', false],
+  ];
+  $('#stats').innerHTML = stats.map(([k, v, n, bad]) => `<div class="stat${bad ? ' bad' : ''}"><div class="k">${k}</div><div class="v">${v}</div><div class="n">${n}</div></div>`).join('');
+  const po = G.pohoda;
+  $('#pohodaBar').style.width = po + '%';
+  $('#pohodaBar').style.background = po > 66 ? 'var(--green)' : po > 40 ? 'var(--gold)' : 'var(--red)';
+  $('#pohodaTxt').textContent = (po > 80 ? 'Život je fajn 😎' : po > 66 ? 'V pohodě' : po > 50 ? 'Ujde to' : po > 35 ? 'Stres 😬' : 'Je to na palici 😩') + ` (${Math.round(po)})`;
+
+  // ovládání
+  const busy = !!G.event || G.year >= YEARS;
+  $('#sRange').value = Math.round(G.s * 100);
+  $('#eRange').value = Math.round(G.aEtf * 100);
+  $('#xRange').value = Math.round(G.aSpec * 100);
+  $('#rfCheck').checked = G.reserveFirst;
+  $('#sVal').textContent = `${pp(G.s, 0)} = ${fmt(G.s * S())}/měs.`;
+  const s = G.s;
+  $('#sHint').innerHTML = s < 0.05 ? '😬 Skoro nic. Na horší časy nebude.' : s < 0.1 ? '🙂 Začátek je dobrý, ale šlo by víc.' : s <= 0.25 ? '✅ Zdravá míra spoření – a pořád dost na život.' : s < 0.45 ? '💪 Makáš na finanční svobodu.' : '🥀 Pozor, takhle dlouho nevydržíš.';
+  $('#eVal').textContent = pp(G.aEtf, 0);
+  $('#xVal').textContent = pp(G.aSpec, 0);
+  const sp = 1 - G.aEtf - G.aSpec;
+  $('#split').innerHTML = `<i style="width:${sp * 100}%;background:var(--blue)"></i><i style="width:${G.aEtf * 100}%;background:var(--green)"></i><i style="width:${G.aSpec * 100}%;background:var(--orange)"></i>`;
+  $('#bMove').disabled = busy || G.rez - 6 * ms < 1000;
+  $('#bSellSpec').disabled = busy || G.spec < 1;
+  $('#bPayDebt').disabled = busy || G.debt < 1 || G.rez < 1;
+  $('#bNext').disabled = busy || !!fastTimer;
+  $('#bFast').disabled = busy && !fastTimer;
+  $('#bFast').textContent = fastTimer ? '⏸ Stop' : '⏩ Dál';
+  for (const id of ['#sRange', '#eRange', '#xRange', '#rfCheck']) $(id).disabled = busy;
+
+  renderEvent();
+  renderChart();
+  renderLog();
+  renderWisdom();
+}
+function renderEvent() {
+  const card = $('#eventCard');
+  if (!G.event) { card.hidden = true; card.innerHTML = ''; return; }
+  const { view, phase, result } = G.event;
+  card.hidden = false;
+  let h = `<div class="em">${view.em}</div><h3>${view.title}</h3>`;
+  if (phase === 'choose') {
+    h += `<p>${view.text}</p><div class="choices">` + view.choices.map((c, i) => `<button class="choice" data-c="${i}">${c.label}${c.sub ? `<small>${c.sub}</small>` : ''}</button>`).join('') + '</div>';
+  } else {
+    h += `<div class="result">${result.msg || ''}${result.lesson ? `<br><span class="lessonTag">📜 ${LESSONS[result.lesson][0]} ${LESSONS[result.lesson][1]}</span>` : ''}</div>`;
+    if (G.pending) {
+      h += `<p><b>Chybí ti ${fmt(G.pending.amount)}.</b> Odkud je vezmeš?</p><div class="choices">`;
+      if (G.etf > 1) h += `<button class="choice" data-p="etf">Prodat ETF<small>máš ${fmt(G.etf)}${G.lastM && G.lastM.r < 0 ? ' · trh je teď dole, prodáš levně' : ''}</small></button>`;
+      if (G.spec > 1) h += `<button class="choice" data-p="spec">Prodat spekulace<small>máš ${fmt(G.spec)}</small></button>`;
+      h += `<button class="choice" data-p="loan">Vzít si půjčku<small>19 % ročně – splácí se z úspor dřív než cokoli jiného</small></button></div>`;
+    } else h += `<div class="go"><button class="btn" data-ok>Pokračovat</button></div>`;
+  }
+  card.innerHTML = h;
+  card.querySelectorAll('[data-c]').forEach(b => b.onclick = () => choose(+b.dataset.c));
+  card.querySelectorAll('[data-p]').forEach(b => b.onclick = () => resolvePending(b.dataset.p));
+  const ok = card.querySelector('[data-ok]'); if (ok) ok.onclick = closeEvent;
+  if (phase === 'choose' && window.innerWidth < 860) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function renderChart() {
+  const cv = $('#chart'), dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== w * dpr || cv.height !== h * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+  const H = G.hist;
+  let mx = 100000, mn = 0;
+  for (const p of H) { mx = Math.max(mx, p.me, ...Object.values(p.g)); mn = Math.min(mn, p.me); }
+  mx *= 1.08;
+  const L = 52, Rr = 8, T = 8, B = 22;
+  const X = a => L + (a - START) / YEARS * (w - L - Rr);
+  const Y = v => T + (1 - (v - mn) / (mx - mn)) * (h - T - B);
+  c.font = '11px system-ui, sans-serif'; c.fillStyle = css('--muted'); c.strokeStyle = css('--line'); c.lineWidth = 1;
+  const step = niceStep((mx - mn) / 4);
+  for (let v = Math.ceil(mn / step) * step; v <= mx; v += step) {
+    const y = Y(v); c.beginPath(); c.moveTo(L, y); c.lineTo(w - Rr, y); c.stroke();
+    c.textAlign = 'right'; c.fillText(short(v), L - 6, y + 4);
+  }
+  c.textAlign = 'center';
+  for (let a = START; a <= END; a += 10) c.fillText(a + ' let', X(a), h - 6);
+  const line = (key, col, width, dash) => {
+    c.beginPath(); c.setLineDash(dash); c.lineWidth = width; c.strokeStyle = col;
+    H.forEach((p, i) => { const v = key ? p.g[key] : p.me; i ? c.lineTo(X(p.age), Y(v)) : c.moveTo(X(p.age), Y(v)); });
+    c.stroke(); c.setLineDash([]);
+  };
+  for (const gd of GHOSTS) line(gd.id, css(gd.color), 1.6, [5, 4]);
+  line(null, css('--pink'), 3.2, []);
+  const last = H[H.length - 1];
+  c.fillStyle = css('--pink'); c.beginPath(); c.arc(X(last.age), Y(last.me), 4.5, 0, 7); c.fill();
+  $('#chartLegend').innerHTML = `<span class="me"><i class="dot" style="background:var(--pink)"></i>Ty ${short(last.me)}</span>` +
+    GHOSTS.map(gd => `<span title="${gd.desc}"><i class="dot" style="background:var(${gd.color})"></i>${gd.name} ${short(last.g[gd.id])}</span>`).join('');
+}
+function niceStep(x) { const p = Math.pow(10, Math.floor(Math.log10(x))); const f = x / p; return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p; }
+function short(v) {
+  const a = Math.abs(v), sg = v < 0 ? '−' : '';
+  if (a >= 1e6) return sg + (a / 1e6).toLocaleString('cs-CZ', { maximumFractionDigits: 1 }) + ' mil.';
+  if (a >= 1e3) return sg + Math.round(a / 1e3) + ' tis.';
+  return sg + Math.round(a);
+}
+function renderLog() {
+  $('#log').innerHTML = G.log.slice(0, 40).map(e =>
+    `<li><b>${e.age - 1}→${e.age}</b> · akcie <span class="${e.m.r >= 0 ? 'up' : 'down'}">${pct(e.m.r)}</span> · inflace ${pp(e.m.infl)} · spořák ${pp(e.m.sav)} · jmění <span class="${e.d >= 0 ? 'up' : 'down'}">${e.d >= 0 ? '+' : ''}${fmt(e.d)}</span>${e.notes.length ? '<br><span class="muted">' + e.notes.join(' · ') + '</span>' : ''}</li>`
+  ).join('') || '<li class="muted">Tady se budou objevovat tvoje roky.</li>';
+}
+function renderWisdom() {
+  const ids = Object.keys(LESSONS);
+  $('#wisTitle').textContent = `Moudra ${G.lessons.length}/${ids.length}`;
+  $('#wis').innerHTML = ids.map(id => {
+    const L = LESSONS[id], got = has(id);
+    return got ? `<div class="w${G.newLessons.has(id) ? ' new' : ''}" data-w="${id}"><b>${L[0]} ${L[1]}</b>${L[2]}</div>` : `<div class="w locked"><b>🔒 ???</b>Zatím neobjeveno</div>`;
+  }).join('');
+  $('#wis').querySelectorAll('[data-w]').forEach(d => d.onclick = () => { G.newLessons.delete(d.dataset.w); d.classList.remove('new'); });
+}
+let toastT;
+function toast(html) {
+  const t = $('#toast'); t.innerHTML = html; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 3800);
+}
+function coins(up) {
+  const b = $('#nwReal').getBoundingClientRect();
+  if (b.bottom < 0 || b.top > innerHeight) return;
+  for (let i = 0; i < (up ? 4 : 2); i++) {
+    const d = document.createElement('div'); d.className = 'coin'; d.textContent = up ? '🪙' : '💸';
+    d.style.left = (b.left + R() * Math.max(40, b.width)) + 'px'; d.style.top = b.top + 'px';
+    d.style.animationDelay = (i * 0.08) + 's';
+    document.body.appendChild(d); setTimeout(() => d.remove(), 1300);
+  }
+}
+
+/* ---------- konec ---------- */
+function result() {
+  const real = netWorth() / G.price;
+  const renta = Math.max(0, real) * 0.04 / 12;
+  const ref = G.baseS / G.price;
+  const repl = renta / ref;
+  const avgP = G.pohodaSum / YEARS;
+  const score = Math.round(0.6 * clamp(repl / 0.6 * 100, 0, 100) + 0.4 * avgP);
+  return { real, renta, ref, repl, avgP, score };
+}
+function title(sc) {
+  return sc >= 85 ? ['🏆', x('Finanční mistr', 'Finanční mistryně'), `Peníze pracovaly za tebe a ty sis přitom užíval${a()} život.`]
+    : sc >= 70 ? ['🥇', x('Pohodový boháč', 'Pohodová boháčka'), `Na stáří máš krásně našlápnuto a nežil${a()} jsi ${x('jako mnich', 'jako jeptiška')}.`]
+    : sc >= 55 ? ['🥈', 'Na dobré cestě', 'Solidní výsledek. Pár rozhodnutí šlo udělat líp – mrkni na moudra.']
+    : sc >= 40 ? ['🥉', 'Ještě se učíš', `Něco jsi našetřil${a()}, ale Líná Lucie se usmívá. Zkus to znovu!`]
+    : ['🫠', x('Ulrichův učeň', 'Ulrichova učednice'), 'Důchod bude spíš skromný. Ale teď už víš, jak na to!'];
+}
+function endGame() {
+  const r = result();
+  for (const id of ['start']) unlock(id);
+  let best = 0;
+  try { best = +localStorage.getItem('kasicka.best') || 0; if (r.score > best) localStorage.setItem('kasicka.best', r.score); } catch (e) {}
+  const [em, t, d] = title(r.score);
+  const rows = [{ name: 'Ty', me: true, v: r.real }].concat(GHOSTS.map(gd => ({ name: gd.name, desc: gd.desc, v: (G.ghosts[gd.id].rez + G.ghosts[gd.id].etf) / G.price })))
+    .sort((a, b) => b.v - a.v);
+  const rank = rows.findIndex(x => x.me) + 1;
+  let sh = '';
+  for (const s of G.shadows) {
+    sh += `<p>${s.type === 'panika' ? '😱 V krizi' : '⏱️ Ze strachu z krachu'} ve ${s.age} letech jsi prodal${a()} investice. Kdybys je nechal${a()} být, měly by dnes hodnotu <b>${fmt(s.held / G.price)}</b> – na spořáku z nich je jen <b>${fmt(s.sold / G.price)}</b> (v dnešních penězích).</p>`;
+  }
+  if (G.fee > 0.01 || G.feesPaid > 50000 * G.price) sh += `<p>🧾 Na poplatcích fondu jsi za život zaplatil${a()} ${fmt(G.feesPaid)} – a to ještě bez ušlých výnosů z těch peněz.</p>`;
+  if (G.lottery) sh += `<p>🎟️ Do loterie jsi vložil${a()} ${fmt(G.lottoSpent)}.</p>`;
+  const lucie = (G.ghosts.lucie.rez + G.ghosts.lucie.etf) / G.price, petr = (G.ghosts.petr.rez + G.ghosts.petr.etf) / G.price;
+  $('#endPanel').innerHTML = `
+    <div class="big">${em}</div>
+    <h2 style="text-align:center">${t}</h2>
+    <p style="text-align:center" class="muted">${d}</p>
+    <div class="score">${r.score} <span style="font-size:1.1rem" class="muted">/ 100 bodů</span></div>
+    <p style="text-align:center" class="muted">${best && r.score <= best ? `Tvůj rekord: ${best}` : best ? '🎉 Nový rekord!' : ''}</p>
+    <div class="stats">
+      <div class="stat"><div class="k">💰 Majetek v 65</div><div class="v">${fmt(r.real)}</div><div class="n">v dnešních penězích</div></div>
+      <div class="stat"><div class="k">🌴 Renta</div><div class="v">${fmt(r.renta)}</div><div class="n">měsíčně navíc k důchodu (4 % ročně)</div></div>
+      <div class="stat"><div class="k">😊 Průměrná pohoda</div><div class="v">${Math.round(r.avgP)}</div><div class="n">za celý život</div></div>
+    </div>
+    <p class="muted" style="font-size:.85rem">Renta ${pp(r.repl, 0)} běžného platu (${fmt(r.ref)}). Skóre = 60 % renta (renta ve výši 60 % platu = plný počet) + 40 % průměrná pohoda. </p>
+    <h3>Jak dopadli sousedé (stejná burza, stejný plat)</h3>
+    <table>${rows.map(x => `<tr class="${x.me ? 'me' : ''}"><td>${x.me ? '👉 Ty' : x.name}<br>${x.desc ? `<small class="muted">${x.desc}</small>` : ''}</td><td class="r">${fmt(x.v)}<br><small class="muted">renta ${fmt(Math.max(0, x.v) * 0.04 / 12)}/měs.</small></td></tr>`).join('')}</table>
+    <p>Skončil${a()} jsi <b>${rank}. z 5</b>. ${petr > 0 ? `🌱 Lucie a Petr dělali úplně to samé – jen Petr začal o 10 let později. Lucie má <b>${(lucie / petr).toLocaleString('cs-CZ', { maximumFractionDigits: 1 })}×</b> víc.` : ''}</p>
+    ${sh}
+    <h3>Moudra ${G.lessons.length}/${Object.keys(LESSONS).length}</h3>
+    <div class="wis">${G.lessons.map(id => `<div class="w"><b>${LESSONS[id][0]} ${LESSONS[id][1]}</b>${LESSONS[id][2]}</div>`).join('')}</div>
+    <div class="go"><button class="btn" id="bAgain">Žít znovu 🔄</button></div>
+    <p class="muted" style="font-size:.78rem;text-align:center">Hra je zjednodušení. Výnosy, inflace i události jsou náhodné, ale inspirované skutečností. Není to investiční doporučení.</p>`;
+  $('#endOv').hidden = false;
+  $('#bAgain').onclick = () => { $('#endOv').hidden = true; newGame(); render(); window.scrollTo(0, 0); };
+}
+
+/* ---------- vstupy ---------- */
+$('#sRange').oninput = e => { G.s = e.target.value / 100; render(); };
+$('#eRange').oninput = e => { G.aEtf = e.target.value / 100; if (G.aEtf + G.aSpec > 1) G.aSpec = 1 - G.aEtf; render(); };
+$('#xRange').oninput = e => {
+  G.aSpec = e.target.value / 100; if (G.aEtf + G.aSpec > 1) G.aEtf = 1 - G.aSpec;
+  if (G.aSpec >= 0.3) unlock('spekulace', 'Velká část úspor ve spekulacích je hazard.');
+  render();
+};
+$('#rfCheck').onchange = e => { G.reserveFirst = e.target.checked; if (G.reserveFirst) unlock('rezerva', 'Rezerva první – výborný zvyk.'); render(); };
+$('#bMove').onclick = () => { const e = moveExtra(); toast(`📊 Do ETF jsi přesunul${a()} ${fmt(e)}.`); render(); };
+$('#bSellSpec').onclick = () => { G.rez += G.spec; toast(`🎲 Spekulace prodány za ${fmt(G.spec)}.`); G.spec = 0; render(); };
+$('#bPayDebt').onclick = () => { const p = Math.min(G.debt, G.rez); G.rez -= p; G.debt -= p; if (G.debt < 1) G.debt = 0; toast(`⛓️ Splaceno ${fmt(p)}.`); unlock('dluh'); render(); };
+$('#bNext').onclick = () => nextYear();
+$('#bFast').onclick = fast;
+const start = fem => { FEM = fem; $('#intro').hidden = true; render(); };
+$('#bStartM').onclick = () => start(false);
+$('#bStartF').onclick = () => start(true);
+document.addEventListener('keydown', e => {
+  if (e.key === ' ' && e.target === document.body && $('#intro').hidden && $('#endOv').hidden) { e.preventDefault(); nextYear(); }
+});
+addEventListener('resize', () => renderChart());
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => render());
+
+newGame();
+try { const b = +localStorage.getItem('kasicka.best'); if (b) $('#bestTxt').textContent = `🏅 Tvůj rekord: ${b} bodů`; } catch (e) {}
+render();
+</script>
+</body>
+</html>

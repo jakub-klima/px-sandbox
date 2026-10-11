@@ -25,6 +25,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0}
 #hDebtBox{background:#b0202088;display:none}
 #hCombo{margin-left:auto;font-weight:900;font-size:1.1rem;text-shadow:0 2px 0 #0007;opacity:0;transition:opacity .2s}
 .icon{pointer-events:auto;background:#0006;border-radius:10px;width:38px;height:38px;font-size:1.1rem;flex:none}
+@media (max-width:480px){#hud{gap:5px;padding:8px 6px}.age{min-width:52px}.age b{font-size:1.25rem}.prog{width:52px}.box{padding:4px 7px}.box b{font-size:.95rem}.box small{font-size:.58rem}.icon{width:32px;height:32px;font-size:.95rem}#hCombo{font-size:.9rem}}
 
 #invest{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);width:min(340px,86vw);height:66px;border-radius:20px;
   background:linear-gradient(#36d68b,#17a466);box-shadow:0 6px 0 #0c6b42,0 10px 30px #0006;font-weight:900;font-size:1.25rem;letter-spacing:.02em;
@@ -33,10 +34,15 @@ button{font:inherit;color:inherit;cursor:pointer;border:0}
 #invest.held{transform:translateX(-50%) translateY(4px);box-shadow:0 2px 0 #0c6b42}
 #invest.debt{background:linear-gradient(#ff7b6b,#d63a3a);box-shadow:0 6px 0 #8a1c1c}
 #invest.lock{background:#666;box-shadow:0 6px 0 #333}
-#panic{position:fixed;left:50%;top:46%;transform:translate(-50%,-50%);padding:18px 26px;border-radius:22px;font-size:1.35rem;font-weight:900;
-  background:#ff2d55;box-shadow:0 7px 0 #8d0f2b,0 0 0 8px #ff2d5544,0 20px 50px #000a;display:none;animation:throb .5s infinite alternate;white-space:nowrap}
-#panic small{display:block;font-size:.8rem;font-weight:600;opacity:.9}
-@keyframes throb{to{transform:translate(-50%,-50%) scale(1.07)}}
+#lessonOv{background:#130d22b0;z-index:6}
+.card{max-width:400px;width:100%;margin:auto;text-align:center;background:#2a1f45;border:3px solid #ffc531;border-radius:24px;padding:18px 18px 8px;box-shadow:0 20px 60px #000a;animation:bin .35s cubic-bezier(.3,1.5,.6,1)}
+.card.red{border-color:#ff4d5e}.card.green{border-color:#36d68b}
+.card h2{margin:4px 0 6px;font-size:1.5rem}
+.card p{margin:0 0 6px;font-size:1.02rem;line-height:1.45;opacity:.92}
+.card .tag{display:inline-block;font-size:.75rem;font-weight:700;background:#ffffff1c;padding:3px 10px;border-radius:99px;margin-top:6px}
+.card .btns{display:grid;gap:0}
+.go.red{background:linear-gradient(#ff6b7d,#e0263f);box-shadow:0 6px 0 #8d0f2b}
+.go.green{background:linear-gradient(#36d68b,#17a466);box-shadow:0 6px 0 #0c6b42}
 #banner{position:fixed;left:10px;right:88px;top:62px;text-align:center;pointer-events:none}
 @media (min-width:700px){#banner{left:50%;right:auto;width:500px;transform:translateX(-50%)}}
 @media (max-width:699px){.bn{font-size:.88rem;padding:7px 10px}}
@@ -82,15 +88,15 @@ ul.facts li{background:#ffffff0d;border-radius:10px;padding:7px 10px;margin-bott
   <button class="icon" id="bPause" title="Pauza">⏸</button>
 </div>
 <div id="banner"></div>
-<div class="hint" id="hint" hidden>← → nebo myš · drž MEZERNÍK = investuj · P = panika · Esc = pauza</div>
+<div class="hint" id="hint" hidden>← → nebo myš · drž MEZERNÍK = investuj · Esc = pauza</div>
 <button id="invest">📈 INVESTUJ<small>drž – peníze letí do ETF</small></button>
-<button id="panic">😱 PRODAT VŠECHNO!<small>nebo vydrž <span id="panicT">4</span> s</small></button>
+<div class="ov soft" id="lessonOv" hidden><div class="card" id="lessonCard"></div></div>
 
 <div class="ov" id="menu">
   <div class="panel">
     <div class="big">🐷</div>
     <h1>Kasička<br><span>💸</span> Úprk za rentou</h1>
-    <p class="sub">40 let života za 2 minuty. Kolik ti v 65 zbyde?</p>
+    <p class="sub">40 let života za 3 minuty. Kolik ti v 65 zbyde?</p>
     <div class="rules">
       <div><b>🪙 💰 🎁</b>Chytej mince</div>
       <div><b>🛍️ 💳 🚀</b>Uhýbej pastem</div>
@@ -107,7 +113,7 @@ ul.facts li{background:#ffffff0d;border-radius:10px;padding:7px 10px;margin-bott
 
 <script>
 'use strict';
-const START = 25, END = 65, YEAR = 3;           // 1 rok = 3 sekundy
+const START = 25, END = 65, YEAR = 4.5;         // 1 rok = 4,5 sekundy
 const $ = s => document.querySelector(s);
 const R = Math.random;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -179,7 +185,7 @@ function newGame() {
     items: [], parts: [], floats: [], flying: [],
     investHeld: false, streamT: 0, streak: 0, shake: 0, flash: 0, flashCol: '#ff0000',
     crash: null, crashes, emerg: schedule(6, 27, 63, 4, crashes),
-    yearGain: 0, yearAdd: 0, firsts: new Set(),
+    yearGain: 0, yearAdd: 0, firsts: new Set(), learned: [], modal: false, queue: [],
     st: { invested: 0, inflation: 0, interest: 0, sales: 0, crypto: 0, cryptoN: 0, loans: 0, emergN: 0, emergDebt: 0, gifts: 0, shadows: [], dipBuys: 0 },
   };
 }
@@ -193,7 +199,27 @@ function banner(html, cls = '', dur = 2600) {
   while (box.children.length > 3) box.lastChild.remove();
   setTimeout(() => { d.style.transition = 'opacity .3s'; d.style.opacity = 0; setTimeout(() => d.remove(), 300); }, dur);
 }
-function first(id, html, cls) { if (S.firsts.has(id)) return; S.firsts.add(id); banner(html, cls, 3600); }
+function showModal(html, buttons, cls = 'gold') {
+  if (S.modal) { S.queue.push([html, buttons, cls]); return; }
+  S.modal = true; S.investHeld = false; S.modalAt = performance.now();
+  for (const k in keys) keys[k] = false;
+  const c = $('#lessonCard');
+  c.className = 'card ' + cls;
+  c.innerHTML = html + '<div class="btns">' + buttons.map((b, i) => `<button class="go ${b.cls || ''}" data-i="${i}">${b.label}</button>`).join('') + '</div>';
+  c.querySelectorAll('[data-i]').forEach(el => el.onclick = () => { if (performance.now() - S.modalAt < 350) return; closeModal(); buttons[+el.dataset.i].fn(); });
+  S.modalBtns = buttons;
+  $('#lessonOv').hidden = false;
+}
+function closeModal() {
+  $('#lessonOv').hidden = true; S.modal = false;
+  if (S.queue.length) showModal(...S.queue.shift());
+}
+// moudro: ukáže se jen poprvé a pozastaví hru, aby se dalo v klidu přečíst
+function lesson(id, em, title, text, cls = 'gold') {
+  if (S.firsts.has(id)) return;
+  S.firsts.add(id); S.learned.push({ em, title, text });
+  showModal(`<div class="big">${em}</div><div class="tag">📜 Moudro ${S.learned.length}</div><h2>${title}</h2><p>${text}</p>`, [{ label: 'Jasně ▶', fn() {} }], cls);
+}
 function float(x, y, text, col = '#fff', size = 18) { S.floats.push({ x, y, text, col, size, t: 0 }); }
 function burst(x, y, col, n = 10) {
   for (let i = 0; i < n; i++) { const a = R() * 6.28, v = 80 + R() * 220; S.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 80, t: 0, col }); }
@@ -201,16 +227,16 @@ function burst(x, y, col, n = 10) {
 
 /* ---------- předměty ---------- */
 const TYPES = {
-  coin:   { e: '🪙', rate: 2.6, size: 30 },
-  bag:    { e: '💰', rate: .09, size: 36 },
-  gift:   { e: '🎁', rate: .06, size: 34 },
-  sale:   { e: '🛍️', rate: .38, size: 36, bad: true },
-  card:   { e: '💳', rate: .17, size: 34, bad: true },
-  rocket: { e: '🚀', rate: .09, size: 36, bad: true },
+  coin:   { e: '🪙', rate: 1.5, size: 32 },
+  bag:    { e: '💰', rate: .06, size: 38 },
+  gift:   { e: '🎁', rate: .045, size: 36 },
+  sale:   { e: '🛍️', rate: .17, size: 38, bad: true },
+  card:   { e: '💳', rate: .08, size: 36, bad: true },
+  rocket: { e: '🚀', rate: .045, size: 38, bad: true },
 };
 function spawn(type) {
-  const T = TYPES[type], sp = 160 + (S.age - START) * 3.2;
-  S.items.push({ type, x: 24 + R() * (W - 48), y: -30, vy: sp * (T.bad ? 1.1 : 1) + R() * 70, ph: R() * 6, size: T.size });
+  const T = TYPES[type], sp = 115 + (S.age - START) * 1.6;
+  S.items.push({ type, x: 24 + R() * (W - 48), y: -30, vy: sp + R() * 45, ph: R() * 6, size: T.size });
 }
 function catchItem(it) {
   const x = it.x, y = it.y, cvl = coinVal();
@@ -220,27 +246,26 @@ function catchItem(it) {
       const v = cvl * (1 + Math.min(S.streak, 25) * .03);
       S.wallet += v; S.ghost += v; sfx.coin(); burst(x, y, '#ffd34d', 6);
       float(x, y - 10, '+' + money(v), '#ffe27a', 15);
-      if (S.streak === 10 || S.streak === 25) banner(`🔥 Combo ${S.streak}! Kariéra jede – mince mají větší hodnotu`, 'gold', 1800);
       break;
     }
     case 'bag': { const v = cvl * 5; S.wallet += v; S.ghost += v; sfx.win(); burst(x, y, '#ffd34d', 18); float(x, y, '💰 Prémie +' + money(v), '#ffe27a', 20); break; }
     case 'gift': {
       const v = cvl * 6; S.jar += v; S.ghost += v; S.st.gifts += v; sfx.win(); burst(x, y, '#5df0a8', 18);
       float(x, y, '🎁 +' + money(v) + ' do ETF', '#7dffbf', 18);
-      first('gift', '🎁 Příspěvek od firmy jde rovnou do ETF.<small>Peníze zadarmo – vždycky ber.</small>', 'green');
+      lesson('gift', '🎁', 'Peníze zdarma', 'Příspěvek od zaměstnavatele (nebo od státu) jde rovnou do ETF. Je to okamžitý výnos 100 % – vždycky ber.', 'green');
       break;
     }
     case 'sale': {
       const v = Math.min(S.wallet, Math.max(S.wallet * .3, cvl * 2));
       S.wallet -= v; S.st.sales += v; hurt('#ff5fa0');
       float(x, y, '🛍️ −' + money(v), '#ff8fb8', 20);
-      first('sale', '🛍️ Impulzivní nákup! Sleva −50 % je pořád utrácení.', 'red');
+      lesson('sale', '🛍️', 'Impulzivní nákupy', '„Sleva −50 %“ je pořád utrácení. Každá zbytečná útrata v mládí je peníz, který se do důchodu nestihne znásobit.', 'red');
       break;
     }
     case 'card': {
       const v = cvl * 5, d = cvl * 8; S.wallet += v; S.debt += d; S.st.loans++; hurt('#ff4d5e');
       float(x, y, `💳 +${money(v)} hned… dluh +${money(d)}`, '#ff8f8f', 17);
-      first('card', '⛓️ Půjčka „hned a bez starostí“! Dluh roste o 20 % ročně a zpomaluje tě.<small>Drž tlačítko a splácej – nic se nevyplatí víc.</small>', 'red');
+      lesson('card', '⛓️', 'Drahý dluh', 'Půjčka „hned a bez starostí“ roste o 20 % ročně – rychleji, než ti kdy porostou investice. Dluh tě zpomaluje. Drž tlačítko a splácej: nic se nevyplatí víc.', 'red');
       break;
     }
     case 'rocket': {
@@ -249,8 +274,9 @@ function catchItem(it) {
       const game = S;
       setTimeout(() => {
         if (S !== game || S.mode !== 'play') return;
-        if (R() < .15) { const w = stake * 6; S.wallet += w; S.st.crypto += w - stake; sfx.win(); banner(`🚀 TO THE MOON! ×6 → +${money(w)}<small>Klika. Příště to tak dopadnout nemusí – a většinou nedopadne.</small>`, 'gold'); }
-        else { S.st.crypto -= stake; sfx.bad(); banner(`💥 Rug pull! Krypto je pryč: −${money(stake)}<small>Spekulace = hazard. Jen s penězi, které klidně oželíš.</small>`, 'red'); }
+        if (R() < .15) { const w = stake * 6; S.wallet += w; S.st.crypto += w - stake; sfx.win(); banner(`🚀 TO THE MOON! ×6 → +${money(w)}<small>Klika. Většinou to tak nedopadne.</small>`, 'gold'); }
+        else { S.st.crypto -= stake; sfx.bad(); banner(`💥 Rug pull! Krypto je pryč: −${money(stake)}`, 'red'); }
+        lesson('rocket', '🎰', 'Spekulace', 'Horký krypto tip občas vyjde, většinou ne. Sázej jen peníze, které klidně oželíš – rozhodně ne půlku úspor.', 'red');
       }, 1300);
       break;
     }
@@ -264,9 +290,9 @@ function yearEnd() {
   S.lastR = S.r;
   if (S.jar > coinVal() * 2) float(jarBox().x + 30, jarBox().y + jarBox().h + 34, `ETF ${pct(S.lastR)}`, S.lastR >= 0 ? '#7dffbf' : '#ff8f8f', 15);
   if (S.yearGain > S.yearAdd && S.yearGain > coinVal() * 4)
-    first('compound', `❄️ Složené úročení! ETF ti letos samo vydělalo ${money(S.yearGain)} – víc, než kolik do něj přibylo.<small>Výnosy vydělávají další výnosy. Čím dřív, tím líp.</small>`, 'green');
-  if (S.wallet > coinVal() * 25 && S.yearIdx > 2)
-    first('infl', `🔥 Na hotovosti máš ${money(S.wallet)} a inflace z toho každý rok ukousne 3 %.<small>Kousek si nech na horší časy, zbytek pošli do ETF.</small>`, 'gold');
+    lesson('compound', '❄️', 'Složené úročení', `ETF ti letos samo vydělalo <b>${money(S.yearGain, true)}</b> – víc, než kolik do něj přibylo. Výnosy vydělávají další výnosy. Čím dřív začneš, tím víc se to nabaluje.`, 'green');
+  if (S.wallet > coinVal() * 12 && S.yearIdx >= 2)
+    lesson('infl', '🔥', 'Hotovost taje', `V peněžence máš ${money(S.wallet, true)} a inflace z toho každý rok ukousne asi 3 %. Drž tlačítko <b>📈 INVESTUJ</b> – v ETF peníze dlouhodobě rostou zhruba o 7 % ročně.`);
   S.yearGain = 0; S.yearAdd = 0;
   if (S.dip > 0) { S.r = .2 + R() * .12; S.dip--; }
   else S.r = clamp(.065 + gauss() * .12, -.15, .35);
@@ -282,30 +308,36 @@ function emergency() {
   if (rest > 1) {
     S.debt += rest; S.st.emergDebt++;
     banner(`${e} ${t} −${money(cost, true)}<small>Chyběla rezerva → ${money(rest, true)} na dluh za 20 %!</small>`, 'red', 3400);
-  } else banner(`${e} ${t} −${money(cost, true)}<small>Rezerva to pokryla. Klid. 😎</small>`, 'green', 3000);
+    lesson('rezerva', '🛟', 'Rezerva', `${e} ${t} Nečekaný výdaj přijde vždycky – a bez hotovosti skončí na půjčce za 20 %. Měj stranou zhruba 3–6 měsíců výdajů a investuj až to, co je navíc.`, 'red');
+  } else {
+    banner(`${e} ${t} −${money(cost, true)}<small>Rezerva to pokryla. Klid. 😎</small>`, 'green', 3000);
+    lesson('rezerva', '🛟', 'Rezerva', `${e} ${t} Hotovost v peněžence to pokryla bez dluhu. Přesně na tohle je rezerva: zhruba 3–6 měsíců výdajů stranou, zbytek investovat.`, 'green');
+  }
 }
 function crash() {
-  const drop = .3 + R() * .15;
+  const drop = .3 + R() * .15, lost = S.jar * drop;
   S.jar *= 1 - drop;
   if (S.ghost > 0) S.ghost *= 1 - drop;
   S.shake = 22; S.flash = .8; S.flashCol = '#ff1f3d'; sfx.boom();
-  banner(`📉 KRACH NA BURZE! ETF −${Math.round(drop * 100)} %<small>Televize křičí, že bude hůř…</small>`, 'red', 3800);
   if (S.jar > coinVal() * 3) {
-    S.crash = { timer: 4 };
-    $('#panic').style.display = 'block';
-  } else S.dip = 2;
+    S.crash = true;
+    showModal(`<div class="big">📉</div><h2>Krach na burze!</h2><p>Tvoje ETF spadlo o <b>${Math.round(drop * 100)} %</b> (−${money(lost, true)}). Televize křičí, že bude ještě hůř. Co uděláš?</p>`,
+      [{ label: '😱 Prodat všechno', cls: 'red', fn: () => resolveCrash(true) }, { label: '🧘 Držet a investovat dál', cls: 'green', fn: () => resolveCrash(false) }], 'red');
+  } else { S.dip = 2; banner(`📉 KRACH NA BURZE! Akcie −${Math.round(drop * 100)} %<small>Teď jsou ve slevě – investuj!</small>`, 'red', 3800); }
 }
 function resolveCrash(sold) {
   if (!S || !S.crash) return;
-  S.crash = null; $('#panic').style.display = 'none';
+  S.crash = null;
   if (sold) {
     S.st.shadows.push({ age: Math.floor(S.age), held: S.jar });
     S.wallet += S.jar; S.jar = 0; S.fear = YEAR * 2; S.dip = 2;
     sfx.bad();
-    banner('😱 Všechno prodáno. Ze strachu se ti teď chvíli nebude chtít investovat…<small>Ztráta, která byla jen na papíře, je teď skutečná.</small>', 'red', 3800);
+    banner('😱 Všechno prodáno. Ze strachu se ti teď chvíli nebude chtít investovat…', 'red', 3800);
+    lesson('panic', '😱', 'Panický prodej', 'Prodejem se ztráta „na papíře“ změnila ve skutečnou. A nejlepší roky trhu často přijdou hned po těch nejhorších – teď proběhnou bez tebe.', 'red');
   } else {
     S.dip = 2; sfx.win();
     banner('🧘 Ustáno! Akcie jsou teď ve slevě 🏷️<small>Co pošleš do ETF teď, nakoupíš levně.</small>', 'green', 3600);
+    lesson('hold', '🧘', 'Drž kurz', 'Krachy přicházejí zhruba jednou za 7–10 let a trhy se z nich historicky vždy zvedly. Kdo nepanikaří a nakupuje dál, kupuje ve slevě.', 'green');
   }
 }
 
@@ -313,7 +345,7 @@ function resolveCrash(sold) {
 const keys = {};
 let last = performance.now(), hudT = 0;
 function update(dt) {
-  const g = dt * (S.crash ? .3 : 1);
+  const g = dt;
   S.t += g;
   while (S.yearIdx < Math.floor(S.t / YEAR)) { S.yearIdx++; yearEnd(); }
   S.age = START + S.t / YEAR;
@@ -327,7 +359,6 @@ function update(dt) {
   const inf = S.wallet * (1 - Math.pow(.97, k)); S.wallet -= inf; S.st.inflation += inf;
   const di = S.debt * (Math.pow(1.2, k) - 1); S.debt += di; S.st.interest += di;
   if (S.fear > 0) S.fear -= g;
-  if (S.crash) { S.crash.timer -= dt; $('#panicT').textContent = Math.max(1, Math.ceil(S.crash.timer)); if (S.crash.timer <= 0) resolveCrash(false); }
 
   // prasátko
   const p = S.pig, slowDebt = 1 - clamp(S.debt / (coinVal() * 40), 0, .45);
@@ -341,13 +372,13 @@ function update(dt) {
 
   // nové předměty
   for (const t in TYPES) {
-    const rate = t === 'card' && S.age > 56 ? .05 : TYPES[t].rate;
+    const rate = t === 'card' && S.age > 56 ? .03 : TYPES[t].rate;
     if (R() < rate * g) spawn(t);
   }
   const py = pigY();
   for (const it of S.items) {
     it.y += it.vy * g; it.ph += g * 3;
-    if (it.type === 'rocket' || it.type === 'sale') it.x = clamp(it.x + Math.sin(it.ph) * 70 * g, 20, W - 20);
+    if (it.type === 'rocket' || it.type === 'sale') it.x = clamp(it.x + Math.sin(it.ph) * 40 * g, 20, W - 20);
     if (Math.abs(it.x - p.x) < 34 + it.size * .3 && Math.abs(it.y - py) < 30) { it.dead = true; catchItem(it); }
     else if (it.y > H + 30) { it.dead = true; if (it.type === 'coin') S.streak = 0; }
   }
@@ -384,7 +415,10 @@ function land(f) {
   if (f.to === 'debt') {
     const pay = Math.min(f.v, S.debt); S.debt -= pay;
     if (f.v - pay > 0) S.wallet += f.v - pay;
-    if (S.debt < 1 && pay > 0) { S.debt = 0; banner('⛓️ Dluh splacen! 🎉<small>Splatit dluh za 20 % = jistý výnos 20 %.</small>', 'green'); sfx.win(); }
+    if (S.debt < 1 && pay > 0) {
+      S.debt = 0; banner('⛓️ Dluh splacen! 🎉', 'green'); sfx.win();
+      lesson('debtfree', '🎉', 'Bez dluhů', 'Splatit dluh za 20 % je jako investice s jistým výnosem 20 %. Teď můžou peníze zase pracovat pro tebe.', 'green');
+    }
   } else {
     S.jar += f.v; S.st.invested += f.v; S.yearAdd += f.v;
     if (S.dip > 0) S.st.dipBuys += f.v;
@@ -503,7 +537,7 @@ function hud() {
 
 function loop(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
-  if (S && S.mode === 'play' && !S.paused) {
+  if (S && S.mode === 'play' && !S.paused && !S.modal) {
     update(dt);
     hudT -= dt; if (hudT <= 0 && S.mode === 'play') { hudT = .08; hud(); }
   }
@@ -513,8 +547,8 @@ function loop(now) {
 
 /* ---------- konec ---------- */
 function finish() {
-  S.mode = 'end'; S.investHeld = false; S.crash = null;
-  $('#invest').style.display = 'none'; $('#panic').style.display = 'none'; $('#hud').hidden = true; $('#hint').hidden = true;
+  S.mode = 'end'; S.investHeld = false; S.crash = null; S.modal = false; S.queue = [];
+  $('#invest').style.display = 'none'; $('#lessonOv').hidden = true; $('#hud').hidden = true; $('#hint').hidden = true;
   $('#banner').innerHTML = '';
   for (const f of S.flying) land(f);
   const nw = S.wallet + S.jar - S.debt, ratio = nw / Math.max(1, S.ghost);
@@ -544,6 +578,7 @@ function finish() {
     </div>
     <p class="muted">*Lucie chytila úplně stejné mince jako ty, ale každou hned poslala do ETF, pastem se vyhnula a nikdy neprodávala.</p>
     <ul class="facts">${facts.map(f => `<li>${f}</li>`).join('')}</ul>
+    ${S.learned.length ? `<h2 style="margin:14px 0 4px">📜 Moudra (${S.learned.length})</h2><ul class="facts">${S.learned.map(l => `<li><b>${l.em} ${l.title}</b><br>${l.text}</li>`).join('')}</ul>` : ''}
     <button class="go" id="bAgain">ZNOVU ▶</button>
     <p class="muted">${score > best ? '🎉 Nový rekord!' : best ? `Rekord: ${money(best * 1000, true)}` : ''}</p>
     <p class="muted">Zjednodušená hra, ne investiční doporučení.</p>`;
@@ -562,14 +597,13 @@ function start() {
   banner('Chytej 🪙 a drž 📈 INVESTUJ!<small>Je ti 25. Čas běží…</small>', 'gold', 2600);
 }
 function setPause(p) {
-  if (!S || S.mode !== 'play') return;
+  if (!S || S.mode !== 'play' || (p && S.modal)) return;
   S.paused = p; S.investHeld = false; $('#pauseOv').hidden = !p;
 }
 $('#bStart').onclick = start;
 $('#bResume').onclick = () => setPause(false);
 $('#bPause').onclick = () => setPause(true);
 $('#bMute').onclick = () => { muted = !muted; $('#bMute').textContent = muted ? '🔇' : '🔊'; };
-$('#panic').onclick = () => resolveCrash(true);
 const inv = $('#invest');
 inv.addEventListener('pointerdown', e => { e.preventDefault(); inv.setPointerCapture(e.pointerId); if (S) S.investHeld = true; });
 for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) inv.addEventListener(ev, () => { if (S) S.investHeld = false; });
@@ -581,8 +615,11 @@ addEventListener('keydown', e => {
     if ((e.code === 'Space' || e.code === 'Enter') && (!$('#menu').hidden || !$('#end').hidden)) { e.preventDefault(); start(); }
     return;
   }
+  if (S.modal) {
+    if ((e.code === 'Space' || e.code === 'Enter') && S.modalBtns.length === 1 && !e.repeat) { e.preventDefault(); $('#lessonCard [data-i]').click(); }
+    return;
+  }
   if (e.code === 'Space') { e.preventDefault(); if (!S.paused) S.investHeld = true; }
-  if (e.code === 'KeyP' && S.crash) resolveCrash(true);
   if (e.code === 'Escape') setPause(!S.paused);
 });
 addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'Space' && S) S.investHeld = false; });

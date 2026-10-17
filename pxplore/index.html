@@ -279,9 +279,9 @@
     #hud-menu-actions button:active { transform: scale(.97); }
     .hud-menu-info { padding: 2px 4px; font-size: 13px; color: #caa84a; font-weight: 600; text-align: center; }
     /* kronika navštívených míst (přehled: seznam + mapa) */
-    #log-overlay, #board-overlay, #badges-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
-    #log-overlay.hidden, #board-overlay.hidden, #badges-overlay.hidden { display: none; }
-    #log-card, #board-card, #badges-card { width: min(94vw,520px); max-height: 86vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); overflow: hidden; }
+    #log-overlay, #board-overlay, #badges-overlay, #diag-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(8,6,5,.78); display: flex; align-items: center; justify-content: center; }
+    #log-overlay.hidden, #board-overlay.hidden, #badges-overlay.hidden, #diag-overlay.hidden { display: none; }
+    #log-card, #board-card, #badges-card, #diag-card { width: min(94vw,520px); max-height: 86vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#231d17,#191410); border: 1px solid #6b5836; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.7); overflow: hidden; }
     .log-head { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid #4a3f29; }
     .log-title { font-family: Georgia, serif; font-size: 19px; color: #e8d8b0; font-weight: 700; }
     .log-x { margin-left: auto; width: 36px; height: 36px; border: 1px solid #6b5836; border-radius: 8px; background: #2a241d; color: #d9c7a3; font-size: 16px; cursor: pointer; }
@@ -291,6 +291,10 @@
     .log-tabs button { flex: 1; padding: 9px; margin-bottom: -1px; border: 1px solid #6b5836; border-radius: 8px 8px 0 0; background: #1c1712; color: #a08c6a; font-weight: 700; cursor: pointer; }
     .log-tabs button.active { background: #2a231b; color: #e8d8b0; border-bottom-color: transparent; }
     #log-list, #board-list, #badges-list { padding: 4px 12px 14px; overflow: auto; }
+    /* deník načítání míst – prostý text, ať jde celý zkopírovat a poslat */
+    #diag-text { margin: 0; padding: 12px 16px; overflow: auto; font: 12px/1.55 ui-monospace, Menlo, Consolas, monospace; color: #d9c7a3; white-space: pre-wrap; word-break: break-word; -webkit-user-select: text; user-select: text; }
+    .diag-actions { padding: 10px 16px 16px; border-top: 1px solid #4a3f29; }
+    .diag-actions button { width: 100%; padding: 12px; border: 1px solid #6b5836; border-radius: 8px; background: #2a231b; color: #e8d8b0; font-size: 15px; font-weight: 700; cursor: pointer; }
     /* přehled odznaků: druh místa + dosažená medaile a postup k další */
     .badge-row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid #332b1d; }
     .badge-tier { font-size: 24px; width: 36px; text-align: center; flex-shrink: 0; }
@@ -464,6 +468,7 @@
           <button id="hud-menu-backup">💾 Zálohovat postup do JSON</button>
           <button id="hud-menu-rename">✏️ Změnit jméno</button>
           <button id="hud-menu-reset">♻️ Resetovat postup</button>
+          <button id="hud-menu-diag">🔧 Deník načítání míst</button>
         </div>
       </div>
     </div>
@@ -543,6 +548,17 @@
           <button id="board-close" class="log-x">✕</button>
         </div>
         <div id="board-list"></div>
+      </div>
+    </div>
+
+    <div id="diag-overlay" class="hidden">
+      <div id="diag-card">
+        <div class="log-head">
+          <div class="log-title">🔧 Deník načítání míst</div>
+          <button id="diag-close" class="log-x">✕</button>
+        </div>
+        <pre id="diag-text"></pre>
+        <div class="diag-actions"><button id="diag-copy">📋 Zkopírovat</button></div>
       </div>
     </div>
 
@@ -1089,12 +1105,15 @@
       let lastErr = null;
       for (let i = 0; i < servers.length; i++) {
         if (i > 0) setChipNote('🛤️ Tahle cesta k mapám je zavalená, zkouším jinou…');
+        const t0 = Date.now();
         try {
           const res = await fetchPoiFrom(servers[i], q);
           serverOk(servers[i]);
+          poiLogAdd({ srv: servers[i], ok: true, ms: Date.now() - t0, n: res.list.length });
           return res;
         } catch (e) {
           console.warn('Overpass ' + servers[i] + ' selhal:', e);
+          poiLogAdd({ srv: servers[i], kind: e.kind, ms: Date.now() - t0, msg: e.message });
           lastErr = e;
           if (e.kind === 'offline') break;   // bez sítě nemá smysl zkoušet další server
           coolDown(servers[i], e.kind);
@@ -1225,6 +1244,71 @@
       return null;
     }
 
+    // --- deník načítání míst (menu → 🔧) ---
+    // Posledních pár pokusů i s výsledkem, ať jde z telefonu zjistit, co se
+    // při potížích skutečně děje (který server, jak dlouho, jaká chyba).
+    const PXPLORE_VERSION = '2026-10-17b';
+    const POI_LOG_KEY = 'pxplore.poiLog';
+    const POI_LOG_MAX = 40;
+    let poiLog = [];
+    try { const raw = JSON.parse(localStorage.getItem(POI_LOG_KEY) || '[]'); if (Array.isArray(raw)) poiLog = raw; } catch (e) {}
+    function poiLogAdd(entry) {
+      entry.t = Date.now();
+      if (entry.srv) entry.srv = entry.srv.split('/')[2];   // stačí host
+      poiLog.push(entry);
+      if (poiLog.length > POI_LOG_MAX) poiLog = poiLog.slice(-POI_LOG_MAX);
+      try { localStorage.setItem(POI_LOG_KEY, JSON.stringify(poiLog)); } catch (e) {}
+    }
+    const POI_KIND_TEXT = {
+      busy: '429 – server žádá o pauzu', blocked: 'odmítnuto (403/406)', server: 'chyba serveru',
+      timeout: 'neodpověděl včas', network: 'nespojil se', offline: 'zařízení bez sítě',
+    };
+    function poiLogLine(e) {
+      const time = new Date(e.t).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      if (e.note) return time + ' · ℹ️ ' + e.note;
+      const secs = ((e.ms || 0) / 1000).toFixed(1).replace('.', ',') + ' s';
+      return time + ' · ' + e.srv + ' · ' + (e.ok
+        ? '✅ ' + e.n + ' ' + mistaWord(e.n)
+        : '❌ ' + (POI_KIND_TEXT[e.kind] || e.kind) + (e.msg && e.kind !== 'busy' ? ' (' + e.msg + ')' : '')) + ' · ' + secs;
+    }
+    function poiDiagText() {
+      const lines = ['Pxplore ' + PXPLORE_VERSION + ' · ' + navigator.userAgent];
+      for (const u of OVERPASS_ENDPOINTS) {
+        const c = overpass.cool[u];
+        const wait = c ? Math.ceil((c.until - Date.now()) / 1000) : 0;
+        lines.push(u.split('/')[2] + ': ' + (wait > 0 ? 'odpočívá ještě ' + wait + ' s (' + c.kind + ')' : 'připraven')
+          + (overpass.best === u ? ' · naposled úspěšný' : ''));
+      }
+      lines.push('Místa na mapě: ' + pois.length + ' · v paměti: ' + poiCache.places.size, '');
+      for (let i = poiLog.length - 1; i >= 0; i--) lines.push(poiLogLine(poiLog[i]));
+      if (!poiLog.length) lines.push('Zatím žádný pokus.');
+      return lines.join('\n');
+    }
+    const diagOverlay = document.getElementById('diag-overlay');
+    const diagTextEl = document.getElementById('diag-text');
+    function openDiag() {
+      diagTextEl.textContent = poiDiagText();
+      diagOverlay.classList.remove('hidden');
+    }
+    function closeDiag() { diagOverlay.classList.add('hidden'); }
+    document.getElementById('diag-close').addEventListener('click', closeDiag);
+    diagOverlay.addEventListener('click', e => { if (e.target === diagOverlay) closeDiag(); });
+    document.getElementById('diag-copy').addEventListener('click', () => {
+      const text = poiDiagText();
+      const done = () => showToast('📋 Deník zkopírován – stačí ho vložit do zprávy', 2600);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, () => selectDiag());
+      } else selectDiag();
+    });
+    // záloha, když schránka nejde: označ text, ať ho jde zkopírovat ručně
+    function selectDiag() {
+      const r = document.createRange();
+      r.selectNodeContents(diagTextEl);
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(r);
+      showToast('Označeno – zkopíruj podržením prstu', 2600);
+    }
+
     // první načtení po zjištění polohy: z paměti hned, ze serveru jen když je třeba
     function startPois(center) {
       restoreCachedPois(center);
@@ -1232,6 +1316,7 @@
       if (area) {
         poiAnchor = { lat: area.lat, lng: area.lng };
         poisLoadedAt = area.at;
+        poiLogAdd({ note: 'start z paměti (' + pois.length + ' míst, staré ' + Math.round((Date.now() - area.at) / 60000) + ' min)' });
         if (pois.length) showToast('🗺️ Místa v okolí jsou připravená', 2200);
         return;
       }
@@ -1246,6 +1331,7 @@
       if (!servers.length) {
         // všechny servery si teď vyžádaly pauzu – nebombardovat, počkat na ně
         scheduleRetry(center, 'busy');
+        poiLogAdd({ note: 'všechny servery odpočívají – čekám ' + Math.ceil((retryAt - Date.now()) / 1000) + ' s' });
         if (manual) showToast('🚦 Mapový server žádá o chvilku oddechu – zkusím to, jakmile to půjde', 3200);
         return;
       }
@@ -2539,6 +2625,7 @@
     document.getElementById('hud-menu-backup').addEventListener('click', () => { closeHudMenu(); exportBackup(); });
     document.getElementById('hud-menu-rename').addEventListener('click', () => { closeHudMenu(); showIntro(); });
     document.getElementById('hud-menu-reset').addEventListener('click', () => { closeHudMenu(); resetProgress(); });
+    document.getElementById('hud-menu-diag').addEventListener('click', () => { closeHudMenu(); openDiag(); });
     hudMenuOverlay.addEventListener('click', e => { if (e.target === hudMenuOverlay) closeHudMenu(); });
 
     // --- geolokace ---

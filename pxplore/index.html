@@ -209,6 +209,38 @@
       transition: opacity .25s, transform .25s;
     }
     #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    /* štítek stavu načítání míst vlevo dole – hlášky, tipy, odpočet dalšího pokusu */
+    #poi-chip {
+      position: absolute;
+      left: 12px; bottom: 28px;
+      max-width: calc(100% - 92px);
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px;
+      background: rgba(28,23,18,.94);
+      border: 1px solid #6b5836;
+      border-radius: 10px;
+      color: #e8d8b0;
+      font-size: 13px;
+      line-height: 1.4;
+      box-shadow: 0 6px 18px rgba(0,0,0,.45);
+      z-index: 2;
+      animation: chipin .3s ease-out;
+    }
+    #poi-chip.hidden { display: none; }
+    #poi-chip button {
+      flex-shrink: 0;
+      padding: 7px 11px;
+      border: 1px solid #6b5836;
+      border-radius: 8px;
+      background: linear-gradient(180deg,#3a5a2e,#26401d);
+      color: #f2e6c8;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #poi-chip button:active { transform: scale(.95); }
+    @keyframes chipin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
     /* vyskakující text po prozkoumání místa */
     .xp-float {
       position: absolute;
@@ -388,6 +420,11 @@
     <div id="buttons">
       <button id="rescan" title="Najít místa v tomto výřezu"><span class="ico">🔄</span></button>
       <button id="recenter" title="Vycentrovat na mě">🎯</button>
+    </div>
+
+    <div id="poi-chip" class="hidden">
+      <span id="poi-chip-text"></span>
+      <button id="poi-chip-btn" style="display:none"></button>
     </div>
 
     <div id="status">
@@ -851,141 +888,224 @@
       return null;
     }
 
-    // Overpass servery: první je hlavní, druhý zrcadlo. 1. pokus jede na hlavní
-    // a zrcadlo se přihodí jako pojistka, jakmile hlavní váhá; 2. pokus pouští
-    // oba souběžně a bere rychlejší úspěšnou odpověď (hlavní se po chvilkovém
-    // výpadku často vzpamatuje, zrcadlo ho jistí); případné další opakování
-    // obstará tiché automatické přenačítání (maybeReloadPois)
+    // Overpass servery. Veřejné instance bývají přetížené a hlavní server
+    // (overpass-api.de) podle pravidel provozu nesnáší souběžné dotazy ani
+    // rychlé opakování: kdo po odmítnutí (HTTP 429) zkouší dál bez pauzy,
+    // dostává odmítnutí čím dál déle – a hra pak „funguje až na x-tý pokus".
+    // Proto se tu:
+    //  - posílá vždy jen jeden dotaz najednou a servery se zkoušejí postupně,
+    //  - celé načtení vejde do jednoho dotazu (všechny okruhy naráz, viz poiQuery),
+    //  - server, který odmítl nebo neodpověděl, nechá chvíli odpočinout (cooldown,
+    //    pamatuje se i přes restart hry, ať ho nové spuštění hned nebombarduje),
+    //  - automaticky opakuje s prodlužujícími se rozestupy (s odpočtem pro hráče),
+    //  - naposled úspěšný server zkouší jako první.
     const OVERPASS_ENDPOINTS = [
       'https://overpass-api.de/api/interpreter',
+      'https://overpass.private.coffee/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
     ];
+    const OVERPASS_KEY = 'pxplore.overpass';
+    // jak dlouho server po dané chybě odpočívá (ms)
+    const SERVER_COOLDOWN_MS = {
+      busy: 60000,       // 429 – server sám žádá o pauzu (min. 30 s podle pravidel provozu)
+      blocked: 600000,   // 403/406 – odmítnutí na delší dobu
+      server: 30000,     // 5xx nebo useknutá odpověď (remark)
+      timeout: 45000,    // neodpověděl včas
+      network: 30000,    // spojení se nepodařilo navázat
+    };
+    let overpass = loadOverpassState();   // { best: url, cool: { url: { until, kind } } }
+    function loadOverpassState() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(OVERPASS_KEY) || 'null');
+        if (raw && typeof raw === 'object') return { best: raw.best || '', cool: raw.cool || {} };
+      } catch (e) {}
+      return { best: '', cool: {} };
+    }
+    function saveOverpassState() {
+      try { localStorage.setItem(OVERPASS_KEY, JSON.stringify(overpass)); } catch (e) {}
+    }
+    function coolDown(url, kind) {
+      overpass.cool[url] = { until: Date.now() + (SERVER_COOLDOWN_MS[kind] || 30000), kind };
+      saveOverpassState();
+    }
+    function serverOk(url) {
+      overpass.best = url;
+      delete overpass.cool[url];
+      saveOverpassState();
+    }
+    // servery, které se teď smí zkusit – naposled úspěšný první. Ruční pokus
+    // (🔄 / „Zkusit hned") přeskočí odpočinek po chybách, které mohly být
+    // náhodné, ale ne po výslovném „zpomal" (429) nebo zablokování.
+    function serversToTry(manual) {
+      const now = Date.now();
+      return OVERPASS_ENDPOINTS
+        .filter(u => {
+          const c = overpass.cool[u];
+          if (!c || c.until <= now) return true;
+          return manual && c.kind !== 'busy' && c.kind !== 'blocked';
+        })
+        .sort((a, b) => (b === overpass.best) - (a === overpass.best));
+    }
+    // za jak dlouho se uvolní první server (0 = některý je volný hned)
+    function nextServerFreeMs() {
+      const now = Date.now();
+      let best = Infinity;
+      for (const u of OVERPASS_ENDPOINTS) {
+        const c = overpass.cool[u];
+        best = Math.min(best, c ? Math.max(0, c.until - now) : 0);
+      }
+      return best;
+    }
+    function anyServerBusy() {
+      const now = Date.now();
+      return OVERPASS_ENDPOINTS.some(u => {
+        const c = overpass.cool[u];
+        return c && c.until > now && (c.kind === 'busy' || c.kind === 'blocked');
+      });
+    }
+
     let loadingPois = false;
     // automatické přenačtení míst: když se hráč vzdálí od kotvy posledního
     // načtení, nebo když jsou data po návratu z pozadí stará
     const POI_RELOAD_DIST_M = 500;   // menší než poloměr načítání (800 m) → oblasti se překrývají
     const POI_STALE_MS = 900000;     // stáří dat, po kterém se po návratu z pozadí načítá znovu (15 min)
-    const POI_RETRY_MS = 30000;      // minimální rozestup automatických pokusů (šetrnost k Overpass)
+    const POI_RETRY_MS = 30000;      // minimální rozestup automatických přenačtení (šetrnost k Overpass)
     const POI_PRUNE_M = 2000;        // stará místa dál než tohle od středu načtení se zahodí
+    // rozestupy automatických pokusů po nezdaru: 15 s, 30 s, 1 min, pak po 2 min
+    const POI_BACKOFF_MS = [15000, 30000, 60000, 120000];
     let poiAnchor = null;            // poloha hráče při posledním úspěšném načtení
     let poisLoadedAt = 0;
     let lastPoiAttempt = 0;
+    let failStreak = 0;              // kolik načtení po sobě nevyšlo
+    let retryTimer = null, retryAt = 0, retryCenter = null, retryFollows = false, retryReason = '';
+    let reloadCheckTimer = null;
     function maybeReloadPois() {
-      if (!player || loadingPois) return;
-      if (Date.now() - lastPoiAttempt < POI_RETRY_MS) return;
-      // !poiAnchor = načtení zatím nikdy neuspělo → průběžně to zkoušej znovu
-      if (!poiAnchor || metersBetween(player, poiAnchor) > POI_RELOAD_DIST_M) loadPois(player);
+      if (!player || loadingPois || retryTimer) return;   // po nezdaru jede vlastní plán pokusů
+      if (poiAnchor && metersBetween(player, poiAnchor) <= POI_RELOAD_DIST_M) return;
+      // příliš brzy po posledním pokusu → podívej se znovu, až rozestup uplyne
+      // (nespoléhá se na další GPS aktualizaci, ta u stojícího hráče nemusí přijít)
+      const wait = POI_RETRY_MS - (Date.now() - lastPoiAttempt);
+      if (wait > 0) {
+        if (!reloadCheckTimer) reloadCheckTimer = setTimeout(() => { reloadCheckTimer = null; maybeReloadPois(); }, wait);
+        return;
+      }
+      loadPois(player);
     }
-    // jeden dotaz na Overpass s daným poloměrem (fallback přes zrcadla)
-    // výsledek = { list: použitelná místa, raw: kolik elementů poslal server }; null = nezdar
-    const POI_LIMIT = 120;               // limit míst na jeden dotaz (out center …)
-    const POI_RADII = [800, 400, 200];   // hustá oblast ořízne výsledek na limit → doplň menším poloměrem
-    const POI_FETCH_TIMEOUT_MS = 8000;   // na váznoucí server se nečeká – po 8 s se pokus ruší
-    const POI_HEDGE_MS = 2500;           // když hlavní server do té doby neodpoví, přidá se souběžně zrcadlo
-    // jeden dotaz na konkrétní server; při chybě/timeoutu vyhazuje výjimku
-    async function fetchPoiFrom(url, q, ctrl) {
-      ctrl = ctrl || new AbortController();
-      const timeoutId = setTimeout(() => ctrl.abort(), POI_FETCH_TIMEOUT_MS);
+
+    // výsledek = { list: použitelná místa }; chyba nese kind (busy/blocked/server/timeout/network/offline)
+    const POI_LIMIT = 120;               // limit míst na jeden okruh (out center …)
+    const POI_RADII = [800, 400, 200];   // hustá oblast ořízne velký okruh na limit → menší okruhy zaručí blízká místa
+    const POI_SERVER_TIMEOUT_S = 20;     // kolik času dostane dotaz na serveru
+    const POI_FETCH_TIMEOUT_MS = 25000;  // a kolik mu dáme my (o kousek víc, ať server stihne odpovědět)
+    function poiError(kind, msg) {
+      const e = new Error(msg || kind);
+      e.kind = kind;
+      return e;
+    }
+    // jeden dotaz na konkrétní server; při chybě/timeoutu vyhazuje výjimku s kind
+    async function fetchPoiFrom(url, q) {
+      if (navigator.onLine === false) throw poiError('offline');
+      const ctrl = new AbortController();
+      let timedOut = false;
+      const timeoutId = setTimeout(() => { timedOut = true; ctrl.abort(); }, POI_FETCH_TIMEOUT_MS);
+      let json;
       try {
         const res = await fetch(url, {
           method: 'POST',
           body: 'data=' + encodeURIComponent(q),
           signal: ctrl.signal,
         });
-        if (!res.ok) throw new Error('Overpass ' + res.status);
-        const json = await res.json();
-        // Overpass při vypršení serverového timeoutu nebo došlé paměti nevrací
-        // chybový kód, ale HTTP 200 s polem remark a jen tím, co stihl spočítat.
-        // Bez téhle kontroly by se useknutá (klidně prázdná) odpověď uložila jako
-        // platná, nastavila kotvu a dalších 30 s by se nenačítalo nic – takhle se
-        // rovnou zkusí druhý server.
-        if (json.remark) throw new Error('Overpass remark: ' + json.remark);
-        const elements = json.elements || [];
-        const seen = new Set();
-        const list = [];
-        for (const el of elements) {
-          const lat = el.lat != null ? el.lat : (el.center && el.center.lat);
-          const lng = el.lon != null ? el.lon : (el.center && el.center.lon);
-          if (lat == null || lng == null) continue;
-          const cls = classify(el.tags || {});
-          if (!cls) continue;
-          const key = lat.toFixed(5) + ',' + lng.toFixed(5);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          list.push({
-            lat, lng, ...cls,
-            name: (el.tags && el.tags.name) ? el.tags.name : cls.type,
-            city: (el.tags && el.tags['addr:city']) || '',
-          });
-        }
-        // raw = počet elementů před filtrací (classify) – jen ten se dá porovnat
-        // s POI_LIMIT, protože limit ořezává surovou odpověď serveru
-        return { list, raw: elements.length };   // data dorazila (klidně i prázdná oblast)
+        if (res.status === 429) throw poiError('busy', 'Overpass 429');
+        if (res.status === 403 || res.status === 406) throw poiError('blocked', 'Overpass ' + res.status);
+        if (!res.ok) throw poiError('server', 'Overpass ' + res.status);
+        json = await res.json();
+      } catch (e) {
+        if (e.kind) throw e;
+        if (timedOut) throw poiError('timeout', 'Overpass neodpověděl do ' + POI_FETCH_TIMEOUT_MS / 1000 + ' s');
+        if (navigator.onLine === false) throw poiError('offline');
+        throw poiError(e instanceof SyntaxError ? 'server' : 'network', String(e));
       } finally {
         clearTimeout(timeoutId);
       }
+      // Overpass při vypršení serverového timeoutu nebo došlé paměti nevrací
+      // chybový kód, ale HTTP 200 s polem remark a jen tím, co stihl spočítat.
+      // Bez téhle kontroly by se useknutá (klidně prázdná) odpověď uložila jako
+      // platná – takhle se zkusí další server.
+      if (json.remark) throw poiError('server', 'Overpass remark: ' + json.remark);
+      const elements = json.elements || [];
+      const seen = new Set();
+      const list = [];
+      for (const el of elements) {
+        const lat = el.lat != null ? el.lat : (el.center && el.center.lat);
+        const lng = el.lon != null ? el.lon : (el.center && el.center.lon);
+        if (lat == null || lng == null) continue;
+        const cls = classify(el.tags || {});
+        if (!cls) continue;
+        // okruhy se překrývají, totéž místo tak může přijít víckrát
+        const key = lat.toFixed(5) + ',' + lng.toFixed(5);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        list.push({
+          lat, lng, ...cls,
+          name: (el.tags && el.tags.name) ? el.tags.name : cls.type,
+          city: (el.tags && el.tags['addr:city']) || '',
+        });
+      }
+      return { list };   // data dorazila (klidně i prázdná oblast)
     }
-    // 1. pokus „s pojistkou": dotaz jde na hlavní server a teprve když do
-    // POI_HEDGE_MS neodpoví (nebo mezitím selže), rozjede se souběžně i zrcadlo;
-    // bere se první úspěšná odpověď. Když je hlavní server v pořádku, na zrcadlo
-    // se nepošle nic – pomalý hlavní server ale nestojí celý 8s timeout.
-    async function fetchPoiHedged(q) {
-      const ctrls = OVERPASS_ENDPOINTS.map(() => new AbortController());
-      let hedged = false, hedgeTimer = null, startHedge = null;
-      const mirror = new Promise((resolve, reject) => {
-        startHedge = () => {
-          if (hedged) return;
-          hedged = true;
-          clearTimeout(hedgeTimer);
-          // bez hlášky – hráč jen čeká na místa, o který server se to pere ho nezajímá
-          fetchPoiFrom(OVERPASS_ENDPOINTS[1], q, ctrls[1]).then(resolve, reject);
-        };
-        hedgeTimer = setTimeout(startHedge, POI_HEDGE_MS);
-      });
-      const main = fetchPoiFrom(OVERPASS_ENDPOINTS[0], q, ctrls[0]).catch(e => {
-        startHedge();   // hlavní selhal dřív, než uplynula prodleva – nečekej na ni
-        throw e;
-      });
-      try {
-        return await Promise.any([main, mirror]);
-      } finally {
-        clearTimeout(hedgeTimer);
-        ctrls.forEach(c => c.abort());   // pomalejší souběžný dotaz zruš, ať server neřeší zbytečnou práci
+    // Celé načtení jedním dotazem: server spočítá místa ve velkém okruhu a
+    // z nich vyfiltruje menší okruhy. Každý okruh má vlastní limit, takže
+    // i v hustém centru, kde velký okruh vrátí jen libovolných 120 míst
+    // (řadit podle vzdálenosti Overpass neumí), dorazí všechna místa v dosahu.
+    // Dřív se na to posílaly až tři dotazy za sebou – a právě rychlé série
+    // dotazů server trestá odmítáním.
+    // Regulární výrazy jsou ukotvené (^…$) a tourism omezený na druhy, které
+    // hra umí – hotely, infotabule ap. by jinak zbytečně ujídaly z limitu.
+    const POI_TOURISM = '^(museum|gallery|artwork|viewpoint|attraction)$';
+    const POI_AMENITY = '^(cafe|restaurant|fast_food|bar|pub|library|fountain|pharmacy|bank|atm|place_of_worship|school|university|college|cinema|theatre)$';
+    const POI_LEISURE = '^(park|playground|garden)$';
+    function poiQuery(c) {
+      const around = r => `(around:${Math.round(r)},${c.lat},${c.lng})`;
+      const radii = [...POI_RADII].sort((a, b) => a - b);   // od nejbližšího
+      const big = around(radii[radii.length - 1]);
+      let q = `[out:json][timeout:${POI_SERVER_TIMEOUT_S}];(`
+        + `node["tourism"~"${POI_TOURISM}"]${big};`
+        + `node["historic"]${big};`
+        + `node["amenity"~"${POI_AMENITY}"]${big};`
+        + `node["leisure"~"${POI_LEISURE}"]${big};`
+        + `node["shop"]${big};`
+        + `way["leisure"~"${POI_LEISURE}"]${big};`
+        + `way["tourism"~"${POI_TOURISM}"]${big};`
+        + `way["historic"]${big};`
+        + `)->.mista;`;
+      for (let i = 0; i < radii.length - 1; i++) {
+        q += `(node.mista${around(radii[i])};way.mista${around(radii[i])};);out center ${POI_LIMIT};`;
       }
+      return q + `.mista out center ${POI_LIMIT};`;
     }
-    async function fetchPoiList(center, radius) {
-      const R = Math.round(radius);
-      const q = `[out:json][timeout:8];(`
-        + `node["tourism"](around:${R},${center.lat},${center.lng});`
-        + `node["historic"](around:${R},${center.lat},${center.lng});`
-        + `node["amenity"~"cafe|restaurant|fast_food|bar|pub|library|fountain|pharmacy|bank|atm|place_of_worship|school|university|college|cinema|theatre"](around:${R},${center.lat},${center.lng});`
-        + `node["leisure"~"park|playground|garden"](around:${R},${center.lat},${center.lng});`
-        + `node["shop"](around:${R},${center.lat},${center.lng});`
-        + `way["leisure"~"park|playground|garden"](around:${R},${center.lat},${center.lng});`
-        + `way["tourism"](around:${R},${center.lat},${center.lng});`
-        + `way["historic"](around:${R},${center.lat},${center.lng});`
-        + `);out center ${POI_LIMIT};`;
-      // 1. pokus: hlavní server, se zrcadlem jako pojistkou pro případ váhání
-      try {
-        return await fetchPoiHedged(q);
-      } catch (e) {
-        console.warn('Overpass 1. pokus selhal:', e);
+    // servery se zkoušejí postupně (nikdy souběžně); který selže, odpočívá
+    async function fetchPoiList(center, servers) {
+      const q = poiQuery(center);
+      let lastErr = null;
+      for (let i = 0; i < servers.length; i++) {
+        if (i > 0) setChipNote('🛤️ Tahle cesta k mapám je zavalená, zkouším jinou…');
+        try {
+          const res = await fetchPoiFrom(servers[i], q);
+          serverOk(servers[i]);
+          return res;
+        } catch (e) {
+          console.warn('Overpass ' + servers[i] + ' selhal:', e);
+          lastErr = e;
+          if (e.kind === 'offline') break;   // bez sítě nemá smysl zkoušet další server
+          coolDown(servers[i], e.kind);
+        }
       }
-      showToast('🔎 Hledám místa v okolí… (pokus 2)');
-      await new Promise(r => setTimeout(r, 1000));
-      // 2. pokus: hlavní server znovu a zrcadlo souběžně, bere se rychlejší úspěch
-      const ctrls = OVERPASS_ENDPOINTS.map(() => new AbortController());
-      try {
-        const res = await Promise.any(OVERPASS_ENDPOINTS.map((u, i) => fetchPoiFrom(u, q, ctrls[i])));
-        ctrls.forEach(c => c.abort());   // pomalejší souběžný dotaz zruš, ať server neřeší zbytečnou práci
-        return res;
-      } catch (e) {
-        console.warn('Overpass 2. pokus selhal:', e);
-        return null;
-      }
+      throw lastErr || poiError('busy');
     }
     // sluč nový výsledek s už načtenými: nová místa přidej, stará ponech,
-    // ať hráči při přenačtení nemizí pod rukama; zahoď jen hodně vzdálená
+    // ať hráči při přenačtení nemizí pod rukama; zahoď jen hodně vzdálená.
+    // Čerstvá data mají přednost (opravený název apod.) – kromě právě
+    // otevřeného místa, na které odkazuje panel.
     function mergePois(center, list) {
       const byId = new Map();
       for (const p of pois) {
@@ -994,51 +1114,270 @@
       let added = 0;
       for (const p of list) {
         const id = placeId(p);
-        if (!byId.has(id)) { byId.set(id, p); added++; }
+        const old = byId.get(id);
+        if (!old) added++;
+        if (old !== selected) byId.set(id, p);
       }
       pois = [...byId.values()];
       return added;
     }
-    async function loadPois(center) {
+
+    // --- paměť načtených míst (localStorage) ---
+    // Po spuštění se místa z okolí ukážou hned z paměti – hra je hratelná,
+    // i když mapový server zrovna nestíhá nebo je hráč bez signálu. Když jsou
+    // data pro tohle okolí čerstvá, server se při startu vůbec neobtěžuje.
+    const POI_CACHE_KEY = 'pxplore.poiCache';
+    const POI_CACHE_MAX = 1500;               // nejvýš tolik míst (nejbližší k poslednímu načtení)
+    const POI_CACHE_TTL_MS = 30 * 86400000;   // místo, které server měsíc nepotvrdil, se zapomene
+    const POI_CACHE_AREAS = 20;               // kolik posledních načtených oblastí si pamatovat
+    const POI_CACHE_FIELDS = ['lat', 'lng', 'name', 'type', 'icon', 'color', 'desc', 'city'];
+    let poiCache = loadPoiCache();            // { places: Map(id -> místo + seenAt), areas: [{lat, lng, at}] }
+    function loadPoiCache() {
+      const places = new Map();
+      let areas = [];
+      try {
+        const raw = JSON.parse(localStorage.getItem(POI_CACHE_KEY) || 'null');
+        if (raw && Array.isArray(raw.places)) {
+          const minSeen = Date.now() - POI_CACHE_TTL_MS;
+          for (const p of raw.places) {
+            if (p && typeof p.lat === 'number' && typeof p.lng === 'number' && (p.seenAt || 0) >= minSeen) {
+              places.set(placeId(p), p);
+            }
+          }
+        }
+        if (raw && Array.isArray(raw.areas)) areas = raw.areas.filter(a => a && typeof a.lat === 'number');
+      } catch (e) {}
+      return { places, areas };
+    }
+    function savePoiCache(center) {
+      let list = [...poiCache.places.values()];
+      if (list.length > POI_CACHE_MAX) {
+        list = list
+          .map(p => ({ p, d: metersBetween(center, p) }))
+          .sort((a, b) => a.d - b.d)
+          .slice(0, POI_CACHE_MAX)
+          .map(o => o.p);
+        poiCache.places = new Map(list.map(p => [placeId(p), p]));
+      }
+      const data = { places: list, areas: poiCache.areas };
+      try {
+        localStorage.setItem(POI_CACHE_KEY, JSON.stringify(data));
+      } catch (e) {
+        // plné úložiště – zkus aspoň polovinu nejbližších (kronika má přednost)
+        try {
+          data.places = list.slice(0, Math.floor(list.length / 2));
+          localStorage.setItem(POI_CACHE_KEY, JSON.stringify(data));
+        } catch (e2) {}
+      }
+    }
+    function rememberPois(center, list) {
+      const now = Date.now();
+      for (const p of list) {
+        const rec = { seenAt: now };
+        for (const f of POI_CACHE_FIELDS) rec[f] = p[f];
+        poiCache.places.set(placeId(p), rec);
+      }
+      poiCache.areas = [{ lat: center.lat, lng: center.lng, at: now }]
+        .concat(poiCache.areas.filter(a => metersBetween(a, center) > 50))
+        .slice(0, POI_CACHE_AREAS);
+      savePoiCache(center);
+    }
+    // ukaž místa z paměti kolem bodu; k nim i místa z kroniky (ta jsou
+    // v zařízení vždycky, i když paměť míst ještě nic nemá)
+    function restoreCachedPois(center) {
+      const list = [];
+      for (const p of poiCache.places.values()) {
+        if (metersBetween(center, p) < POI_PRUNE_M) list.push({ ...p });
+      }
+      for (const r of visited.values()) {
+        if (typeof r.lat !== 'number' || poiCache.places.has(placeId(r))) continue;
+        if (metersBetween(center, r) >= POI_PRUNE_M) continue;
+        list.push({
+          lat: r.lat, lng: r.lng, name: r.name || 'Místo', type: r.type || 'Místo',
+          icon: r.icon || '📍', color: r.color || '#caa84a', city: r.city || '',
+          desc: 'Místo z tvé kroniky.',
+        });
+      }
+      // místa už na mapě (třeba čerstvě načtená) mají přednost před pamětí
+      const have = new Set(pois.map(placeId));
+      const fresh = list.filter(p => !have.has(placeId(p)));
+      if (fresh.length) pois = pois.concat(fresh);
+      return fresh.length;
+    }
+    // čerstvě načtená oblast, do které hráč pořád spadá (null = je potřeba načíst)
+    function freshCachedArea(at) {
+      const now = Date.now();
+      return poiCache.areas.find(a => now - a.at < POI_STALE_MS && metersBetween(a, at) <= POI_RELOAD_DIST_M) || null;
+    }
+    // poslední známá poloha – mapa se po spuštění ukáže hned, ještě než chytí GPS
+    const LASTPOS_KEY = 'pxplore.lastPos';
+    let lastPosSaved = null;
+    function saveLastPos(p) {
+      if (lastPosSaved && metersBetween(lastPosSaved, p) < 30) return;
+      lastPosSaved = { lat: p.lat, lng: p.lng };
+      try { localStorage.setItem(LASTPOS_KEY, JSON.stringify(lastPosSaved)); } catch (e) {}
+    }
+    function loadLastPos() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(LASTPOS_KEY) || 'null');
+        if (raw && typeof raw.lat === 'number' && typeof raw.lng === 'number') return raw;
+      } catch (e) {}
+      return null;
+    }
+
+    // první načtení po zjištění polohy: z paměti hned, ze serveru jen když je třeba
+    function startPois(center) {
+      restoreCachedPois(center);
+      const area = freshCachedArea(center);
+      if (area) {
+        poiAnchor = { lat: area.lat, lng: area.lng };
+        poisLoadedAt = area.at;
+        if (pois.length) showToast('🗺️ Místa v okolí jsou připravená', 2200);
+        return;
+      }
+      loadPois(center);
+    }
+
+    async function loadPois(center, manual) {
       if (loadingPois) return;
+      clearTimeout(retryTimer); retryTimer = null;
+      clearTimeout(reloadCheckTimer); reloadCheckTimer = null;
+      const servers = serversToTry(manual);
+      if (!servers.length) {
+        // všechny servery si teď vyžádaly pauzu – nebombardovat, počkat na ně
+        scheduleRetry(center, 'busy');
+        if (manual) showToast('🚦 Mapový server žádá o chvilku oddechu – zkusím to, jakmile to půjde', 3200);
+        return;
+      }
       loadingPois = true;
       lastPoiAttempt = Date.now();
       document.getElementById('rescan').classList.add('loading');
-      showToast('🔎 Hledám místa v okolí…');
-      // hustá oblast: když dotaz narazí na limit, Overpass vrací libovolných
-      // 120 míst z celého kruhu (řadit podle vzdálenosti neumí) – proto se
-      // dotaz opakuje s menším poloměrem, dokud se výsledek nevejde pod limit
-      let ok = false, added = 0;
-      for (let pass = 0; pass < POI_RADII.length; pass++) {
-        const res = await fetchPoiList(center, POI_RADII[pass]);
-        if (res === null) break;   // výpadek – ponech, co se stihlo (mapa se nečistí)
-        ok = true;
-        added += mergePois(center, res.list);
-        // porovnává se počet elementů od serveru, ne až profiltrovaný seznam:
-        // classify() část elementů zahodí, takže délka seznamu je skoro vždycky
-        // pod limitem a doplňkové poloměry by se nikdy nespustily
-        if (res.raw < POI_LIMIT) break;   // vešlo se vše, menší poloměr nic nepřidá
-        if (pass + 1 < POI_RADII.length) {
-          showToast('🏙️ Hustá oblast – doplňuji bližší místa…');
-          await new Promise(r => setTimeout(r, 1000));
-        }
-      }
-      if (!ok) {
-        showToast('⚠️ Místa se nenačetla – za chvíli to zkusím znovu (nebo 🔄)', 3200);
-      } else {
-        // kotva pro automatické přenačtení = kde hráč stál při tomhle načtení
-        // (u ručního 🔄 vzdálené oblasti se tak nová data nezahodí hned
-        // s další GPS aktualizací, ale až když hráč skutečně popojde)
-        poiAnchor = player ? { lat: player.lat, lng: player.lng } : { lat: center.lat, lng: center.lng };
-        poisLoadedAt = Date.now();
-        if (!pois.length) showToast('🤷 V tomhle okolí se žádná místa nenašla', 2800);
-        else if (added === 1) showToast('✅ Nalezeno 1 nové místo', 2200);
-        else if (added) showToast('✅ Nalezeno ' + added + ' ' + (added <= 4 ? 'nová místa' : 'nových míst'), 2200);
-        else showToast('✅ Místa jsou aktuální', 2200);
+      chipLoading();
+      let res = null, err = null;
+      try {
+        res = await fetchPoiList(center, servers);
+      } catch (e) {
+        err = e;
       }
       document.getElementById('rescan').classList.remove('loading');
       loadingPois = false;
+      if (!res) {
+        failStreak++;
+        scheduleRetry(center, err && err.kind === 'offline' ? 'offline' : (anyServerBusy() ? 'busy' : 'fail'));
+        return;
+      }
+      const wasFailing = failStreak > 0;
+      failStreak = 0;
+      hideChip();
+      const added = mergePois(center, res.list);
+      rememberPois(center, res.list);
+      // kotva pro automatické přenačtení = kde hráč stál při tomhle načtení
+      // (u ručního 🔄 vzdálené oblasti se tak nová data nezahodí hned
+      // s další GPS aktualizací, ale až když hráč skutečně popojde)
+      poiAnchor = player ? { lat: player.lat, lng: player.lng } : { lat: center.lat, lng: center.lng };
+      poisLoadedAt = Date.now();
+      const hurray = wasFailing ? '🎉 Mapy konečně dorazily! ' : '✅ ';
+      if (!pois.length) showToast('🤷 V tomhle okolí se žádná místa nenašla', 2800);
+      else if (added === 1) showToast(hurray + 'Nalezeno 1 nové místo', 2400);
+      else if (added) showToast(hurray + 'Nalezeno ' + added + ' ' + (added <= 4 ? 'nová místa' : 'nových míst'), 2400);
+      else showToast(wasFailing ? '🎉 Mapy konečně dorazily – místa jsou aktuální' : '✅ Místa jsou aktuální', 2400);
     }
+    // naplánuj další automatický pokus: rozestupy se prodlužují a nikdy
+    // nepřijdou dřív, než si nejbližší server odpočine
+    function scheduleRetry(center, reason) {
+      const step = POI_BACKOFF_MS[Math.min(Math.max(failStreak, 1), POI_BACKOFF_MS.length) - 1];
+      const wait = Math.max(step, nextServerFreeMs());
+      retryCenter = { lat: center.lat, lng: center.lng };
+      // šlo o okolí hráče? pak se další pokus řídí jeho aktuální polohou
+      // (mezitím mohl popojít); ruční 🔄 vzdáleného výřezu zůstává u svého středu
+      retryFollows = !!player && metersBetween(player, center) < 1;
+      retryReason = reason;
+      retryAt = Date.now() + wait;
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => { retryTimer = null; loadPois(retryTarget()); }, wait);
+      chipRetry();
+    }
+    function retryTarget() {
+      const c = (retryFollows && player) ? player : (retryCenter || player || view);
+      return { lat: c.lat, lng: c.lng };
+    }
+    function retryNow() {
+      if (retryCenter || player) loadPois(retryTarget(), true);
+    }
+    // síť se vrátila → nečekej na odpočet
+    window.addEventListener('online', () => {
+      if (retryTimer && retryReason === 'offline') retryNow();
+    });
+
+    // --- stavový štítek načítání míst (vlevo dole) ---
+    // Místo strohého „pokus 2" hráč vidí, co se děje: během čekání se střídají
+    // hlášky a tipy ke hře, při nezdaru odpočet do dalšího pokusu a tlačítko.
+    const chipEl = document.getElementById('poi-chip');
+    const chipTextEl = document.getElementById('poi-chip-text');
+    const chipBtn = document.getElementById('poi-chip-btn');
+    const CHIP_LINES = [
+      '📜 Kartograf listuje v archivech…',
+      '💡 Tip: dlouhým podržením na mapě zapíchneš 📌 špendlík',
+      '🗺️ Rozmotávám svitek s mapou…',
+      '🔭 Vyhlížím zajímavá místa…',
+      '💡 Tip: klepnutím na úroveň vlevo nahoře otevřeš kroniku a odznaky',
+      '🕯️ Mapaři si přisvěcují svíčkou…',
+      '🐦 Poštovní holub s mapou je na cestě…',
+      '💡 Tip: za 3 místa stejného druhu je bronzový odznak 🥉',
+    ];
+    const CHIP_SLOW_LINES = [
+      '☕ Mapový server je dnes zavalený, vydrž chvilku…',
+      '🐌 Pomalu, ale jistě – pořád to zkouším…',
+      '🏔️ Mapaři pro data šplhají až na horu…',
+    ];
+    let chipMode = '';         // '' | 'loading' | 'retry'
+    let chipStartedAt = 0;
+    let chipNote = '', chipNoteUntil = 0;
+    let chipTicker = null;
+    function setChipNote(text) { chipNote = text; chipNoteUntil = Date.now() + 3500; renderChip(); }
+    function chipLoading() {
+      chipMode = 'loading';
+      chipStartedAt = Date.now();
+      chipNote = '';
+      showChip();
+    }
+    function chipRetry() { chipMode = 'retry'; showChip(); }
+    function showChip() {
+      chipEl.classList.remove('hidden');
+      renderChip();
+      if (!chipTicker) chipTicker = setInterval(renderChip, 500);
+    }
+    function hideChip() {
+      chipMode = '';
+      chipEl.classList.add('hidden');
+      clearInterval(chipTicker); chipTicker = null;
+    }
+    function renderChip() {
+      const now = Date.now();
+      let text = '', btn = '';
+      if (chipMode === 'loading') {
+        const el = now - chipStartedAt;
+        const secs = Math.floor(el / 1000);
+        if (chipNote && now < chipNoteUntil) text = chipNote;
+        else if (el < 3000) text = pois.length ? '🧭 Místa z minula jsou na mapě, hledám čerstvá…' : '🧭 Hledám místa v okolí…';
+        else if (el < 12000) text = CHIP_LINES[Math.floor((el - 3000) / 3500) % CHIP_LINES.length];
+        else text = CHIP_SLOW_LINES[Math.floor((el - 12000) / 4000) % CHIP_SLOW_LINES.length];
+        if (secs >= 5) text += ' · ' + secs + ' s';
+      } else if (chipMode === 'retry') {
+        const secs = Math.max(0, Math.ceil((retryAt - now) / 1000));
+        const when = secs ? 'Zkusím to znovu za ' + secs + ' s.' : 'Zkouším to znovu…';
+        const have = pois.length ? ' Zatím ukazuju místa z paměti.' : '';
+        if (retryReason === 'offline') text = '📴 Jsi bez připojení – místa načtu, jakmile se síť vrátí.' + have;
+        else if (retryReason === 'busy') text = '🚦 Mapový server žádá o chvilku oddechu.' + have + ' ' + when;
+        else text = '😮‍💨 Mapaři teď nestíhají.' + have + ' ' + when;
+        // ruční pokus má smysl, jen když je některý server k dispozici
+        if (secs && serversToTry(true).length) btn = 'Zkusit hned';
+      }
+      if (chipTextEl.textContent !== text) chipTextEl.textContent = text;
+      if (chipBtn.textContent !== btn) chipBtn.textContent = btn;
+      chipBtn.style.display = btn ? '' : 'none';
+    }
+    chipBtn.addEventListener('click', retryNow);
 
     // --- vykreslení ---
     function resize() {
@@ -1754,7 +2093,7 @@
 
     // znovu načti reálná místa kolem středu aktuálního výřezu
     document.getElementById('rescan').addEventListener('click', function () {
-      if (view) loadPois({ lat: view.lat, lng: view.lng });
+      if (view) loadPois({ lat: view.lat, lng: view.lng }, true);
     });
 
 
@@ -2206,10 +2545,11 @@
     function onPosition(lat, lng) {
       const first = !player;
       player = { lat, lng };
+      saveLastPos(player);
       if (first) {
         view = { lat, lng };
         hideStatus();
-        loadPois(player);        // načti reálná místa z OpenStreetMap
+        startPois(player);       // místa z paměti hned, čerstvá z OpenStreetMap podle potřeby
       } else if (following) {
         view = { lat: player.lat, lng: player.lng };
       }
@@ -2278,6 +2618,13 @@
     updatePlacesHud();
     if (!playerName) showIntro();   // poprvé: představ hru a nech hráče se pojmenovat
     submitScore();                  // obnov záznam v žebříčku (např. po jeho případném promazání)
+    // než GPS chytí signál, ukaž mapu na poslední známé poloze i s místy
+    // z paměti – hráč nekouká do prázdné tmy (po zjištění polohy mapa přeskočí)
+    const lastPos = loadLastPos();
+    if (lastPos) {
+      view = { lat: lastPos.lat, lng: lastPos.lng };
+      restoreCachedPois(lastPos);
+    }
     window.addEventListener('resize', resize);
     resize();
     loop();

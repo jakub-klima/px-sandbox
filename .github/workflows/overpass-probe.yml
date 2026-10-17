@@ -9,37 +9,52 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe Overpass endpoints
+      - name: Probe Overpass endpoints (round 2)
         run: |
           set +e
           LAT=50.0875; LNG=14.4213
           A="(around:800,$LAT,$LNG)"
           NEW='[out:json][timeout:20];(node["tourism"~"^(museum|gallery|artwork|viewpoint|attraction)$"]'$A';node["historic"]'$A';node["amenity"~"^(cafe|restaurant|fast_food|bar|pub|library|fountain|pharmacy|bank|atm|place_of_worship|school|university|college|cinema|theatre)$"]'$A';node["leisure"~"^(park|playground|garden)$"]'$A';node["shop"]'$A';way["leisure"~"^(park|playground|garden)$"]'$A';way["tourism"~"^(museum|gallery|artwork|viewpoint|attraction)$"]'$A';way["historic"]'$A';)->.mista;(node.mista(around:200,'$LAT,$LNG');way.mista(around:200,'$LAT,$LNG'););out center 120;(node.mista(around:400,'$LAT,$LNG');way.mista(around:400,'$LAT,$LNG'););out center 120;.mista out center 120;'
-          OLD='[out:json][timeout:8];(node["tourism"]'$A';node["historic"]'$A';node["amenity"~"cafe|restaurant|fast_food|bar|pub|library|fountain|pharmacy|bank|atm|place_of_worship|school|university|college|cinema|theatre"]'$A';node["leisure"~"park|playground|garden"]'$A';node["shop"]'$A';way["leisure"~"park|playground|garden"]'$A';way["tourism"]'$A';way["historic"]'$A';);out center 120;'
+          TINY='[out:json][timeout:10];node["amenity"="cafe"](around:200,'$LAT,$LNG');out 3;'
+          UA_CHROME='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36'
+          UA_SAFARI='Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1'
           run_q() {
-            label="$1"; url="$2"; q="$3"
-            curl -sS -m 40 -o body.json -D headers.txt -w "HTTP %{http_code} | %{time_total}s | %{size_download} B\n" \
-              -H 'Origin: https://jakub-klima.github.io' -H 'Referer: https://jakub-klima.github.io/px-sandbox/pxplore/' \
-              --data-urlencode "data=$q" "$url" > meta.txt 2>&1
-            echo "== $label → $url"
+            label="$1"; url="$2"; q="$3"; ua="$4"; method="${5:-POST}"
+            if [ "$method" = GET ]; then
+              curl -sS -m 40 -G -o body.json -D headers.txt -w "HTTP %{http_code} | %{time_total}s | %{size_download} B\n" \
+                -A "$ua" -H 'Origin: https://jakub-klima.github.io' -H 'Referer: https://jakub-klima.github.io/' \
+                --data-urlencode "data=$q" "$url" > meta.txt 2>&1
+            else
+              curl -sS -m 40 -o body.json -D headers.txt -w "HTTP %{http_code} | %{time_total}s | %{size_download} B\n" \
+                -A "$ua" -H 'Origin: https://jakub-klima.github.io' -H 'Referer: https://jakub-klima.github.io/' \
+                -H 'Content-Type: text/plain;charset=UTF-8' \
+                --data-binary "data=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$q")" "$url" > meta.txt 2>&1
+            fi
+            echo "== $label [$method] → $url"
             cat meta.txt
-            grep -i -E '^(access-control-allow-origin|retry-after|content-type)' headers.txt
+            grep -i -E '^(access-control-allow-origin|retry-after|content-type|server)' headers.txt
             python3 -c "
-          import json,sys
+          import json
           try:
-              j=json.load(open('body.json')); print('elements:',len(j.get('elements',[])),'| remark:',j.get('remark'))
+              j=json.load(open('body.json')); print('elements:',len(j.get('elements',[])),'| remark:',j.get('remark'), '| osm_base:', j.get('osm3s',{}).get('timestamp_osm_base'))
           except Exception as e:
-              print('non-JSON body:', open('body.json',errors='replace').read()[:300].replace('\n',' '))
+              print('non-JSON body:', open('body.json',errors='replace').read()[:200].replace('\n',' '))
           "
           }
-          for url in https://overpass-api.de/api https://overpass.private.coffee/api https://overpass.kumi.systems/api; do
-            echo "== status $url"
-            curl -sS -m 15 "$url/status" | head -8
-            echo
+          # 1) hlavní server s prohlížečovým UA (curl UA dostal 406)
+          run_q "TINY chrome" https://overpass-api.de/api/interpreter "$TINY" "$UA_CHROME"; sleep 15
+          run_q "TINY safari" https://overpass-api.de/api/interpreter "$TINY" "$UA_SAFARI"; sleep 15
+          run_q "TINY pxplore-ua" https://overpass-api.de/api/interpreter "$TINY" "Pxplore/1.0 (+https://jakub-klima.github.io/px-sandbox/pxplore/)"; sleep 15
+          run_q "NEW chrome" https://overpass-api.de/api/interpreter "$NEW" "$UA_CHROME"; sleep 35
+          run_q "NEW chrome" https://overpass-api.de/api/interpreter "$NEW" "$UA_CHROME" GET; sleep 35
+          # 2) kandidáti na zálohu
+          for base in https://overpass.kumi.systems/api https://overpass.private.coffee/api https://maps.mail.ru/osm/tools/overpass/api https://overpass.osm.jp/api https://overpass.openstreetmap.ru/api https://z.overpass-api.de/api https://lz4.overpass-api.de/api https://overpass.openstreetmap.fr/api; do
+            echo "########## $base"
+            curl -sS -m 15 -A "$UA_CHROME" "$base/status" | head -4
+            run_q "TINY" "$base/interpreter" "$TINY" "$UA_CHROME"
+            run_q "TINY" "$base/interpreter" "$TINY" "$UA_CHROME" GET
+            run_q "NEW" "$base/interpreter" "$NEW" "$UA_CHROME"
+            sleep 5
           done
-          for url in https://overpass-api.de/api/interpreter https://overpass.private.coffee/api/interpreter https://overpass.kumi.systems/api/interpreter; do
-            run_q "NEW" "$url" "$NEW"; sleep 20
-            run_q "OLD" "$url" "$OLD"; sleep 20
-          done
-          # opakování nového dotazu na hlavní server: jak je to stabilní
-          for i in 1 2 3; do run_q "NEW #$i" https://overpass-api.de/api/interpreter "$NEW"; sleep 35; done
+          # 3) stabilita hlavního serveru s prohlížečovým UA
+          for i in 1 2 3 4; do run_q "NEW #$i chrome" https://overpass-api.de/api/interpreter "$NEW" "$UA_CHROME"; sleep 40; done

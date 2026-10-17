@@ -9,72 +9,36 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Vector tiles + Overpass round 3
+      - name: Vector tiles round 4 – full class list
         run: |
           set +e
           pip install -q mapbox-vector-tile >/dev/null 2>&1
           UA='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36'
-          echo "== OpenFreeMap TileJSON"
-          curl -sS -m 20 -A "$UA" -H 'Origin: https://jakub-klima.github.io' -D h.txt https://tiles.openfreemap.org/planet -o tj.json -w "HTTP %{http_code} %{time_total}s\n"
-          grep -i -E '^(access-control-allow-origin|cache-control)' h.txt
-          head -c 600 tj.json; echo
-          echo "== OSM US TileJSON"
-          curl -sS -m 20 -A "$UA" https://tiles.openstreetmap.us/vector/openmaptiles.json -o tj2.json -w "HTTP %{http_code} %{time_total}s\n"
-          head -c 600 tj2.json; echo
-          cat > dec.py <<'EOF'
-          import json, sys, math, time, urllib.request, collections
-          import mapbox_vector_tile
-          UA = sys.argv[1]
-          def tile_xy(lat, lng, z):
-              n = 2 ** z
-              x = int((lng + 180) / 360 * n)
-              y = int((1 - math.log(math.tan(math.radians(lat)) + 1 / math.cos(math.radians(lat))) / math.pi) / 2 * n)
-              return x, y
-          def fetch(url):
-              t = time.time()
-              req = urllib.request.Request(url, headers={'User-Agent': UA, 'Origin': 'https://jakub-klima.github.io'})
-              with urllib.request.urlopen(req, timeout=20) as r:
-                  data = r.read(); hdr = dict(r.headers)
-              return data, time.time() - t, hdr
-          def probe(name, tmpl, lat, lng):
-              print('##########', name, lat, lng)
-              x, y = tile_xy(lat, lng, 14)
-              url = tmpl.replace('{z}', '14').replace('{x}', str(x)).replace('{y}', str(y))
-              try:
-                  data, dt, hdr = fetch(url)
-              except Exception as e:
-                  print('FAIL', url, e); return
-              print(url, '| %.2fs | %d B | CORS: %s | enc: %s' % (dt, len(data), hdr.get('Access-Control-Allow-Origin') or hdr.get('access-control-allow-origin'), hdr.get('Content-Encoding') or hdr.get('content-encoding')))
-              if data[:2] == b'\x1f\x8b':
-                  import gzip; data = gzip.decompress(data)
-              t = mapbox_vector_tile.decode(data)
-              print('layers:', {k: len(v['features']) for k, v in t.items()})
-              poi = t.get('poi', {}).get('features', [])
-              c = collections.Counter((f['properties'].get('class'), f['properties'].get('subclass')) for f in poi)
-              print('poi class/subclass top:', c.most_common(40))
-              named = [f for f in poi if f['properties'].get('name')]
-              print('poi named:', len(named), '/', len(poi))
-              print('sample props:', [f['properties'] for f in poi[:4]])
-              print('geom types:', collections.Counter(f['geometry']['type'] for f in poi))
-          tj = json.load(open('tj.json'))
-          ofm = tj['tiles'][0]
-          print('OFM tiles template:', ofm, '| maxzoom', tj.get('maxzoom'))
-          for lat, lng in [(50.0875, 14.4213), (49.1951, 16.6068), (49.5938, 17.2509), (50.0755, 14.4378)]:
-              probe('OpenFreeMap', ofm, lat, lng)
-          try:
-              tj2 = json.load(open('tj2.json'))
-              probe('OSM US', tj2['tiles'][0], 50.0875, 14.4213)
-          except Exception as e:
-              print('OSM US tilejson fail', e)
+          curl -sS -m 20 -A "$UA" https://tiles.openfreemap.org/planet -o tj.json
+          T=$(python3 -c "import json;print(json.load(open('tj.json'))['tiles'][0])")
+          echo "template $T"
+          U=$(echo "$T" | sed 's/{z}/14/;s/{x}/8848/;s/{y}/5550/')
+          curl -sS -m 20 -A "$UA" -H 'Accept-Encoding: gzip, br' -D h.txt -o t.bin "$U" -w "HTTP %{http_code} %{time_total}s %{size_download}B\n"
+          cat h.txt
+          curl -sS -m 20 -A "$UA" -o raw.pbf --compressed "$U"
+          curl -sS -m 20 -A "$UA" -o /dev/null -w "404 check (old version): HTTP %{http_code}\n" "https://tiles.openfreemap.org/planet/20200101_000000_pt/14/8848/5550.pbf"
+          curl -sS -m 20 -A "$UA" -o /dev/null -w "z15 check: HTTP %{http_code}\n" "$(echo "$T" | sed 's/{z}/15/;s/{x}/17696/;s/{y}/11100/')"
+          python3 - <<'EOF'
+          import mapbox_vector_tile, collections
+          d = open('raw.pbf','rb').read()
+          if d[:2] == b'\x1f\x8b':
+              import gzip; d = gzip.decompress(d); print('body is gzip-wrapped')
+          t = mapbox_vector_tile.decode(d)
+          poi = t['poi']['features']
+          print('extent', t['poi'].get('extent'))
+          c = collections.Counter((f['properties'].get('class'), f['properties'].get('subclass')) for f in poi)
+          for k, v in sorted(c.items(), key=lambda kv: -kv[1]):
+              print(v, k)
+          keys = collections.Counter(k for f in poi for k in f['properties'])
+          print('keys:', keys.most_common())
+          print('with id:', sum(1 for f in poi if f.get('id')))
+          for f in poi:
+              p = f['properties']
+              if p.get('class') in ('castle', 'monument', 'memorial', 'historic', 'fountain', 'museum', 'attraction') and p.get('name'):
+                  print('  ', p.get('class'), p.get('subclass'), p.get('name'), p.get('rank'), f['geometry']['coordinates'])
           EOF
-          python3 dec.py "$UA"
-          # Overpass srovnání počtu míst v jedné z14 dlaždici (Praha) přes kumi starým dotazem
-          echo "== kumi OLD query chrome UA"
-          A="(around:800,50.0875,14.4213)"
-          OLD='[out:json][timeout:25];(node["tourism"]'$A';node["historic"]'$A';node["amenity"~"cafe|restaurant|fast_food|bar|pub|library|fountain|pharmacy|bank|atm|place_of_worship|school|university|college|cinema|theatre"]'$A';node["leisure"~"park|playground|garden"]'$A';node["shop"]'$A';way["leisure"~"park|playground|garden"]'$A';way["tourism"]'$A';way["historic"]'$A';);out center 120;'
-          curl -sS -m 60 -A "$UA" --data-urlencode "data=$OLD" https://overpass.kumi.systems/api/interpreter -o k.json -w "HTTP %{http_code} %{time_total}s\n"; head -c 200 k.json; echo
-          echo "== mail.ru NEW (90 s)"
-          NEW='[out:json][timeout:25];(node["tourism"~"^(museum|gallery|artwork|viewpoint|attraction)$"]'$A';node["historic"]'$A';node["amenity"~"^(cafe|restaurant|fast_food|bar|pub|library|fountain|pharmacy|bank|atm|place_of_worship|school|university|college|cinema|theatre)$"]'$A';node["leisure"~"^(park|playground|garden)$"]'$A';node["shop"]'$A';way["leisure"~"^(park|playground|garden)$"]'$A';way["tourism"~"^(museum|gallery|artwork|viewpoint|attraction)$"]'$A';way["historic"]'$A';)->.mista;(node.mista(around:200,50.0875,14.4213);way.mista(around:200,50.0875,14.4213););out center 120;(node.mista(around:400,50.0875,14.4213);way.mista(around:400,50.0875,14.4213););out center 120;.mista out center 120;'
-          curl -sS -m 90 -A "$UA" --data-urlencode "data=$NEW" https://maps.mail.ru/osm/tools/overpass/api/interpreter -o m.json -w "HTTP %{http_code} %{time_total}s\n"; head -c 200 m.json; echo
-          echo "== overpass-api.de NEW (90 s)"
-          curl -sS -m 90 -A "$UA" --data-urlencode "data=$NEW" https://overpass-api.de/api/interpreter -o d.json -w "HTTP %{http_code} %{time_total}s\n"; head -c 200 d.json; echo

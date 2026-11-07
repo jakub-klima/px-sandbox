@@ -800,7 +800,7 @@
     // --- mapové dlaždice (OpenStreetMap) + Web Mercator projekce ---
     const TILE = 256;                       // velikost dlaždice v px
     const ZMIN = 11, ZMAX = 19;             // meze přiblížení (OSM má dlaždice do 19)
-    const ZOOM_DEFAULT = 17;                // výchozí přiblížení (i po vycentrování)
+    const ZOOM_DEFAULT = 17;                // přiblížení, než je známa poloha (pak viz reachZoom)
     let zoom = ZOOM_DEFAULT;                // aktuální (klidně desetinné) přiblížení
     function worldSize() { return TILE * Math.pow(2, zoom); } // velikost světa v px
     function lngToWorldX(lng) { return (lng + 180) / 360 * worldSize(); }
@@ -815,6 +815,14 @@
     }
     function metersPerPixel(lat) {
       return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
+    }
+    // přiblížení tak, aby se kruh dosahu vešel do kratší strany obrazovky
+    // s malou rezervou (průměr kruhu ≈ 75 % šířky/výšky) – při startu i po 🎯
+    function reachZoom(lat) {
+      const minDim = Math.min(window.innerWidth, window.innerHeight);
+      const span = 2 * REACH_M / 0.75;
+      const z = Math.log2(156543.03392 * Math.cos(lat * Math.PI / 180) * minDim / span);
+      return Math.max(ZMIN, Math.min(ZMAX, z));
     }
 
     // cache načtených dlaždic (klíč včetně úrovně zoomu)
@@ -2375,12 +2383,7 @@
 
     document.getElementById('recenter').addEventListener('click', function () {
       if (player) {
-        // přiblížení tak, aby se kruh dosahu vešel do kratší strany obrazovky
-        // s malou rezervou (průměr kruhu ≈ 75 % šířky/výšky)
-        const minDim = Math.min(window.innerWidth, window.innerHeight);
-        const span = 2 * REACH_M / 0.75;
-        const z = Math.log2(156543.03392 * Math.cos(player.lat * Math.PI / 180) * minDim / span);
-        zoom = Math.max(ZMIN, Math.min(ZMAX, z));
+        zoom = reachZoom(player.lat);
         view = { lat: player.lat, lng: player.lng };
         following = true;
       }
@@ -2843,6 +2846,7 @@
       player = { lat, lng };
       saveLastPos(player);
       if (first) {
+        zoom = reachZoom(lat);
         view = { lat, lng };
         hideStatus();
         startPois(player);       // místa z paměti hned, čerstvá z OpenStreetMap podle potřeby
@@ -2918,6 +2922,7 @@
     // z paměti – hráč nekouká do prázdné tmy (po zjištění polohy mapa přeskočí)
     const lastPos = loadLastPos();
     if (lastPos) {
+      zoom = reachZoom(lastPos.lat);
       view = { lat: lastPos.lat, lng: lastPos.lng };
       restoreCachedPois(lastPos);
     }

@@ -2375,7 +2375,12 @@
 
     document.getElementById('recenter').addEventListener('click', function () {
       if (player) {
-        zoom = ZOOM_DEFAULT;
+        // přiblížení tak, aby se kruh dosahu vešel do kratší strany obrazovky
+        // s malou rezervou (průměr kruhu ≈ 75 % šířky/výšky)
+        const minDim = Math.min(window.innerWidth, window.innerHeight);
+        const span = 2 * REACH_M / 0.75;
+        const z = Math.log2(156543.03392 * Math.cos(player.lat * Math.PI / 180) * minDim / span);
+        zoom = Math.max(ZMIN, Math.min(ZMAX, z));
         view = { lat: player.lat, lng: player.lng };
         following = true;
       }

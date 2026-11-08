@@ -817,10 +817,10 @@
       return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
     }
     // přiblížení tak, aby se kruh dosahu vešel do kratší strany obrazovky
-    // s malou rezervou (průměr kruhu ≈ 75 % šířky/výšky) – při startu i po 🎯
+    // s rezervou (průměr kruhu ≈ 55 % šířky/výšky) – při startu i po 🎯
     function reachZoom(lat) {
       const minDim = Math.min(window.innerWidth, window.innerHeight);
-      const span = 2 * REACH_M / 0.75;
+      const span = 2 * REACH_M / 0.55;
       const z = Math.log2(156543.03392 * Math.cos(lat * Math.PI / 180) * minDim / span);
       return Math.max(ZMIN, Math.min(ZMAX, z));
     }

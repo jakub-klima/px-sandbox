@@ -116,13 +116,18 @@
     } catch (e) {}
   }
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && document.body.classList.contains('mode-tv') && !wakeLock) keepAwake();
+    if (document.visibilityState !== 'visible' || !document.body.classList.contains('mode-tv')) return;
+    if (!wakeLock) keepAwake();
+    hostSigRetry(true);
   });
 
   /* ============================================================ TV / HOST */
 
   const H = {
     peer: null,
+    opened: false,
+    sigTimer: 0,
+    sigTries: 0,
     code: '',
     players: new Map(),
     deck: [],
@@ -340,13 +345,48 @@
     if (H.readDone) H.readDone(id);
   }
 
+  /* Chyby, které znamenají jen „server PeerJS teď nejde“ — stojí za nový pokus. */
+  const NET_ERRS = ['network', 'socket-error', 'socket-closed', 'server-error', 'unavailable-id'];
+
+  /* Server PeerJS je potřeba jen k navázání NOVÝCH spojení. Už připojené
+     telefony jedou přímo přes WebRTC, takže když server vypadne, hra běží
+     dál a televize se k němu potichu (s rostoucí pauzou) připojí znovu. */
   function hostStart(attempt) {
     document.body.classList.add('mode-tv');
+    clearTimeout(H.sigTimer);
+    H.sigTimer = 0;
     const code = randomCode();
     const peer = new Peer(PREFIX + code, PEER_OPTS);
     H.peer = peer;
+    let opened = false;
+
+    /* první spojení se serverem: když se do 10 s neozve, zkusíme to znovu */
+    const openTimer = setTimeout(() => retryStart(), 10000);
+    function retryStart() {
+      if (H.peer !== peer || opened) return;
+      clearTimeout(openTimer);
+      try { peer.destroy(); } catch (e) {}
+      if (attempt >= 8) {
+        H.peer = null;
+        fail('Nepodařilo se spojit se serverem pro připojování hráčů. Zkontroluj připojení k internetu a zkus to znovu.');
+        return;
+      }
+      toast('Připojuji se k serveru…', 2500);
+      H.sigTimer = setTimeout(() => { H.sigTimer = 0; hostStart(attempt + 1); },
+        Math.min(6000, 700 * Math.pow(1.6, attempt)));
+    }
 
     peer.on('open', () => {
+      if (H.peer !== peer) return;
+      H.sigTries = 0;
+      clearTimeout(H.sigTimer);
+      H.sigTimer = 0;
+      /* 'open' přijde znovu i po každém obnovení spojení se serverem —
+         to už hru nesmí vracet do lobby */
+      if (opened) return;
+      opened = true;
+      H.opened = true;
+      clearTimeout(openTimer);
       H.code = code;
       H.state = 'lobby';
       renderLobby();
@@ -355,23 +395,67 @@
       keepAwake();
     });
 
-    peer.on('connection', hostOnConn);
-    peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
+    peer.on('connection', (conn) => { if (H.peer === peer) hostOnConn(conn); });
+
+    peer.on('disconnected', () => {
+      if (H.peer !== peer || !opened) return;
+      hostSigRetry();
+    });
 
     peer.on('error', (err) => {
-      if (err.type === 'unavailable-id' && attempt < 6) {
-        try { peer.destroy(); } catch (e) {}
-        hostStart(attempt + 1);
-        return;
-      }
+      if (H.peer !== peer) return;
       if (err.type === 'peer-unavailable') return;
-      if (err.type === 'network' || err.type === 'socket-error') {
-        toast('Výpadek spojení, obnovuji…');
+      if (!opened) {
+        if (NET_ERRS.indexOf(err.type) >= 0) { retryStart(); return; }
+        clearTimeout(openTimer);
+        fail('Hru se nepodařilo spustit (' + err.type + '). Zkontroluj připojení k internetu a zkus to znovu.');
         return;
       }
-      fail('Hru se nepodařilo spustit (' + err.type + '). Zkontroluj připojení k internetu a zkus to znovu.');
+      /* po startu řeší výpadek serveru 'disconnected' + hostSigRetry;
+         kód hry se nesmí změnit, jinak by se hráči neměli kam vrátit */
     });
   }
+
+  /* obnovení spojení se serverem se stejným kódem hry */
+  function hostSigRetry(now) {
+    const peer = H.peer;
+    if (!peer || !H.opened || peer.destroyed || !peer.disconnected) return;
+    if (H.sigTimer && !now) return;
+    clearTimeout(H.sigTimer);
+    H.sigTries = (H.sigTries || 0) + 1;
+    /* hlásit až déle trvající výpadek — krátký výkyv nikoho nezajímá */
+    if (H.sigTries === 5) toast('Server pro připojování neodpovídá. Připojení hráči hrají dál.', 4000);
+    const delay = now ? 0 : Math.min(10000, 500 * Math.pow(1.7, H.sigTries - 1));
+    H.sigTimer = setTimeout(() => {
+      H.sigTimer = 0;
+      if (H.peer !== peer || peer.destroyed || !peer.disconnected) return;
+      try { peer.reconnect(); } catch (e) {}
+    }, delay);
+  }
+
+  /* pojistka: kdyby se obnovení zaseklo, každých 5 s zkontrolovat */
+  setInterval(() => { if (H.opened && !H.sigTimer) hostSigRetry(); }, 5000);
+  window.addEventListener('online', () => { if (H.opened) hostSigRetry(true); });
+
+  /* Tep: televize každé 2 s pošle telefonům ping. Drží to Wi-Fi v telefonu
+     vzhůru (úsporný režim jinak spojení uspává) a obě strany díky tomu
+     poznají mrtvé spojení dřív, než si toho všimne samotné WebRTC. */
+  const HB_MS = 2000;
+  const HB_DEAD = 15000;
+  setInterval(() => {
+    if (!H.opened) return;
+    const now = Date.now();
+    H.players.forEach((p) => {
+      if (!p.online || !p.conn) return;
+      if (p.hb && now - (p.seen || 0) > HB_DEAD) {
+        const c = p.conn;
+        hostConnGone(c);
+        try { c.close(); } catch (e) {}
+        return;
+      }
+      send(p, { t: 'ping' });
+    });
+  }, HB_MS);
 
   function playerByConn(conn) {
     let found = null;
@@ -389,16 +473,17 @@
 
   function hostOnConn(conn) {
     conn.on('data', (m) => hostMsg(conn, m));
-    conn.on('close', () => {
-      const p = playerByConn(conn);
-      if (p) {
-        p.online = false;
-        if (p.pid === H.reader) { H.reader = ''; pickReader(); }
-        renderPlayers();
-        renderAnswered();
-      }
-    });
+    conn.on('close', () => hostConnGone(conn));
     conn.on('error', () => {});
+  }
+
+  function hostConnGone(conn) {
+    const p = playerByConn(conn);
+    if (!p || !p.online) return;
+    p.online = false;
+    if (p.pid === H.reader) { H.reader = ''; pickReader(); }
+    renderPlayers();
+    renderAnswered();
   }
 
   function uniqueName(name, pid) {
@@ -419,6 +504,8 @@
 
     const p = playerByConn(conn);
     if (!p) return;
+    p.seen = Date.now();
+    if (m.t === 'pong') return;
     if (m.t === 'answer') hostAnswer(p, m.i);
     else if (m.t === 'spoke') hostSpoke(p, m.id);
     else if (m.t === 'caps') { p.tts = !!m.tts; pickReader(); renderVoiceBtn(); }
@@ -454,15 +541,20 @@
       beep(760, 0.09, 0.05);
       setTimeout(() => beep(1010, 0.09, 0.05), 90);
     } else {
-      if (p.conn && p.conn !== conn) { try { p.conn.close(); } catch (e) {} }
+      /* nové spojení přiřadit dřív, než zavřu staré — jeho 'close'
+         by jinak hráče na chvíli shodil jako odpojeného */
+      const old = p.conn;
       p.conn = conn;
+      if (old && old !== conn) { try { old.close(); } catch (e) {} }
       p.online = true;
       p.tts = !!m.tts;
       p.name = uniqueName(name, pid);
     }
+    p.seen = Date.now();
+    p.hb = !!m.hb;   /* starší telefon (z cache) na ping neodpovídá — neodpojovat ho */
     pickReader();
 
-    send(p, { t: 'welcome', name: p.name, score: p.score, avatar: AVATARS[p.idx], color: COLORS[p.idx] });
+    send(p, { t: 'welcome', name: p.name, score: p.score, avatar: AVATARS[p.idx], color: COLORS[p.idx], hb: HB_MS });
     renderPlayers();
     renderAnswered();
     syncPlayer(p);
@@ -999,7 +1091,8 @@
 
   const P = {
     peer: null, conn: null, code: '', name: '', pid: '',
-    score: 0, joined: false, tries: 0, retryTimer: 0, locked: false,
+    score: 0, joined: false, tries: 0, retryTimer: 0, openTimer: 0, locked: false,
+    hb: 0, heard: 0,
     avatar: '🙂', color: '#7c5cff', reader: false, readerName: '', voice: null
   };
 
@@ -1096,11 +1189,16 @@
     show('scr-wait');
   }
 
+  /* Nejdřív odpojit odkazy, pak zavírat: 'close' starého spojení
+     by jinak naplánoval další obnovu a ta by zabila to nové. */
   function cleanupPeer() {
-    try { if (P.conn) P.conn.close(); } catch (e) {}
-    try { if (P.peer) P.peer.destroy(); } catch (e) {}
+    const c = P.conn;
+    const p = P.peer;
     P.conn = null;
     P.peer = null;
+    clearTimeout(P.openTimer);
+    try { if (c) c.close(); } catch (e) {}
+    try { if (p) p.destroy(); } catch (e) {}
   }
 
   function pconnect() {
@@ -1111,48 +1209,94 @@
     cleanupPeer();
     const peer = new Peer(PEER_OPTS);
     P.peer = peer;
+    const mine = () => P.peer === peer;
+    const live = () => !!(P.conn && P.conn.open);
+
+    /* když se spojení do 12 s nenaváže (server, Wi-Fi), zkusit znovu */
+    P.openTimer = setTimeout(() => { if (mine() && !live()) reconnectLater(); }, 12000);
 
     peer.on('open', () => {
-      const conn = peer.connect(PREFIX + P.code, { reliable: true });
+      /* 'open' chodí i po obnovení spojení se serverem — běžící hru nechat být */
+      if (!mine() || P.conn) return;
+      const conn = peer.connect(PREFIX + P.code, { reliable: true, serialization: 'json' });
       P.conn = conn;
       conn.on('open', () => {
+        if (P.conn !== conn) return;
+        clearTimeout(P.openTimer);
         P.tries = 0;
-        conn.send({ t: 'join', pid: P.pid, name: P.name, tts: phoneCanSpeak() });
+        P.heard = Date.now();
+        conn.send({ t: 'join', pid: P.pid, name: P.name, tts: phoneCanSpeak(), hb: 1 });
       });
-      conn.on('data', playerMsg);
-      conn.on('close', () => reconnectLater());
-      conn.on('error', () => reconnectLater());
+      conn.on('data', (m) => {
+        if (P.conn !== conn) return;
+        P.heard = Date.now();
+        playerMsg(m);
+      });
+      conn.on('close', () => { if (P.conn === conn) reconnectLater(); });
+      conn.on('error', () => { if (P.conn === conn) reconnectLater(); });
     });
 
-    peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
+    /* Server PeerJS je potřeba jen k navázání spojení. Když vypadne během
+       hry, spojení s televizí jede dál přímo — nic nerušit. */
+    peer.on('disconnected', () => {
+      if (mine() && !live()) reconnectLater();
+    });
 
     peer.on('error', (err) => {
-      if (err.type === 'peer-unavailable' && !P.joined) {
+      if (!mine()) return;
+      if (err.type === 'peer-unavailable' && !P.joined && P.tries >= 2) {
+        cleanupPeer();
         fail('Hra s kódem ' + P.code + ' neběží. Zkontroluj kód na televizi.');
         return;
       }
+      if (live()) return;
       reconnectLater();
     });
   }
 
   function reconnectLater() {
     if (P.retryTimer) return;
+    clearTimeout(P.openTimer);
     P.tries++;
-    if (P.tries > 12) {
-      fail('Spojení s televizí se nepodařilo obnovit.');
+    /* před prvním připojením to po pár pokusech vzdát; ve hře zkoušet pořád */
+    if (!P.joined && P.tries > 6) {
+      cleanupPeer();
+      fail('Nepodařilo se spojit s televizí. Zkontroluj, že hra na televizi běží, a zkus to znovu.');
       return;
     }
-    if (P.joined) toast('Spojení přerušeno, obnovuji…', 1800);
-    const delay = Math.min(8000, 700 * Math.pow(1.7, P.tries - 1));
+    if (P.joined) {
+      if (P.tries >= 3) showWait('Obnovuji spojení…', 'Hra ' + P.code + ' · tvoje body zůstávají');
+      else toast('Spojení přerušeno, obnovuji…', 1800);
+    }
+    const delay = Math.min(5000, 500 * Math.pow(1.6, P.tries - 1));
     P.retryTimer = setTimeout(() => { P.retryTimer = 0; pconnect(); }, delay);
   }
+
+  /* Hlídač: televize posílá ping každé 2 s. Když telefon nic neslyší
+     přes 7 s, spojení je mrtvé, i když se tváří jako otevřené. */
+  setInterval(() => {
+    if (!P.joined || !P.hb || P.retryTimer || document.visibilityState !== 'visible') return;
+    if (P.conn && P.conn.open && Date.now() - P.heard > P.hb * 3.5) reconnectLater();
+  }, 1000);
+
+  window.addEventListener('online', () => {
+    if (!P.joined || (P.conn && P.conn.open)) return;
+    P.tries = 0;
+    pconnect();
+  });
 
   function playerMsg(m) {
     if (!m || typeof m !== 'object') return;
 
     switch (m.t) {
+      case 'ping':
+        try { if (P.conn && P.conn.open) P.conn.send({ t: 'pong' }); } catch (e) {}
+        break;
+
       case 'welcome':
         P.joined = true;
+        P.hb = m.hb || 0;
+        P.heard = Date.now();
         P.name = m.name;
         P.score = m.score;
         renderReaderNote();
@@ -1296,7 +1440,11 @@
 
   /* ============================================================== ovládání */
 
-  $('btn-host').addEventListener('click', () => { beep(600, 0.05, 0.03); hostStart(0); });
+  $('btn-host').addEventListener('click', () => {
+    if (H.peer) return;   /* dvojklik na dálkovém ovladači = dvě hry naráz */
+    beep(600, 0.05, 0.03);
+    hostStart(0);
+  });
 
   function goJoin() {
     const code = $('in-code').value.trim().toUpperCase();
@@ -1394,7 +1542,9 @@
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     if (!document.body.classList.contains('mode-phone') || !P.name) return;
-    if (!P.conn || !P.conn.open) { P.tries = 0; pconnect(); }
+    /* po uspání se spojení často tváří jako otevřené, ale je mrtvé */
+    const stale = P.hb && Date.now() - P.heard > P.hb * 2;
+    if (!P.conn || !P.conn.open || stale) { P.tries = 0; pconnect(); }
   });
 
   /* ================================================================= start */

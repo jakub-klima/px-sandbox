@@ -360,20 +360,21 @@
     H.peer = peer;
     let opened = false;
 
-    /* první spojení se serverem: když se do 10 s neozve, zkusíme to znovu */
-    const openTimer = setTimeout(() => retryStart(), 10000);
+    /* Veřejný server PeerJS umí odpovídat i desítky vteřin — pomalý pokus
+       se NEruší (rušením by se nikdy nepřipojil), jen se ukáže, že čekáme.
+       Nový pokus až po skutečné chybě, a bez omezení počtu. */
+    const openTimer = setTimeout(() => {
+      if (H.peer === peer && !opened) toast('Server pro připojování odpovídá pomalu, čekám…', 600000);
+    }, 6000);
     function retryStart() {
       if (H.peer !== peer || opened) return;
       clearTimeout(openTimer);
       try { peer.destroy(); } catch (e) {}
-      if (attempt >= 8) {
-        H.peer = null;
-        fail('Nepodařilo se spojit se serverem pro připojování hráčů. Zkontroluj připojení k internetu a zkus to znovu.');
-        return;
-      }
-      toast('Připojuji se k serveru…', 2500);
+      toast(attempt >= 3
+        ? 'Server pro připojování nejde (pokus ' + (attempt + 2) + '), zkouším znovu…'
+        : 'Připojuji se k serveru…', 600000);
       H.sigTimer = setTimeout(() => { H.sigTimer = 0; hostStart(attempt + 1); },
-        Math.min(6000, 700 * Math.pow(1.6, attempt)));
+        Math.min(8000, 700 * Math.pow(1.6, attempt)));
     }
 
     peer.on('open', () => {
@@ -387,6 +388,7 @@
       opened = true;
       H.opened = true;
       clearTimeout(openTimer);
+      $('toast').hidden = true;
       H.code = code;
       H.state = 'lobby';
       renderLobby();
@@ -1212,14 +1214,21 @@
     const mine = () => P.peer === peer;
     const live = () => !!(P.conn && P.conn.open);
 
-    /* když se spojení do 12 s nenaváže (server, Wi-Fi), zkusit znovu */
-    P.openTimer = setTimeout(() => { if (mine() && !live()) reconnectLater(); }, 12000);
+    /* Na server PeerJS se čeká, jak dlouho bude potřeba (umí být pomalý,
+       rušení by nepomohlo) — jen dát vědět, že se něco děje. */
+    P.openTimer = setTimeout(() => {
+      if (mine() && !P.conn && !P.joined) showWait('Připojuji…', 'Server pro připojování odpovídá pomalu, čekám…');
+    }, 6000);
 
     peer.on('open', () => {
       /* 'open' chodí i po obnovení spojení se serverem — běžící hru nechat být */
       if (!mine() || P.conn) return;
       const conn = peer.connect(PREFIX + P.code, { reliable: true, serialization: 'json' });
       P.conn = conn;
+      /* server odpověděl; když se ale přímé spojení s TV do 15 s nenaváže
+         (zaseknutá Wi-Fi), zkusit to celé znovu */
+      clearTimeout(P.openTimer);
+      P.openTimer = setTimeout(() => { if (mine() && !live()) reconnectLater(); }, 15000);
       conn.on('open', () => {
         if (P.conn !== conn) return;
         clearTimeout(P.openTimer);

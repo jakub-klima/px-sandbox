@@ -1203,10 +1203,20 @@
     try { if (p) p.destroy(); } catch (e) {}
   }
 
+  /* Ve kterém kroku připojování telefon je — ať je vidět, KDE se to zasekne:
+     1 = server PeerJS, 2 = hledání televize přes server, 3 = přímé spojení po Wi-Fi. */
+  function pstage(stage, text) {
+    P.stage = stage;
+    if (P.joined && P.tries < 3) return;   /* ve hře krátký výpadek řeší toast */
+    const title = P.joined ? 'Obnovuji spojení…' : 'Připojuji…';
+    const extra = P.tries ? ' · pokus ' + (P.tries + 1) : '';
+    showWait(title, 'Hra ' + P.code + ' · ' + text + extra);
+  }
+
   function pconnect() {
     clearTimeout(P.retryTimer);
     P.retryTimer = 0;
-    if (!P.joined) showWait('Připojuji…', 'Hra ' + P.code);
+    pstage(1, 'krok 1/3: spojuji se se serverem…');
 
     cleanupPeer();
     const peer = new Peer(PEER_OPTS);
@@ -1217,18 +1227,25 @@
     /* Na server PeerJS se čeká, jak dlouho bude potřeba (umí být pomalý,
        rušení by nepomohlo) — jen dát vědět, že se něco děje. */
     P.openTimer = setTimeout(() => {
-      if (mine() && !P.conn && !P.joined) showWait('Připojuji…', 'Server pro připojování odpovídá pomalu, čekám…');
+      if (mine() && !P.conn) pstage(1, 'krok 1/3: server odpovídá pomalu, čekám…');
     }, 6000);
 
     peer.on('open', () => {
       /* 'open' chodí i po obnovení spojení se serverem — běžící hru nechat být */
       if (!mine() || P.conn) return;
+      pstage(2, 'krok 2/3: server OK, hledám televizi…');
       const conn = peer.connect(PREFIX + P.code, { reliable: true, serialization: 'json' });
       P.conn = conn;
       /* server odpověděl; když se ale přímé spojení s TV do 15 s nenaváže
          (zaseknutá Wi-Fi), zkusit to celé znovu */
       clearTimeout(P.openTimer);
       P.openTimer = setTimeout(() => { if (mine() && !live()) reconnectLater(); }, 15000);
+      conn.on('iceStateChanged', (st) => {
+        if (P.conn !== conn || live()) return;
+        if (st === 'checking') pstage(3, 'krok 3/3: televize nalezena, spojuji se po Wi-Fi…');
+        else if (st === 'connected' || st === 'completed') pstage(3, 'spojeno, přihlašuji…');
+        else if (st === 'failed') pstage(3, 'krok 3/3: přímé spojení s televizí selhalo');
+      });
       conn.on('open', () => {
         if (P.conn !== conn) return;
         clearTimeout(P.openTimer);
@@ -1270,7 +1287,11 @@
     /* před prvním připojením to po pár pokusech vzdát; ve hře zkoušet pořád */
     if (!P.joined && P.tries > 6) {
       cleanupPeer();
-      fail('Nepodařilo se spojit s televizí. Zkontroluj, že hra na televizi běží, a zkus to znovu.');
+      fail(P.stage === 3
+        ? 'Telefon televizi našel, ale přímo po Wi-Fi se spolu nespojí. Bývá to hostovská Wi-Fi nebo router, který zařízením nedovolí spolu mluvit (izolace klientů). Zkus jinou Wi-Fi nebo mobilní data.'
+        : P.stage === 2
+          ? 'Server pro připojování televizi nenašel. Zkontroluj kód na televizi, případně tam hru spusť znovu.'
+          : 'Server pro připojování neodpovídá. Zkus to za chvíli znovu.');
       return;
     }
     if (P.joined) {

@@ -171,17 +171,24 @@ const ZONES = {
       ['Pterosaur', '🦅', 75, { agr: 1 }], ['Tyrannosaurus', '🦖', 78, { agr: 1, hp: 3, atk: 7, size: 78, rare: 1 }],
     ] },
   lair: { name: "Antharas' Lair", lvTxt: '76+', price: 150000, w: 1400, h: 1100, spawn: [700, 980],
-    base: '#3a2420', blot: '#5a2a1c', decor: ['🦴', '💀', '🔥', '💎'], decorN: 40, boss: 'antharas', portal: true,
+    base: '#3a2420', blot: '#5a2a1c', decor: ['🦴', '💀', '🔥', '💎'], decorN: 40, boss: 'antharas', key: 'portal',
     note: 'Heart of Warding. Theodric tě bez Portal Stone nepustí. Na retailu tu je 200 lidí, ty jdeš sám.' },
+  hall: { name: 'Hall of Flames', lvTxt: '80', price: 250000, w: 1400, h: 1100, spawn: [700, 980],
+    base: '#2a1210', blot: '#8a2a0c', decor: ['🔥', '🌋', '💀', '🦴', '♨️'], decorN: 55, boss: 'valakas', key: 'floating',
+    note: 'Mt. Fire. Klein tě bez Floating Stone nepustí. Na zemi je láva a za chvíli jí bude ještě víc.' },
 };
-const ZONE_ORDER = ['ti', 'agony', 'marsh', 'cruma', 'ant', 'dv', 'primeval', 'lair'];
+const ZONE_ORDER = ['ti', 'agony', 'marsh', 'cruma', 'ant', 'dv', 'primeval', 'lair', 'hall'];
+const KEY_NAME = { portal: 'Portal Stone', floating: 'Floating Stone' };
 
 const BOSSES = {
   qa: { name: 'Queen Ant', e: '🐜', lv: 40, hp: 48000, atk: 185, def: 48, size: 110, r: 46, spd: 40, respawnMin: 3, ring: 'qa',
-    adena: 300000, xpMul: 15 },
+    adena: 300000, xpMul: 15, item: 'Ring of Queen Ant', icon: '💍', bonus: '+8 % šance na krit. Nejžádanější šperk do 76.' },
   antharas: { name: 'Antharas', e: '🐲', lv: 79, hp: 280000, atk: 460, def: 110, size: 140, r: 62, spd: 55, respawnMin: 5, ring: 'ant',
-    adena: 3000000, xpMul: 25 },
+    adena: 3000000, xpMul: 25, item: 'Earring of Antharas', icon: '💎', bonus: '+10 % P.Atk, P.Def a HP. A titul Dragon Slayer.', title: 'Dragon Slayer' },
+  valakas: { name: 'Valakas', e: '🐉', lv: 85, hp: 400000, atk: 520, def: 140, size: 170, r: 70, spd: 60, respawnMin: 8, ring: 'val',
+    adena: 6000000, xpMul: 40, item: 'Necklace of Valakas', icon: '📿', bonus: '+12 % P.Atk, +10 % rychlost útoku a +10 % HP. A titul Flame Lord.', title: 'Flame Lord' },
 };
+const LAVASAUR = ['Lavasaurus', '🦎', 80, { hp: 1.6, agr: 1, spd: 1.1 }];
 
 const TOWN_NPCS = [
   { id: 'gk', name: 'Clarissa', title: 'Gatekeeper', e: '🧙', x: 700, y: 300 },
@@ -193,6 +200,7 @@ const TOWN_NPCS = [
   { id: 'judge', name: 'Black Judge', title: 'Death Penalty', e: '⚖️', x: 1100, y: 760 },
   { id: 'gab', name: 'Gabrielle', title: 'Audience with the Land Dragon', e: '👸', x: 470, y: 900 },
   { id: 'wh', name: 'Warehouse Keeper', title: 'Sklad', e: '📦', x: 930, y: 900 },
+  { id: 'klein', name: 'Klein', title: 'Hall of Flames · Floating Stone', e: '🧝', x: 1180, y: 410 },
 ];
 const MAMMON = { id: 'mammon', name: 'Merchant of Mammon', title: 'Seven Signs', e: '🧞', x: 700, y: 820 };
 // typ: sell = růžová, buy = žlutá, craft = modrá (jako bubliny soukromých obchodů v klientu)
@@ -231,7 +239,7 @@ const CHAT_LINES = [
   ['normal', 'kde se mění Ancient Adena?'], ['normal', 'potřebuju 1 Varnish of Purity'], ['normal', 'Death Penalty 6, jdu za Black Judgem'],
   ['normal', 'kdo jde na Oly? hero je jistej'], ['normal', 'Noblesse quest je za trest'], ['normal', 'Tyrannosaurus mě onehitnul'],
   ['normal', 'kdo má Strider?'], ['normal', 'z Giranu do Dragon Valley pěšky? nikdy víc'], ['normal', 'měl jsem 99,99 % a umřel jsem'],
-  ['normal', 'kde je Theodric?'], ['normal', 'proč je Elpy rychlejší než já'], ['normal', 'Seven Signs: zase vyhrál Dusk, Mammon nikde'],
+  ['normal', 'kde je Theodric?'], ['normal', 'šel jsem na Valakase sám, zbyla ze mě jen láva'], ['normal', 'proč je Elpy rychlejší než já'], ['normal', 'Seven Signs: zase vyhrál Dusk, Mammon nikde'],
   ['party', 'BD, dance!'], ['party', 'rebuff za minutu'], ['party', 'pozor, aggro'], ['party', 'SE kde je heal?!'], ['party', 'kdo tahá moby? já ne'],
   ['clan', 'clan war s HateYou zítra'], ['clan', 'kdo má CP poty?'], ['clan', 'leader offline 3 týdny, kdo má práva?'],
   ['clan', 'reputace klanu zase v mínusu'], ['clan', 'kdo jde v sobotu na siege, hlaste se'],
@@ -258,6 +266,9 @@ const TIPS = [
   'Shift + klik na moba ukáže drop list. Na retailu nebyl, na custom serveru je.',
   'CP tě chrání jen proti hráčům. Proti mobům ti nepomůže.',
   'Do Antharasova doupěte potřebuješ Portal Stone od Gabrielle.',
+  'K Valakasovi tě pustí Klein s Floating Stone. Ten ti prodá jen s Earringem of Antharas.',
+  'Valakasovy meteory nechávají na zemi lávu. V lávě se nestojí. Ani na chvilku.',
+  'Když Valakas vzlétne, nemáš do čeho mlátit. Uhýbej a čekej, až přistane. Ne pod ním.',
   'Kdo si nevzal SoE, jde pěšky. Nebo umře. Smrt je rychlejší.',
   'L2Walker je zakázaný. GM to pozná. GM pozná všechno.',
   'Queen Ant léčí Nurse Ants. Zabij je první.',
@@ -275,7 +286,7 @@ const pl = {                   // runtime hráče
   atkCd: 0, swing: 0, sitting: false, dead: false, cast: null, queued: null, auto: false, jailUntil: 0, buffs: {}, hitT: 0, walkT: 0,
 };
 let Z = null, zoneId = 'town', bg = null;
-let mobs = [], fakes = [], npcs = [], floats = [], fx = [], tele = [];
+let mobs = [], fakes = [], npcs = [], floats = [], fx = [], tele = [], lava = [];
 let T = 0;                      // herní čas v s
 const cds = {};                 // cooldowny
 let pkAt = 0, chatAt = 0, annAt = 0, botCheckAt = 0, gm = null, onlineN = 3412, saveAt = 0, hudAt = 0, loadingUntil = 0;
@@ -288,7 +299,7 @@ let shift = false;
 const freshSave = (name, race) => ({
   v: 2, name, race, level: 1, xp: 0, sp: 0, adena: 10000, hp: 1e9, mp: 1e9, cp: 1e9, prof: 0,
   learned: { ps: true },
-  inv: { pot: 10, mpot: 0, ss: 500, soe: 2, bsoe: 0, portal: 0 }, scrolls: {}, junk: {},
+  inv: { pot: 10, mpot: 0, ss: 500, soe: 2, bsoe: 0, portal: 0, floating: 0 }, scrolls: {}, junk: {},
   weapon: { id: 0, e: 0 }, armor: { id: 0, e: 0 }, rings: {}, title: '', ssOn: true, dp: 0, xpOff: false, goldbar: 0,
   zone: 'town', bossDead: {},
   st: { kills: 0, deaths: 0, ks: 0, pks: 0, fails: 0, jails: 0, boss: 0, time: 0, best: 1 },
@@ -329,6 +340,7 @@ function stats() {
   if (b('bers')) { patk *= 1.08; aspd *= 1.08; spd *= 1.08; pdef *= .92; }
   if (S.rings.qa) crit += .08;
   if (S.rings.ant) { patk *= 1.1; pdef *= 1.1; maxHp *= 1.1; }
+  if (S.rings.val) { patk *= 1.12; aspd *= 1.1; maxHp *= 1.1; }
   if (S.dp) { const f = 1 - .04 * S.dp; patk *= f; pdef *= f; }
   return { patk, pdef, maxHp: Math.round(maxHp), maxMp: Math.round(maxMp), maxCp: Math.round(maxHp * .6), spd, aspd, crit: Math.min(.8, crit), critDmg };
 }
@@ -496,6 +508,7 @@ function makeBoss(id) {
     kind: 'mob', boss: id, name: b.name, e: b.e, lv: b.lv, x: 700, y: 360, hx: 700, hy: 360, r: b.r, size: b.size,
     maxHp: b.hp, hp: b.hp, atk: b.atk, def: b.def, spd: b.spd, agr: true, adena: 1, aggro: false, atkCd: 2,
     dead: false, hitT: 0, playerDmg: 0, breathAt: T + 6, quakeAt: T + 14, healAt: T + 2, said: {}, bob: 0,
+    meteorAt: T + 8, flew: {}, summoned: {}, flying: false, lift: 0,
   };
 }
 const NURSE = ['Nurse Ant', '🐜', 38, { hp: .6, nurse: 1 }];
@@ -516,7 +529,7 @@ function bossLeft(id) {
 function enterZone(id, pos) {
   zoneId = id; Z = ZONES[id]; S.zone = id;
   bg = bgCache[id] || (bgCache[id] = buildBg(Z, id));
-  mobs = []; fakes = []; npcs = []; floats = []; fx = []; tele = [];
+  mobs = []; fakes = []; npcs = []; floats = []; fx = []; tele = []; lava = [];
   Object.assign(pl, { target: null, interact: null, attacking: false, moveTo: null, queued: null, cast: null, sitting: false });
   const sp = pos || Z.spawn;
   pl.x = sp[0]; pl.y = sp[1];
@@ -616,6 +629,11 @@ function useSoulshot() {
 }
 
 function hitMob(m, mult = 1, opts = {}) {
+  if (m.flying) {
+    float(m.x, m.y - 40, 've vzduchu', '#aaa');
+    sysOnce('flying', `${m.name} je ve vzduchu. Mácháš do jeho stínu. Uhýbej ohni a počkej, až přistane.`, 8);
+    return;
+  }
   const st = stats();
   const ss = useSoulshot();
   const crit = Math.random() < st.crit;
@@ -768,7 +786,9 @@ function die(src) {
   if (src && src.rare) chat('zase někoho onehitnul T-Rex lol', 'shout', pick(FAKE_NAMES));
   save();
   setTimeout(() => {
-    const why = src && src.boss === 'antharas' ? 'Antharas tě snědl. Byl jsi prý křupavý.'
+    const why = src && src.boss === 'valakas' ? pick(['Valakas tě upekl. Medium rare.', 'Spadl na tebe meteor. Valakas říká, že to byla náhoda.', 'Stál jsi v lávě. Láva vyhrála.'])
+      : src && src.summon ? 'Lavasaurus tě sežral. Valakas se ani nemusel otočit.'
+      : src && src.boss === 'antharas' ? 'Antharas tě snědl. Byl jsi prý křupavý.'
       : src && src.boss === 'qa' ? 'Queen Ant tě ušlapala. Nursky tleskaly.'
       : src && src.rare ? 'Tyrannosaurus. Nic si z toho nedělej, onehitne každého.'
       : src && src.pk ? `Zabil tě ${src.name}. Teď se ti posmívá v chatu a jeho karma roste.`
@@ -805,20 +825,25 @@ function bossDefeated(m) {
   S.rings[b.ring] = true;
   S.adena += b.adena;
   gainXp(mobXp(b.lv) * b.xpMul);
-  // nursky padají s královnou
-  mobs.forEach(o => { if (o.nurse) o.dead = true, o.respawnAt = 1e12; });
-  const item = b.ring === 'qa' ? 'Ring of Queen Ant' : 'Earring of Antharas';
-  if (m.boss === 'antharas') S.title = 'Dragon Slayer';
+  // nursky a přivolaní pomocníci padají s bossem, láva chladne
+  mobs.forEach(o => { if (o.nurse || o.summon) o.dead = true, o.respawnAt = 1e12; });
+  lava = []; tele = [];
+  const item = b.item;
+  if (b.title) S.title = b.title;
   chat(`Announcements: Grand Boss ${b.name} byl poražen hráčem ${S.name}!`, 'ann');
+  if (m.boss === 'valakas') setTimeout(() => chat('Announcements: Celý server ti tleská. Teda dva hráči, zbytek jsou boti a offline shopy.', 'ann'), 2500);
   fx.push({ type: 'lvl', x: m.x, y: m.y, t0: T, dur: 2 });
   save();
   const extra = m.boss === 'qa'
     ? '<p class="quote">„Na retailu by o QA ring hrály čtyři party a vyhrál by ten s nejrychlejším internetem."</p>'
-    : '<p class="quote">„Na retailu by drop dostal clan leader, který se přihlásil pět vteřin před koncem."</p>';
+    : m.boss === 'valakas'
+      ? `<p class="quote">„Na retailu by na Valakase šly tři command channely a polovina by spadla na lagu."</p>
+        ${first ? '<p><b>Dohrál jsi Lajnidž II.</b> Grand bossové jsou mrtví, láva vychladla a Klein si konečně může vzít dovolenou. Teda než se Valakas za 8 minut respawne.</p>' : ''}`
+      : '<p class="quote">„Na retailu by drop dostal clan leader, který se přihlásil pět vteřin před koncem."</p>';
   setTimeout(() => dialog(`${b.e} ${b.name} poražen!`, `
     <p>Sám. Bez party, bez Bishopa, bez BD a SWS.</p>${extra}
     <p>Odměna: <b>${fmt(b.adena)} adeny</b> a spousta XP.</p>
-    ${first ? `<p>Získáváš <b>💍 ${item}</b>${b.ring === 'qa' ? ': +8 % šance na krit. Nejžádanější šperk do 76.' : ': +10 % P.Atk, P.Def a HP. A titul Dragon Slayer.'}</p>`
+    ${first ? `<p>Získáváš <b>${b.icon} ${item}</b>: ${b.bonus}</p>`
       : `<p class="muted">${item} už máš. Prodej ho v Giranu za 50kk. Teda nemůžeš, je to single player.</p>`}
     <p class="muted">Respawn za ${b.respawnMin} min. Na retailu podle okna respawnu, takže si nestěžuj.</p>`,
     [{ t: 'Jsem legenda', cls: 'green', fn: closeDialog }]), 1200);
@@ -1111,15 +1136,15 @@ function openNpc(n) {
   pl.moveTo = null;
   if (n.kind === 'shop') return openShop(n);
   ({ gk: openGatekeeper, shop: openGrocer, gmshop: openGmShop, gm: openGrandMaster, cm: openClassManager, buff: openBuffer,
-    judge: openJudge, gab: openGabrielle, wh: openWarehouse, mammon: openMammon })[n.id]();
+    judge: openJudge, gab: openGabrielle, wh: openWarehouse, mammon: openMammon, klein: openKlein })[n.id]();
 }
 
 function openGatekeeper() {
   const rows = ZONE_ORDER.map(id => {
     const z = ZONES[id];
-    const lock = z.portal && !S.inv.portal;
-    return `<div class="item"><div class="ic">${z.boss ? (z.boss === 'qa' ? '🐜' : '🐲') : '🌀'}</div>
-      <div class="tx"><b>${z.name}</b> <small>Úroveň ${z.lvTxt}. ${z.note}${lock ? ' <b style="color:#ff7b6b">Chybí Portal Stone.</b>' : ''}</small></div>
+    const lock = z.key && !S.inv[z.key];
+    return `<div class="item"><div class="ic">${z.boss ? BOSSES[z.boss].e : '🌀'}</div>
+      <div class="tx"><b>${z.name}</b> <small>Úroveň ${z.lvTxt}. ${z.note}${lock ? ` <b style="color:#ff7b6b">Chybí ${KEY_NAME[z.key]}.</b>` : ''}</small></div>
       <div class="pr">${z.price ? fmt(z.price) + ' a' : 'zdarma'}</div>
       ${btn('tp', id, 'Teleport', S.adena < z.price || lock)}</div>`;
   }).join('');
@@ -1280,6 +1305,25 @@ function openGabrielle() {
     } }]);
 }
 
+function openKlein() {
+  const price = 2000000;
+  if (S.inv.floating) return dialog('🧝 Klein', `<p class="quote">„Floating Stone už máš. Gatekeeper tě pošle do Hall of Flames.
+    Vezmi si hodně potů. A neber si nic hořlavého. Teda… všechno je hořlavé."</p>`, [{ t: 'Jdu na to', fn: closeDialog }]);
+  dialog('🧝 Klein', `
+    <p class="quote">„Valakas? Ty? Sám? Dobře. Nejdřív mi ukaž Earring of Antharas, ať vím, že nejsi turista.
+    Floating Stone ti pak prodám. Jen ho neupusť do lávy."</p>
+    <p class="muted">Podmínky: <b>Earring of Antharas</b> ${S.rings.ant ? '✔' : '✘'}, úroveň 78+ ${S.level >= 78 ? '✔' : '✘'}, cena ${fmt(price)} adeny ${S.adena >= price ? '✔' : '✘'}.</p>
+    <p class="muted">Valakas občas vzlétne a zasype doupě meteory. Kde dopadnou, zůstane láva. Na 50 % a 20 % HP si zavolá Lavasaury.</p>`,
+    [{ t: `Získat Floating Stone (${fmt(price)} a)`, cls: 'green', fn: () => {
+      if (!S.rings.ant) return sys('Klein: „Bez Earringu of Antharas tě nepustím. Valakas se zahazuje jen s drakobijci."');
+      if (S.level < 78) return sys('Klein: „Pod 78? Valakas by tě ani nepostřehl. Teda postřehl, jako svačinu."');
+      if (S.adena < price) return sys('Klein: „Floating Stone nelevitují zadarmo."');
+      S.adena -= price; S.inv.floating = 1;
+      sys('Získal jsi Floating Stone. Lehce se vznáší a lehce hřeje.');
+      closeDialog();
+    } }]);
+}
+
 function openWarehouse() {
   dialog('📦 Warehouse Keeper', `
     <p class="quote">„Sklad je plný. Je tam 40 000 Animal Bone od nějakého trpaslíka a jedna Gremlinova ponožka. Adenu si ulož přes .bank, to je custom příkaz."</p>
@@ -1336,7 +1380,8 @@ function openInventory() {
     const scrolls = Object.entries(S.scrolls).filter(([, n]) => n > 0)
       .map(([k, n]) => `<div class="item"><div class="ic">${k.startsWith('b') ? '🌟' : '📃'}</div><div class="tx"><b>${scrollAbbr(k)}</b> ×${n}<small>${scrollName(k)}</small></div>${btn('useScroll', k, 'Použít')}</div>`).join('');
     const rings = [S.rings.qa && '<div class="item"><div class="ic">💍</div><div class="tx"><b>Ring of Queen Ant</b><small>+8 % šance na krit. Nejžádanější šperk do 76.</small></div></div>',
-      S.rings.ant && '<div class="item"><div class="ic">💎</div><div class="tx"><b>Earring of Antharas</b><small>+10 % P.Atk, P.Def a HP. Ostatní ti ho závidí.</small></div></div>'].filter(Boolean).join('');
+      S.rings.ant && '<div class="item"><div class="ic">💎</div><div class="tx"><b>Earring of Antharas</b><small>+10 % P.Atk, P.Def a HP. Ostatní ti ho závidí.</small></div></div>',
+      S.rings.val && '<div class="item"><div class="ic">📿</div><div class="tx"><b>Necklace of Valakas</b><small>+12 % P.Atk, +10 % rychlost útoku a +10 % HP. Pořád trochu hřeje.</small></div></div>'].filter(Boolean).join('');
     dialog('🎒 Inventář', `
       <div class="sect">Výbava</div>
       <div class="list">
@@ -1351,6 +1396,7 @@ function openInventory() {
         <div class="item"><div class="ic">✨</div><div class="tx"><b>Soulshot</b> ×${fmt(S.inv.ss)}<small>Klávesa E · ${S.ssOn ? 'auto zapnuto' : 'vypnuto'}</small></div>${btn('ss', 0, S.ssOn ? 'Vypnout' : 'Zapnout')}</div>
         <div class="item"><div class="ic">📜</div><div class="tx"><b>Scroll of Escape</b> ×${S.inv.soe} · <b>Blessed</b> ×${S.inv.bsoe}<small>Klávesa R</small></div>${btn('soe', 0, 'Použít', Z.town)}</div>
         ${S.inv.portal ? '<div class="item"><div class="ic">🪨</div><div class="tx"><b>Portal Stone</b><small>Vstupenka k Antharasovi.</small></div></div>' : ''}
+        ${S.inv.floating ? '<div class="item"><div class="ic">🌋</div><div class="tx"><b>Floating Stone</b><small>Vstupenka k Valakasovi. Lehce se vznáší.</small></div></div>' : ''}
       </div>
       <div class="sect">Enchant scrolly</div>
       <div class="list">${scrolls || '<span class="muted">Žádné. Kup si je v GM Shopu, nebo čekej na drop rate x1.</span>'}</div>
@@ -1453,7 +1499,8 @@ function openChar() {
 
 function openHelp() {
   dialog('❓ Jak hrát', `
-    <p><b>Cíl:</b> z Talking Islandu až k Antharasovi. Po cestě Queen Ant, profese na 20/40/76 a pár krystalizovaných zbraní.</p>
+    <p><b>Cíl:</b> z Talking Islandu až k Antharasovi. Po cestě Queen Ant, profese na 20/40/76 a pár krystalizovaných zbraní.
+    <b>Endgame:</b> s Earringem of Antharas ti Klein prodá Floating Stone a můžeš na Valakase.</p>
     <div class="kv">
       <span>Klik na zem / WASD</span><span>chůze</span>
       <span>Klik na moba / F / Tab</span><span>cíl a útok</span>
@@ -1470,7 +1517,7 @@ function openHelp() {
       <span>Příkazy</span><span>/unstuck /loc /target /assist /gmlist /olympiadstat /petition</span>
       <span>Custom</span><span>.online .menu .xpoff .xpon .deposit .withdraw</span>
     </div>
-    <p class="muted">Giran: Gatekeeper Clarissa (teleporty), Grocer (poty, SS, SoE), GM Shop (výbava, scrolly), Grand Master (skilly za SP), Class Manager (profese), Newbie Helper/Buffer, Black Judge (Death Penalty), Gabrielle (Portal Stone). Někdy i Merchant of Mammon.</p>
+    <p class="muted">Giran: Gatekeeper Clarissa (teleporty), Grocer (poty, SS, SoE), GM Shop (výbava, scrolly), Grand Master (skilly za SP), Class Manager (profese), Newbie Helper/Buffer, Black Judge (Death Penalty), Gabrielle (Portal Stone), Klein (Floating Stone). Někdy i Merchant of Mammon.</p>
     <p class="muted">Hra se ukládá automaticky.</p>`);
 }
 
@@ -1479,7 +1526,7 @@ function showDropList(m) {
   const rows = [];
   if (m.boss) {
     const b = BOSSES[m.boss];
-    rows.push(['Adena', fmt(b.adena), '100 %'], [b.ring === 'qa' ? 'Ring of Queen Ant' : 'Earring of Antharas', '1', '100 % (single player bonus)']);
+    rows.push(['Adena', fmt(b.adena), '100 %'], [b.item, '1', '100 % (single player bonus)']);
   } else {
     const a = 6 * Math.pow(m.lv, 2.2) * m.adena;
     rows.push(['Adena', `${fmt(a * .6)}–${fmt(a * 1.4)}`, '100 %']);
@@ -1498,10 +1545,11 @@ const ACTIONS = {
   noop: () => {},
   tp: id => {
     const z = ZONES[id];
-    if (S.adena < z.price || (z.portal && !S.inv.portal)) return;
+    if (S.adena < z.price || (z.key && !S.inv[z.key])) return;
     S.adena -= z.price;
     closeDialog();
     if (z.boss === 'antharas' && S.level < 76) sys('Theodric: „S tvým levelem? No, tvoje věc."');
+    if (z.boss === 'valakas' && S.level < 80) sys('Klein: „Pod osmdesátkou? Pošlu ti pohled. Na popel."');
     teleport(id);
   },
   buy: arg => {
@@ -1967,7 +2015,7 @@ function updateMobs(dt) {
           Object.assign(m, makeMob(NURSE, boss.x + rand(-140, 140), boss.y + rand(-100, 100)));
           sysOnce('nurse', 'Nurse Ant se vrátila. Queen Ant je zase v bezpečí.', 20);
         }
-      } else if (!m.boss && !m.pk && T > m.respawnAt) spawnMob(m);
+      } else if (!m.boss && !m.pk && !m.summon && T > m.respawnAt) spawnMob(m);
       continue;
     }
     const dP = dist(m, pl);
@@ -2031,11 +2079,12 @@ function updateMobs(dt) {
       m.wander = null; m.wanderAt = T + rand(2, 6);
     }
   }
-  // odstranit mrtvé PK
-  mobs = mobs.filter(m => !(m.pk && m.dead));
+  // odstranit mrtvé PK a přivolané pomocníky
+  mobs = mobs.filter(m => !((m.pk || m.summon) && m.dead));
 }
 
 function updateBoss(m, dP, dt) {
+  if (m.boss === 'valakas') return updateValakas(m, dP, dt);
   if (pl.dead) { m.aggro = false; return; }
   const ant = m.boss === 'antharas';
   if (!m.aggro && dP < 520) {
@@ -2077,11 +2126,114 @@ function updateBoss(m, dP, dt) {
   }
 }
 
+// Valakas: meteory, láva, vzlet a Lavasauři
+function updateValakas(m, dP, dt) {
+  m.lift += ((m.flying ? 90 : 0) - m.lift) * Math.min(1, dt * 3);
+  if (pl.dead) { m.aggro = false; m.flying = false; return; }
+  if (!m.aggro && dP < 560) {
+    m.aggro = true;
+    Snd.play('roar');
+    chat('Kdo mě budí? Aha, další sólista s Earringem of Antharas. Bratr mi o tobě psal.', 'shout', 'Valakas');
+    m.meteorAt = T + 5; m.breathAt = T + 8;
+  }
+  if (!m.aggro) return;
+  const pct = m.hp / m.maxHp;
+  for (const [p, line] of [[.85, 'Antharas říkal, že jsi křupavý. Ověříme.'], [.4, 'Tohle už není lechtání. Tohle je osobní.'],
+    [.15, 'ENRAGE! Celý Mt. Fire teď hoří kvůli tobě. Doufám, že máš pojištění.']]) {
+    if (pct < p && !m.said[p]) { m.said[p] = 1; chat(line, 'shout', m.name); }
+  }
+  const enr = pct < .15;
+  // vzlet na 66 % a 33 % HP: nedá se zasáhnout, z nebe prší oheň, pak přistání s rázovou vlnou
+  for (const p of [.66, .33]) {
+    if (pct < p && !m.flew[p] && !m.flying) {
+      m.flew[p] = 1;
+      Object.assign(m, { flying: true, flyUntil: T + 9, landTele: false, meteorAt: T + 1 });
+      Snd.play('roar'); Snd.play('whirl');
+      chat('Valakas vzlétá! Z nebe začíná pršet oheň.', 'shout', m.name);
+      banner('Valakas vzlétá', 'Uhýbej meteorům. Kde dopadnou, zůstane láva. A přistane přímo na tobě.');
+    }
+  }
+  if (m.flying) {
+    const landIn = m.flyUntil - T;
+    if (landIn > 2.2) {
+      // krouží nad hráčem (pomaleji, než běháš) a hledá, kam přistát
+      moveToward(m, pl.x, pl.y + 40, m.spd * 1.2, dt);
+      if (T > m.meteorAt) {
+        m.meteorAt = T + (enr ? .4 : .55);
+        tele.push({ x: clamp(pl.x + rand(-40, 40), 50, Z.w - 50), y: clamp(pl.y + rand(-40, 40), 50, Z.h - 50), r: 70, t0: T, dur: 1.2, dmg: .16, src: m, lava: 1 });
+      }
+    } else if (!m.landTele) {
+      m.landTele = true;
+      tele.push({ x: m.x, y: m.y, r: 220, t0: T, dur: 2.2, dmg: .35, src: m });
+      float(m.x, m.y - 170, 'přistává… UTÍKEJ!', '#ffb35c', true);
+    }
+    if (landIn <= 0) {
+      m.flying = false; m.atkCd = 1.5; m.meteorAt = T + 7; m.breathAt = T + 4;
+      fx.push({ type: 'quake', x: m.x, y: m.y, t0: T, dur: .8 });
+      Snd.play('quake');
+    }
+    return;
+  }
+  // Lavasauři na 50 % a 20 % HP
+  for (const p of [.5, .2]) {
+    if (pct < p && !m.summoned[p]) {
+      m.summoned[p] = 1;
+      for (let i = 0; i < 3; i++) {
+        const a = i / 3 * Math.PI * 2 + rand(0, 1);
+        const s = makeMob(LAVASAUR, clamp(m.x + Math.cos(a) * 170, 60, Z.w - 60), clamp(m.y + Math.sin(a) * 120, 60, Z.h - 60));
+        s.summon = true; s.aggro = true;
+        mobs.push(s);
+        fx.push({ type: 'boom', x: s.x, y: s.y, r: 50, t0: T, dur: .6 });
+      }
+      Snd.play('roar');
+      chat('Lavasauři, k noze! Tohle je PvE, ne férový souboj.', 'shout', m.name);
+    }
+  }
+  const range = m.r + pl.r + 10;
+  if (dP > range) moveToward(m, pl.x, pl.y, m.spd * (enr ? 1.3 : 1), dt, range - 2);
+  else {
+    m.atkCd -= dt;
+    if (m.atkCd <= 0) { m.atkCd = enr ? 1.4 : 2; m.lunge = T; damagePlayer(m.atk, m); }
+  }
+  // déšť meteorů kolem hráče
+  if (T > m.meteorAt) {
+    m.meteorAt = T + (enr ? 7 : 11);
+    float(m.x, m.y - 120, 'Meteor Storm!', '#ff7b3c', true);
+    Snd.play('breath');
+    const n = enr ? 7 : 5;
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2), d = i ? rand(100, 330) : 0;
+      tele.push({ x: clamp(pl.x + Math.cos(a) * d, 50, Z.w - 50), y: clamp(pl.y + Math.sin(a) * d, 50, Z.h - 50),
+        r: 80, t0: T, dur: 1.5 + i * .2, dmg: .22, src: m, lava: 1 });
+    }
+  }
+  // ohnivý dech: řada výbuchů od Valakase k hráči
+  if (T > m.breathAt) {
+    m.breathAt = T + (enr ? 6 : 9);
+    const d = dist(m, pl) || 1, ux = (pl.x - m.x) / d, uy = (pl.y - m.y) / d;
+    for (let i = 1; i <= 4; i++) tele.push({ x: m.x + ux * (40 + i * 95), y: m.y + uy * (40 + i * 95), r: 70, t0: T, dur: 1.2 + i * .12, dmg: .26, src: m });
+    float(m.x, m.y - 120, 'nadechuje se…', '#ffb35c', true);
+    Snd.play('breath');
+  }
+}
+
+function updateLava() {
+  lava = lava.filter(p => T - p.t0 < p.dur);
+  if (pl.dead || !lava.length || T < (pl.lavaAt || 0)) return;
+  const p = lava.find(o => Math.hypot(pl.x - o.x, pl.y - o.y) < o.r);
+  if (!p) return;
+  pl.lavaAt = T + .5;
+  const st = stats();
+  damagePlayer(st.maxHp * .03 + st.pdef * .5, p.src);
+  sysOnce('lava', 'Stojíš v lávě. Imperial Crusader boty nejsou žáruvzdorné.', 15);
+}
+
 function updateTele() {
   for (const t of tele) {
     if (T - t.t0 >= t.dur && !t.done) {
       t.done = true;
       fx.push({ type: 'boom', x: t.x, y: t.y, r: t.r, t0: T, dur: .6 });
+      if (t.lava) lava.push({ x: t.x, y: t.y, r: t.r * .8, t0: T, dur: 10, src: t.src });
       Snd.play('boom');
       if (!pl.dead && Math.hypot(pl.x - t.x, pl.y - t.y) < t.r) {
         const st = stats();
@@ -2254,10 +2406,12 @@ function weaponGlow(e) {
 
 function drawMob(m) {
   const s = m.size;
-  const bob = Math.sin(T * 3 + m.bob) * (m.boss ? 4 : 1.5);
-  // stín
-  ctx.fillStyle = 'rgba(0,0,0,.35)';
-  ctx.beginPath(); ctx.ellipse(m.x, m.y + 2, s * .42, s * .15, 0, 0, 7); ctx.fill();
+  const lift = m.lift || 0;
+  const bob = Math.sin(T * 3 + m.bob) * (m.boss ? 4 : 1.5) - lift;
+  // stín (ve vzduchu větší a světlejší)
+  const sh = 1 + lift / 120;
+  ctx.fillStyle = `rgba(0,0,0,${.35 - lift / 600})`;
+  ctx.beginPath(); ctx.ellipse(m.x, m.y + 2, s * .42 * sh, s * .15 * sh, 0, 0, 7); ctx.fill();
   let lx = 0, ly = 0;
   if (m.lunge && T - m.lunge < .2) {
     const k = Math.sin((T - m.lunge) / .2 * Math.PI) * 8;
@@ -2281,7 +2435,7 @@ function drawEntityLabels(e) {
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   if (e.kind === 'mob') {
     if (e.mimic && !e.revealed) { drawText('Treasure Chest', e.x, e.y - e.size * .95, '#ffe08a', 11); return; }
-    const top = e.y - e.size * (e.boss ? 1 : .95);
+    const top = e.y - e.size * (e.boss ? 1 : .95) - (e.lift || 0);
     const show = e === pl.target || e.hp < e.maxHp || e.boss || e.pk;
     drawText(`${e.name}${e.pk ? '' : ' ' + e.lv}`, e.x, top - (show ? 8 : 0), e.pk ? '#ff4d4d' : mobColor(e.lv), e.boss ? 15 : 11, e.boss || e.pk);
     if (show) {
@@ -2376,6 +2530,17 @@ function render() {
   ctx.translate(-Math.round(cam.x) + sx, -Math.round(cam.y) + sy);
   ctx.drawImage(bg, 0, 0);
 
+  // láva po meteorech
+  for (const p of lava) {
+    const age = T - p.t0, fade = clamp(Math.min(age / .3, (p.dur - age) / 2), 0, 1);
+    const rr = p.r * (1 + Math.sin(T * 4 + p.x) * .04);
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr);
+    g.addColorStop(0, `rgba(255,210,80,${.8 * fade})`);
+    g.addColorStop(.55, `rgba(235,90,15,${.65 * fade})`);
+    g.addColorStop(1, 'rgba(120,20,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, 7); ctx.fill();
+  }
   // telegrafy dechu
   for (const t of tele) {
     const k = (T - t.t0) / t.dur;
@@ -2482,6 +2647,7 @@ function frame(now) {
     updatePlayer(dt, st);
     updateMobs(dt);
     updateTele();
+    updateLava();
     updateFakes(dt);
     updatePk();
     updateWorld(dt);
